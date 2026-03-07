@@ -32,26 +32,30 @@ class StandbyScreen(ctk.CTkFrame):
     # ── Construcción de widgets ───────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
+        # 6 filas distribuidas verticalmente en 480×800
+        self.grid_rowconfigure((0, 1, 2, 3, 4, 5), weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # ── Logo / ícono superior ─────────────────────────────────────────────
+        # ── Espacio superior ──────────────────────────────────────────────────
+        ctk.CTkLabel(self, text="").grid(row=0, column=0)
+
+        # ── Logo / ícono ──────────────────────────────────────────────────────
         lbl_icon = ctk.CTkLabel(
             self,
             text="🔒",
-            font=ctk.CTkFont(size=72),
+            font=ctk.CTkFont(size=96),
             text_color=self.ACCENT,
         )
-        lbl_icon.grid(row=0, column=0, pady=(40, 0))
+        lbl_icon.grid(row=1, column=0)
 
         # ── Nombre del sistema ────────────────────────────────────────────────
         lbl_title = ctk.CTkLabel(
             self,
             text="Smart Locker",
-            font=ctk.CTkFont(size=36, weight="bold"),
+            font=ctk.CTkFont(size=38, weight="bold"),
             text_color=self.TEXT_COLOR,
         )
-        lbl_title.grid(row=1, column=0)
+        lbl_title.grid(row=2, column=0)
 
         # ── Instrucción principal ─────────────────────────────────────────────
         lbl_instruction = ctk.CTkLabel(
@@ -60,19 +64,19 @@ class StandbyScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=22),
             text_color="#8B949E",
         )
-        lbl_instruction.grid(row=2, column=0)
+        lbl_instruction.grid(row=3, column=0)
 
-        # ── Indicador animado (placeholder) ──────────────────────────────────
+        # ── Indicador animado ─────────────────────────────────────────────────
         self.lbl_dot = ctk.CTkLabel(
             self,
             text="● ● ●",
-            font=ctk.CTkFont(size=18),
+            font=ctk.CTkFont(size=20),
             text_color=self.ACCENT,
         )
-        self.lbl_dot.grid(row=3, column=0)
+        self.lbl_dot.grid(row=4, column=0)
         self._animate_dots()
 
-        # ── Botón DEV: ir a scanning (solo durante desarrollo) ────────────────
+        # ── Botón DEV ─────────────────────────────────────────────────────────
         btn_dev = ctk.CTkButton(
             self,
             text="[DEV] Iniciar escaneo",
@@ -80,10 +84,10 @@ class StandbyScreen(ctk.CTkFrame):
             fg_color="#21262D",
             hover_color="#30363D",
             text_color="#8B949E",
-            width=200, height=32,
+            width=220, height=38,
             command=self._go_scanning,
         )
-        btn_dev.grid(row=4, column=0, pady=(0, 20))
+        btn_dev.grid(row=5, column=0, pady=(0, 30))
 
     # ── Lógica ────────────────────────────────────────────────────────────────
 

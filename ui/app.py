@@ -26,8 +26,8 @@ class LockerApp(ctk.CTk):
     overrideredirect(True) — solo en la Raspberry Pi física.
     """
 
-    WIDTH  = 800
-    HEIGHT = 480
+    WIDTH  = 480
+    HEIGHT = 800
 
     def __init__(self) -> None:
         super().__init__()

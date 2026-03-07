@@ -34,17 +34,21 @@ class UserDisplayScreen(ctk.CTkFrame):
     # ── Construcción de UI ────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self.grid_rowconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        # Layout vertical aprovecha la altura de 800 px
+        self.grid_rowconfigure((0, 1, 2, 3, 4, 5, 6), weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # ── Icono de éxito ────────────────────────────────────────────────────
+        # ── Espacio superior ──────────────────────────────────────────────────
+        ctk.CTkLabel(self, text="").grid(row=0, column=0)
+
+        # ── Ícono de éxito ────────────────────────────────────────────────────
         lbl_check = ctk.CTkLabel(
             self,
             text="✓",
-            font=ctk.CTkFont(size=72, weight="bold"),
+            font=ctk.CTkFont(size=110, weight="bold"),
             text_color=self.SUCCESS,
         )
-        lbl_check.grid(row=0, column=0, pady=(30, 0))
+        lbl_check.grid(row=1, column=0)
 
         # ── Bienvenida ────────────────────────────────────────────────────────
         lbl_welcome = ctk.CTkLabel(
@@ -53,43 +57,43 @@ class UserDisplayScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=22),
             text_color=self.MUTED,
         )
-        lbl_welcome.grid(row=1, column=0)
+        lbl_welcome.grid(row=2, column=0)
 
         # ── Nombre del usuario ────────────────────────────────────────────────
         self.lbl_nombre = ctk.CTkLabel(
             self,
             text="—",
-            font=ctk.CTkFont(size=32, weight="bold"),
+            font=ctk.CTkFont(size=34, weight="bold"),
             text_color=self.TEXT_COLOR,
         )
-        self.lbl_nombre.grid(row=2, column=0)
+        self.lbl_nombre.grid(row=3, column=0, pady=(10, 0))
 
         # ── Número de casillero ───────────────────────────────────────────────
         self.lbl_locker = ctk.CTkLabel(
             self,
             text="Casillero  —",
-            font=ctk.CTkFont(size=26),
+            font=ctk.CTkFont(size=30),
             text_color=self.SUCCESS,
         )
-        self.lbl_locker.grid(row=3, column=0)
+        self.lbl_locker.grid(row=4, column=0, pady=(6, 0))
 
         # ── Fecha y hora ──────────────────────────────────────────────────────
         self.lbl_fecha = ctk.CTkLabel(
             self,
             text="—",
-            font=ctk.CTkFont(size=16),
+            font=ctk.CTkFont(size=18),
             text_color=self.MUTED,
         )
-        self.lbl_fecha.grid(row=4, column=0)
+        self.lbl_fecha.grid(row=5, column=0, pady=(6, 0))
 
         # ── Contador regresivo ────────────────────────────────────────────────
         self.lbl_countdown = ctk.CTkLabel(
             self,
             text="",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=15),
             text_color=self.MUTED,
         )
-        self.lbl_countdown.grid(row=5, column=0, pady=(0, 20))
+        self.lbl_countdown.grid(row=6, column=0, pady=(0, 30))
 
     # ── API pública ───────────────────────────────────────────────────────────
 

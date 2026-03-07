@@ -38,22 +38,23 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Construcción de UI ────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        self.grid_rowconfigure((0, 1, 2, 3), weight=1)
+        # Layout vertical: título / cámara / estado / intentos / botones DEV
+        self.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         # ── Título ────────────────────────────────────────────────────────────
         lbl_title = ctk.CTkLabel(
             self,
             text="Reconocimiento facial",
-            font=ctk.CTkFont(size=24, weight="bold"),
+            font=ctk.CTkFont(size=26, weight="bold"),
             text_color=self.TEXT_COLOR,
         )
         lbl_title.grid(row=0, column=0, pady=(30, 0))
 
-        # ── Área de cámara (placeholder – se reemplaza con ImageTk en core) ──
+        # ── Área de cámara — cuadrada, ocupa buen espacio vertical ───────────
         self.camera_frame = ctk.CTkFrame(
             self,
-            width=320, height=240,
+            width=380, height=380,
             fg_color="#161B22",
             border_color=self.ACCENT,
             border_width=2,
@@ -65,7 +66,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_camera_placeholder = ctk.CTkLabel(
             self.camera_frame,
             text="📷\nCámara activa",
-            font=ctk.CTkFont(size=18),
+            font=ctk.CTkFont(size=22),
             text_color="#8B949E",
         )
         self.lbl_camera_placeholder.place(relx=0.5, rely=0.5, anchor="center")
@@ -77,43 +78,44 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=18),
             text_color="#8B949E",
         )
-        self.lbl_status.grid(row=2, column=0)
+        self.lbl_status.grid(row=2, column=0, pady=(0, 4))
 
-        # ── Indicador de intentos + botón volver (DEV) ────────────────────────
-        bottom_frame = ctk.CTkFrame(self, fg_color="transparent")
-        bottom_frame.grid(row=3, column=0, pady=(0, 20))
-
+        # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
-            bottom_frame,
+            self,
             text=f"Intentos: 0 / {self.MAX_ATTEMPTS}",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=15),
             text_color="#8B949E",
         )
-        self.lbl_attempts.grid(row=0, column=0, padx=20)
+        self.lbl_attempts.grid(row=3, column=0)
+
+        # ── Botones DEV (apilados verticalmente) ──────────────────────────────
+        dev_frame = ctk.CTkFrame(self, fg_color="transparent")
+        dev_frame.grid(row=4, column=0, pady=(0, 24))
 
         btn_back = ctk.CTkButton(
-            bottom_frame,
+            dev_frame,
             text="[DEV] ← Volver",
             font=ctk.CTkFont(size=14),
             fg_color="#21262D",
             hover_color="#30363D",
             text_color="#8B949E",
-            width=160, height=32,
+            width=200, height=36,
             command=self._go_standby,
         )
-        btn_back.grid(row=0, column=1, padx=20)
+        btn_back.grid(row=0, column=0, padx=10)
 
         btn_success = ctk.CTkButton(
-            bottom_frame,
+            dev_frame,
             text="[DEV] Simular éxito",
             font=ctk.CTkFont(size=14),
             fg_color="#21262D",
             hover_color="#30363D",
             text_color=self.SUCCESS,
-            width=180, height=32,
+            width=200, height=36,
             command=self._dev_simulate_success,
         )
-        btn_success.grid(row=0, column=2, padx=20)
+        btn_success.grid(row=0, column=1, padx=10)
 
     # ── API pública (llamada desde core/face_recognition) ────────────────────
 

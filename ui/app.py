@@ -63,6 +63,14 @@ class LockerApp(ctk.CTk):
 
     def show_frame(self, frame_class: type) -> None:
         """Trae al frente la pantalla indicada y llama on_show() si existe."""
+        # Llamar on_hide() a la pantalla que se oculta
+        for registered_class, frame in self._frames.items():
+            if frame.winfo_ismapped():
+                if hasattr(frame, "on_hide"):
+                    frame.on_hide()
+                break
+        
+        # Mostrar nueva pantalla y llamar on_show()
         frame = self._frames[frame_class]
         frame.tkraise()
         if hasattr(frame, "on_show"):

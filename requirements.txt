@@ -1,1 +1,33 @@
+# Core Python dependencies
+customtkinter==5.2.2
+opencv-python==4.13.0.0
+numpy>=1.24.0
+Pillow>=10.0.0      # Para procesar imágenes (ImageTk, PIL)
+
+# Database
+sqlalchemy>=2.0.0
+
+# GPIO / Hardware (Raspberry Pi)
+RPi.GPIO>=0.7.0  # Si se necesita GPIO directo
+gpiozero>=2.0.0  # Abstracción de GPIO recomendada
+
+# Camera - Raspberry Pi
+# Descomenta según tu Raspberry Pi
+# picamera2>=0.3.0  # Para RPi 4+ con nuevo stack
+# libcamera           # Necesario para picamera2
+
+# Face Recognition / ML
+# mediapipe>=0.10.0  # Alternativa de detección de rostros
+# dlib>=19.24        # Para reconocimiento de rostros avanzado
+
+# Development & Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=23.0.0
+pylint>=2.17.0
+
+# Logging & Monitoring
+python-dotenv>=1.0.0
+
+# Utilities
 

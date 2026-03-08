@@ -8,6 +8,16 @@ cv2.dnn procesa el rostro. Cuando el reconocimiento termina:
 """
 
 import customtkinter as ctk
+import threading
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw
+import tkinter
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
 
 class ScanningScreen(ctk.CTkFrame):
     """
@@ -32,6 +42,22 @@ class ScanningScreen(ctk.CTkFrame):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
         self._attempts  = 0
+        
+        # Variables de captura de cámara
+        self._camera_thread: Optional[threading.Thread] = None
+        self._camera_running = False
+        self._camera_frame: Optional[np.ndarray] = None
+        self._detected_faces = []
+        self._photo_image: Optional[tkinter.PhotoImage] = None
+        
+        # Inicializar módulo de reconocimiento facial
+        try:
+            from core.face_recognition import get_face_recognition_manager
+            self.face_manager = get_face_recognition_manager()
+        except Exception as e:
+            logger.error(f"Error importando FaceRecognitionManager: {e}")
+            self.face_manager = None
+        
         self._build_ui()
 
     # ── Construcción de UI ────────────────────────────────────────────────────
@@ -50,7 +76,7 @@ class ScanningScreen(ctk.CTkFrame):
         )
         lbl_title.grid(row=0, column=0, pady=(30, 0))
 
-        # ── Área de cámara — cuadrada, ocupa buen espacio vertical ───────────
+        # ── Área de cámara — mostrará el feed de vídeo ──────────────────────
         self.camera_frame = ctk.CTkFrame(
             self,
             width=380, height=380,
@@ -62,13 +88,15 @@ class ScanningScreen(ctk.CTkFrame):
         self.camera_frame.grid(row=1, column=0, padx=20, pady=10)
         self.camera_frame.grid_propagate(False)
 
-        self.lbl_camera_placeholder = ctk.CTkLabel(
+        # Label para mostrar video feed
+        self.lbl_camera = ctk.CTkLabel(
             self.camera_frame,
-            text="📷\nCámara activa",
+            text="📷\nIniciando cámara…",
             font=ctk.CTkFont(size=22),
             text_color="#6b7a8a",
+            fg_color="transparent",
         )
-        self.lbl_camera_placeholder.place(relx=0.5, rely=0.5, anchor="center")
+        self.lbl_camera.place(relx=0.5, rely=0.5, anchor="center")
 
         # ── Estado / feedback ─────────────────────────────────────────────────
         self.lbl_status = ctk.CTkLabel(
@@ -116,13 +144,155 @@ class ScanningScreen(ctk.CTkFrame):
         )
         btn_success.grid(row=0, column=1, padx=10)
 
-    # ── API pública (llamada desde core/face_recognition) ────────────────────
+    # ── Captura de video en background ────────────────────────────────────────
+
+    def _camera_loop(self) -> None:
+        """Thread worker que captura frames y detecta rostros."""
+        import time
+        
+        if not self.face_manager:
+            logger.error("FaceManager no inicializado")
+            return
+
+        if not self.face_manager.initialized:
+            if not self.face_manager.initialize():
+                logger.error("No se pudo inicializar cámara")
+                return
+
+        logger.info("Camera loop iniciado")
+        frame_count = 0
+        last_status_update = 0
+
+        try:
+            while self._camera_running:
+                # Capturar frame y detectar rostros
+                frame, faces = self.face_manager.detect_faces_in_frame()
+
+                if frame is None:
+                    time.sleep(0.05)  # Pequeña pausa si no hay frame
+                    continue
+
+                frame_count += 1
+
+                # Guardar frame y rostros detectados
+                self._camera_frame = frame
+                self._detected_faces = faces
+
+                # Convertir a PIL Image para mostrar
+                try:
+                    self._update_camera_display(frame, faces)
+                    logger.debug(f"Frame actualizado #{frame_count}, rostros: {len(faces)}")
+                except Exception as e:
+                    logger.error(f"Error actualizando display: {e}")
+
+                # Pequeña pausa para no saturar la UI (~15 FPS)
+                time.sleep(0.066)
+
+                # Log de progreso cada 30 frames (~2 segundos)
+                if frame_count % 30 == 0:
+                    logger.info(f"Camera loop activo: {frame_count} frames capturados, {len(faces)} rostros últimos")
+
+        except Exception as e:
+            logger.error(f"Error en camera loop: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        finally:
+            if self.face_manager:
+                try:
+                    self.face_manager.release()
+                except:
+                    pass
+            logger.info(f"Camera loop finalizado. Total frames: {frame_count}")
+
+    def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
+        """Actualiza la pantalla con el frame actual y dibuja caras detectadas."""
+        try:
+            # Convertir BGR → RGB para PIL
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Redimensionar a 380×380 (tamaño del camera_frame)
+            frame_resized = cv2.resize(frame_rgb, (380, 380))
+
+            # Dibujar rectángulos alrededor de rostros detectados
+            pil_image = Image.fromarray(frame_resized)
+            draw = ImageDraw.Draw(pil_image)
+
+            # Escala de coordenadas (del frame original al redimensionado)
+            scale_x = 380 / frame_rgb.shape[1]
+            scale_y = 380 / frame_rgb.shape[0]
+
+            for face in faces:
+                x, y, w, h = face["box"]
+                # Redimensionar coordenadas
+                x1 = int(x * scale_x)
+                y1 = int(y * scale_y)
+                x2 = int((x + w) * scale_x)
+                y2 = int((y + h) * scale_y)
+
+                # Dibujar rectángulo verde
+                draw.rectangle(
+                    [(x1, y1), (x2, y2)],
+                    outline=(34, 197, 94),  # GREEN #22C55E
+                    width=3,
+                )
+
+            # Convertir PIL Image a tkinter PhotoImage usando formato PPM
+            # Nota: Usar archivo temporal porque carga es más rápida
+            import tempfile
+            import os
+            
+            ppm_path = "/tmp/locker_frame.ppm"
+            try:
+                pil_image.save(ppm_path, "PPM")
+                
+                # Crear nuevo PhotoImage
+                new_photo = tkinter.PhotoImage(file=ppm_path)
+                
+                # Guardar referencia ANTES de actualizar (critical!)
+                self._photo_image = new_photo
+                
+                # Actualizar label en main thread
+                self.after(0, self._set_camera_image)
+            except Exception as e:
+                logger.warning(f"Error creando PhotoImage: {e}")
+
+        except Exception as e:
+            logger.error(f"Error actualizando display: {e}")
+
+    def _set_camera_image(self) -> None:
+        """Actualiza la imagen en el label (debe llamarse desde main thread)."""
+        try:
+            if self._photo_image is not None:
+                self.lbl_camera.configure(image=self._photo_image, text="")
+                self.lbl_camera.image = self._photo_image  # Mantener referencia
+        except Exception as e:
+            logger.error(f"Error mostrando imagen: {e}")
+
+    # ── API pública ───────────────────────────────────────────────────────────
 
     def on_show(self) -> None:
-        """Resetea el estado cada vez que esta pantalla se vuelve activa."""
+        """Inicia captura de vídeo cuando la pantalla se vuelve activa."""
         self._attempts = 0
-        self._update_status("Posiciona tu rostro en el recuadro…", color="#6b7a8a")
+        self._update_status("Iniciando cámara…", color="#6b7a8a")
         self.lbl_attempts.configure(text=f"Intentos: 0 / {self.MAX_ATTEMPTS}")
+
+        # Iniciar thread de captura de cámara
+        if not self._camera_running:
+            logger.info("Iniciando ScanningScreen - preparando captura de video")
+            self._camera_running = True
+            self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
+            self._camera_thread.start()
+            logger.info("Camera capture thread iniciado exitosamente")
+            
+            # Actualizar status después de 1 segundo (cuando ya debe estar capturando)
+            self.after(1000, lambda: self._update_status("Posiciona tu rostro en el recuadro…", color="#6b7a8a"))
+
+    def on_hide(self) -> None:
+        """Detiene captura de vídeo cuando se sale de la pantalla."""
+        self._camera_running = False
+        if self._camera_thread:
+            self._camera_thread.join(timeout=2.0)
+        logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
         """Llamado por el motor de reconocimiento al obtener un match."""

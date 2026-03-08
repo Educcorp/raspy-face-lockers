@@ -96,11 +96,11 @@ class ScanningScreen(ctk.CTkFrame):
         btn_back = ctk.CTkButton(
             dev_frame,
             text="[DEV] ← Volver",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=17),
             fg_color="#21262D",
             hover_color="#30363D",
             text_color="#8B949E",
-            width=200, height=36,
+            width=240, height=52,
             command=self._go_standby,
         )
         btn_back.grid(row=0, column=0, padx=10)
@@ -108,11 +108,11 @@ class ScanningScreen(ctk.CTkFrame):
         btn_success = ctk.CTkButton(
             dev_frame,
             text="[DEV] Simular éxito",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=17),
             fg_color="#21262D",
             hover_color="#30363D",
             text_color=self.SUCCESS,
-            width=200, height=36,
+            width=240, height=52,
             command=self._dev_simulate_success,
         )
         btn_success.grid(row=0, column=1, padx=10)

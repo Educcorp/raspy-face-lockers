@@ -80,11 +80,11 @@ class StandbyScreen(ctk.CTkFrame):
         btn_dev = ctk.CTkButton(
             self,
             text="[DEV] Iniciar escaneo",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=17),
             fg_color="#21262D",
             hover_color="#30363D",
             text_color="#8B949E",
-            width=220, height=38,
+            width=280, height=52,
             command=self._go_scanning,
         )
         btn_dev.grid(row=5, column=0, pady=(0, 30))

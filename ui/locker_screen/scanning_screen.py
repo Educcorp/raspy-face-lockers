@@ -19,12 +19,12 @@ class ScanningScreen(ctk.CTkFrame):
     controller : LockerApp – expone show_frame() / show_user()
     """
 
-    BG_COLOR   = "#0D1117"
-    ACCENT     = "#2563EB"
+    BG_COLOR   = "#0c112f"
+    ACCENT     = "#33a8a3"
     SUCCESS    = "#22C55E"
     WARNING    = "#F59E0B"
     DANGER     = "#EF4444"
-    TEXT_COLOR = "#F0F6FC"
+    TEXT_COLOR = "#c7cfd5"
 
     MAX_ATTEMPTS = 3
 
@@ -54,7 +54,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.camera_frame = ctk.CTkFrame(
             self,
             width=380, height=380,
-            fg_color="#161B22",
+            fg_color="#05403F",
             border_color=self.ACCENT,
             border_width=2,
             corner_radius=12,
@@ -66,7 +66,7 @@ class ScanningScreen(ctk.CTkFrame):
             self.camera_frame,
             text="📷\nCámara activa",
             font=ctk.CTkFont(size=22),
-            text_color="#8B949E",
+            text_color="#6b7a8a",
         )
         self.lbl_camera_placeholder.place(relx=0.5, rely=0.5, anchor="center")
 
@@ -75,7 +75,7 @@ class ScanningScreen(ctk.CTkFrame):
             self,
             text="Posiciona tu rostro en el recuadro…",
             font=ctk.CTkFont(size=18),
-            text_color="#8B949E",
+            text_color="#6b7a8a",
         )
         self.lbl_status.grid(row=2, column=0, pady=(0, 4))
 
@@ -84,7 +84,7 @@ class ScanningScreen(ctk.CTkFrame):
             self,
             text=f"Intentos: 0 / {self.MAX_ATTEMPTS}",
             font=ctk.CTkFont(size=15),
-            text_color="#8B949E",
+            text_color="#6b7a8a",
         )
         self.lbl_attempts.grid(row=3, column=0)
 
@@ -96,9 +96,9 @@ class ScanningScreen(ctk.CTkFrame):
             dev_frame,
             text="[DEV] ← Volver",
             font=ctk.CTkFont(size=14),
-            fg_color="#21262D",
-            hover_color="#30363D",
-            text_color="#8B949E",
+            fg_color="#05403F",
+            hover_color="#272c4a",
+            text_color="#6b7a8a",
             width=200, height=36,
             command=self._go_standby,
         )
@@ -108,8 +108,8 @@ class ScanningScreen(ctk.CTkFrame):
             dev_frame,
             text="[DEV] Simular éxito",
             font=ctk.CTkFont(size=14),
-            fg_color="#21262D",
-            hover_color="#30363D",
+            fg_color="#05403F",
+            hover_color="#272c4a",
             text_color=self.SUCCESS,
             width=200, height=36,
             command=self._dev_simulate_success,
@@ -121,7 +121,7 @@ class ScanningScreen(ctk.CTkFrame):
     def on_show(self) -> None:
         """Resetea el estado cada vez que esta pantalla se vuelve activa."""
         self._attempts = 0
-        self._update_status("Posiciona tu rostro en el recuadro…", color="#8B949E")
+        self._update_status("Posiciona tu rostro en el recuadro…", color="#6b7a8a")
         self.lbl_attempts.configure(text=f"Intentos: 0 / {self.MAX_ATTEMPTS}")
 
     def on_face_match(self, user_data: dict) -> None:
@@ -146,7 +146,7 @@ class ScanningScreen(ctk.CTkFrame):
 
     # ── Métodos internos ──────────────────────────────────────────────────────
 
-    def _update_status(self, text: str, color: str = "#8B949E") -> None:
+    def _update_status(self, text: str, color: str = "#6b7a8a") -> None:
         self.lbl_status.configure(text=text, text_color=color)
 
     def _go_standby(self) -> None:

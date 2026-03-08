@@ -6,3 +6,11 @@ ui/locker_screen/__pycache__/scanning_screen.cpython-313.pyc
 ui/locker_screen/__pycache__/standby_screen.cpython-313.pyc
 ui/locker_screen/__pycache__/user_display.cpython-313.pyc
 test/
+
+# CTk Theme Builder (herramienta local de temas, no parte del proyecto)
+ctk_theme_builder/
+ui/locker_screen/__pycache__/scanning_screen.cpython-313.pyc
+ui/locker_screen/__pycache__/standby_screen.cpython-313.pyc
+ui/locker_screen/__pycache__/user_display.cpython-313.pyc
+ui/__pycache__/app.cpython-313.pyc
+ui/__pycache__/

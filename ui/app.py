@@ -12,10 +12,13 @@ Uso desde main.py (--mode locker):
     LockerApp().mainloop()
 """
 
+import os
 import customtkinter as ctk
 
+_THEME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "Greengage.json")
+
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+ctk.set_default_color_theme(_THEME)
 
 
 class LockerApp(ctk.CTk):

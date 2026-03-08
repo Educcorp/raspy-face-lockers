@@ -20,9 +20,9 @@ class StandbyScreen(ctk.CTkFrame):
     controller : LockerApp – expone show_frame() para navegar
     """
 
-    BG_COLOR    = "#0D1117"   # fondo oscuro
-    ACCENT      = "#2563EB"   # azul institucional
-    TEXT_COLOR  = "#F0F6FC"
+    BG_COLOR    = "#0c112f"   # fondo Greengage dark
+    ACCENT      = "#33a8a3"   # teal Greengage
+    TEXT_COLOR  = "#c7cfd5"
 
     def __init__(self, parent: ctk.CTk, controller):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
@@ -62,7 +62,7 @@ class StandbyScreen(ctk.CTkFrame):
             self,
             text="Acerca tu rostro a la cámara",
             font=ctk.CTkFont(size=22),
-            text_color="#8B949E",
+            text_color="#6b7a8a",
         )
         lbl_instruction.grid(row=3, column=0)
 
@@ -81,9 +81,9 @@ class StandbyScreen(ctk.CTkFrame):
             self,
             text="[DEV] Iniciar escaneo",
             font=ctk.CTkFont(size=17),
-            fg_color="#21262D",
-            hover_color="#30363D",
-            text_color="#8B949E",
+            fg_color="#05403F",
+            hover_color="#272c4a",
+            text_color="#6b7a8a",
             width=280, height=52,
             command=self._go_scanning,
         )

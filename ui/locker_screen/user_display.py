@@ -18,10 +18,10 @@ class UserDisplayScreen(ctk.CTkFrame):
     controller : LockerApp – expone show_frame()
     """
 
-    BG_COLOR   = "#0D1117"
+    BG_COLOR   = "#0c112f"
     SUCCESS    = "#22C55E"
-    TEXT_COLOR = "#F0F6FC"
-    MUTED      = "#8B949E"
+    TEXT_COLOR = "#c7cfd5"
+    MUTED      = "#6b7a8a"
 
     DISPLAY_SECONDS = 8   # tiempo antes de volver a standby
 

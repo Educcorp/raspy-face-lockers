@@ -207,8 +207,8 @@ class ScanningScreen(ctk.CTkFrame):
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
         """Actualiza la pantalla con el frame actual y dibuja caras detectadas."""
         try:
-            # Convertir BGR → RGB para PIL
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Los frames de la cámara ya vienen en RGB, no necesitan conversión
+            frame_rgb = frame
 
             # Redimensionar a 380×380 (tamaño del camera_frame)
             frame_resized = cv2.resize(frame_rgb, (380, 380))

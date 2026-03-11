@@ -20,9 +20,11 @@ class StandbyScreen(ctk.CTkFrame):
     controller : LockerApp – expone show_frame() para navegar
     """
 
-    BG_COLOR    = "#0c112f"   # fondo Greengage dark
-    ACCENT      = "#33a8a3"   # teal Greengage
-    TEXT_COLOR  = "#c7cfd5"
+    BG_COLOR    = "#F5F0EB"   # fondo crema claro escolar
+    PRIMARY     = "#5B8C5A"   # verde pizarrón suave
+    SECONDARY   = "#7BA7BC"   # azul cielo apagado
+    TEXT_COLOR  = "#3D3D3D"   # texto oscuro legible
+    MUTED       = "#8C8279"   # texto secundario cálido
 
     def __init__(self, parent: ctk.CTk, controller):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
@@ -37,14 +39,15 @@ class StandbyScreen(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # ── Espacio superior ──────────────────────────────────────────────────
-        ctk.CTkLabel(self, text="").grid(row=0, column=0)
+        ctk.CTkLabel(self, text="", fg_color="transparent").grid(row=0, column=0)
 
         # ── Logo / ícono ──────────────────────────────────────────────────────
         lbl_icon = ctk.CTkLabel(
             self,
-            text="🔒",
+            text="🎓",
             font=ctk.CTkFont(size=96),
-            text_color=self.ACCENT,
+            text_color=self.PRIMARY,
+            fg_color="transparent",
         )
         lbl_icon.grid(row=1, column=0)
 
@@ -54,6 +57,7 @@ class StandbyScreen(ctk.CTkFrame):
             text="Smart Locker",
             font=ctk.CTkFont(size=38, weight="bold"),
             text_color=self.TEXT_COLOR,
+            fg_color="transparent",
         )
         lbl_title.grid(row=2, column=0)
 
@@ -62,7 +66,8 @@ class StandbyScreen(ctk.CTkFrame):
             self,
             text="Acerca tu rostro a la cámara",
             font=ctk.CTkFont(size=22),
-            text_color="#6b7a8a",
+            text_color=self.MUTED,
+            fg_color="transparent",
         )
         lbl_instruction.grid(row=3, column=0)
 
@@ -71,23 +76,25 @@ class StandbyScreen(ctk.CTkFrame):
             self,
             text="● ● ●",
             font=ctk.CTkFont(size=20),
-            text_color=self.ACCENT,
+            text_color=self.SECONDARY,
+            fg_color="transparent",
         )
         self.lbl_dot.grid(row=4, column=0)
         self._animate_dots()
 
-        # ── Botón DEV ─────────────────────────────────────────────────────────
-        btn_dev = ctk.CTkButton(
+        # ── Botón Iniciar escaneo ─────────────────────────────────────────
+        btn_start = ctk.CTkButton(
             self,
-            text="[DEV] Iniciar escaneo",
-            font=ctk.CTkFont(size=17),
-            fg_color="#05403F",
-            hover_color="#272c4a",
-            text_color="#6b7a8a",
-            width=280, height=52,
+            text="Iniciar escaneo",
+            font=ctk.CTkFont(size=19, weight="bold"),
+            fg_color=self.PRIMARY,
+            hover_color="#4A7A49",
+            text_color="#FFFFFF",
+            width=300, height=56,
+            corner_radius=12,
             command=self._go_scanning,
         )
-        btn_dev.grid(row=5, column=0, pady=(0, 30))
+        btn_start.grid(row=5, column=0, pady=(0, 30))
 
     # ── Lógica ────────────────────────────────────────────────────────────────
 

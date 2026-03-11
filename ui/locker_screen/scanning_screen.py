@@ -1,20 +1,22 @@
 """
-ScanningScreen – pantalla de escaneo facial (800×480 px).
+ScanningScreen – pantalla de escaneo facial (480×800 px).
 
-Muestra el feed de la cámara y el feedback visual mientras
-cv2.dnn procesa el rostro. Cuando el reconocimiento termina:
-  - Éxito  → controller.show_user(user_data)
-  - Fallo  → mostrar mensaje + volver a StandbyScreen tras 3 intentos
+La cámara ocupa casi toda la ventana. Se dibuja una silueta guía
+que cambia de rojo a verde según la detección del rostro.
+Al reconocer al usuario, se muestra un overlay verde con los datos
+(nombre, casillero, fecha) y un countdown de regreso automático.
+Un botón de flecha ← en la parte inferior permite volver al standby.
 """
 
 import customtkinter as ctk
 import threading
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import tkinter
 import logging
 from typing import Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -22,34 +24,46 @@ logger = logging.getLogger(__name__)
 class ScanningScreen(ctk.CTkFrame):
     """
     Pantalla activa durante el reconocimiento facial.
-
-    Parámetros
-    ----------
-    parent     : widget padre (LockerApp)
-    controller : LockerApp – expone show_frame() / show_user()
+    La cámara ocupa toda la ventana con silueta guía superpuesta.
     """
 
-    BG_COLOR   = "#0c112f"
-    ACCENT     = "#33a8a3"
-    SUCCESS    = "#22C55E"
-    WARNING    = "#F59E0B"
-    DANGER     = "#EF4444"
-    TEXT_COLOR = "#c7cfd5"
+    BG_COLOR   = "#1A1A2E"   # fondo oscuro para contraste con cámara
+    PRIMARY    = "#5B8C5A"
+    SUCCESS    = "#4CAF50"
+    WARNING    = "#D4A34A"
+    DANGER     = "#C75C5C"
+    TEXT_COLOR = "#FFFFFF"
+    MUTED      = "#B0B0B0"
 
-    MAX_ATTEMPTS = 3
+    # Colores de la silueta
+    SILHOUETTE_NO_FACE  = (200, 80, 80, 160)    # rojo semi-transparente
+    SILHOUETTE_FACE_OK  = (90, 180, 90, 160)     # verde semi-transparente
+
+    MAX_ATTEMPTS    = 3
+    DISPLAY_SECONDS = 8
+
+    # Dimensiones de la ventana
+    WIN_W = 480
+    WIN_H = 800
 
     def __init__(self, parent: ctk.CTk, controller) -> None:
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
         self._attempts  = 0
-        
+        self._face_detected = False
+        self._success_shown = False
+        self._return_job = None
+
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
         self._camera_running = False
         self._camera_frame: Optional[np.ndarray] = None
         self._detected_faces = []
         self._photo_image: Optional[tkinter.PhotoImage] = None
-        
+
+        # Datos del usuario reconocido
+        self._user_data: Optional[dict] = None
+
         # Inicializar módulo de reconocimiento facial
         try:
             from core.face_recognition import get_face_recognition_manager
@@ -57,99 +71,186 @@ class ScanningScreen(ctk.CTkFrame):
         except Exception as e:
             logger.error(f"Error importando FaceRecognitionManager: {e}")
             self.face_manager = None
-        
+
+        # Pre-generar la máscara de silueta
+        self._silhouette_mask = self._create_silhouette_mask()
+
         self._build_ui()
+
+    # ── Crear silueta de persona ──────────────────────────────────────────────
+
+    def _create_silhouette_mask(self) -> Image.Image:
+        """Crea una máscara PNG con la silueta de cabeza/hombros recortada."""
+        mask = Image.new("RGBA", (self.WIN_W, self.WIN_H), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(mask)
+
+        # Fondo semitransparente oscuro
+        draw.rectangle([(0, 0), (self.WIN_W, self.WIN_H)], fill=(0, 0, 0, 100))
+
+        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 60
+
+        # Recortar zona de la cabeza (elipse)
+        head_rx, head_ry = 95, 120
+        head_box = [cx - head_rx, cy - head_ry - 30, cx + head_rx, cy + head_ry - 30]
+        draw.ellipse(head_box, fill=(0, 0, 0, 0))
+
+        # Recortar zona cuello + hombros (elipse ancha)
+        body_cy = cy + head_ry + 20
+        body_rx, body_ry = 160, 100
+        body_box = [cx - body_rx, body_cy - 10, cx + body_rx, body_cy + body_ry + 40]
+        draw.ellipse(body_box, fill=(0, 0, 0, 0))
+
+        return mask
+
+    def _draw_silhouette_outline(self, draw: ImageDraw.Draw, color_rgba: tuple) -> None:
+        """Dibuja el contorno de la silueta (cabeza + hombros) con el color dado."""
+        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 60
+        color_rgb = color_rgba[:3]
+
+        head_rx, head_ry = 95, 120
+        head_box = [cx - head_rx, cy - head_ry - 30, cx + head_rx, cy + head_ry - 30]
+        draw.ellipse(head_box, outline=color_rgb, width=3)
+
+        body_cy = cy + head_ry + 20
+        body_rx, body_ry = 160, 100
+        body_box = [cx - body_rx, body_cy - 10, cx + body_rx, body_cy + body_ry + 40]
+        draw.ellipse(body_box, outline=color_rgb, width=3)
 
     # ── Construcción de UI ────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        # Layout vertical: título / cámara / estado / intentos / botones DEV
-        self.grid_rowconfigure((0, 1, 2, 3, 4), weight=1)
-        self.grid_columnconfigure(0, weight=1)
-
-        # ── Título ────────────────────────────────────────────────────────────
-        lbl_title = ctk.CTkLabel(
+        # Canvas que ocupa TODA la ventana para dibujar cámara + overlays
+        self.canvas = tkinter.Canvas(
             self,
-            text="Reconocimiento facial",
-            font=ctk.CTkFont(size=26, weight="bold"),
-            text_color=self.TEXT_COLOR,
+            width=self.WIN_W,
+            height=self.WIN_H,
+            bg="#1A1A2E",
+            highlightthickness=0,
         )
-        lbl_title.grid(row=0, column=0, pady=(30, 0))
+        self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
 
-        # ── Área de cámara — mostrará el feed de vídeo ──────────────────────
-        self.camera_frame = ctk.CTkFrame(
-            self,
-            width=380, height=380,
-            fg_color="#05403F",
-            border_color=self.ACCENT,
-            border_width=2,
-            corner_radius=12,
-        )
-        self.camera_frame.grid(row=1, column=0, padx=20, pady=10)
-        self.camera_frame.grid_propagate(False)
-
-        # Label para mostrar video feed
-        self.lbl_camera = ctk.CTkLabel(
-            self.camera_frame,
-            text="📷\nIniciando cámara…",
-            font=ctk.CTkFont(size=22),
-            text_color="#6b7a8a",
-            fg_color="transparent",
-        )
-        self.lbl_camera.place(relx=0.5, rely=0.5, anchor="center")
-
-        # ── Estado / feedback ─────────────────────────────────────────────────
+        # ── Status label en la parte superior ─────────────────────────────────
         self.lbl_status = ctk.CTkLabel(
             self,
-            text="Posiciona tu rostro en el recuadro…",
-            font=ctk.CTkFont(size=18),
-            text_color="#6b7a8a",
+            text="Posiciona tu rostro en la silueta",
+            font=ctk.CTkFont(size=17, weight="bold"),
+            text_color=self.TEXT_COLOR,
+            fg_color="#2A2A3E",
+            corner_radius=16,
+            height=36,
+            width=360,
         )
-        self.lbl_status.grid(row=2, column=0, pady=(0, 4))
+        self.lbl_status.place(relx=0.5, y=30, anchor="n")
 
         # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
             self,
-            text=f"Intentos: 0 / {self.MAX_ATTEMPTS}",
-            font=ctk.CTkFont(size=15),
-            text_color="#6b7a8a",
+            text="",
+            font=ctk.CTkFont(size=13),
+            text_color=self.MUTED,
+            fg_color="transparent",
         )
-        self.lbl_attempts.grid(row=3, column=0)
+        self.lbl_attempts.place(relx=0.5, y=72, anchor="n")
 
-        # ── Botones DEV (apilados verticalmente) ──────────────────────────────
-        dev_frame = ctk.CTkFrame(self, fg_color="transparent")
-        dev_frame.grid(row=4, column=0, pady=(0, 24))
-
-        btn_back = ctk.CTkButton(
-            dev_frame,
-            text="[DEV] ← Volver",
-            font=ctk.CTkFont(size=14),
-            fg_color="#05403F",
-            hover_color="#272c4a",
-            text_color="#6b7a8a",
-            width=200, height=36,
+        # ── Botón de retroceso (flecha) en la parte inferior ─────────────────
+        self.btn_back = ctk.CTkButton(
+            self,
+            text="←",
+            font=ctk.CTkFont(size=28, weight="bold"),
+            fg_color="#3A3A50",
+            hover_color="#4A4A60",
+            text_color="#FFFFFF",
+            width=56, height=56,
+            corner_radius=28,
             command=self._go_standby,
         )
-        btn_back.grid(row=0, column=0, padx=10)
+        self.btn_back.place(x=80, rely=0.94, anchor="center")
 
-        btn_success = ctk.CTkButton(
-            dev_frame,
-            text="[DEV] Simular éxito",
+        # ── Botón DEV simular éxito (solo desarrollo) ────────────────────
+        self.btn_dev = ctk.CTkButton(
+            self,
+            text="✓ Simular",
             font=ctk.CTkFont(size=14),
-            fg_color="#05403F",
-            hover_color="#272c4a",
-            text_color=self.SUCCESS,
-            width=200, height=36,
+            fg_color="#2A3A2A",
+            hover_color="#3A4A3A",
+            text_color="#A5D6A7",
+            width=100, height=40,
+            corner_radius=20,
             command=self._dev_simulate_success,
         )
-        btn_success.grid(row=0, column=1, padx=10)
+        self.btn_dev.place(x=400, rely=0.94, anchor="center")
+
+        # ── Overlay de éxito (oculto por defecto) ────────────────────────────
+        self.success_frame = ctk.CTkFrame(
+            self,
+            fg_color=self.SUCCESS,
+            corner_radius=20,
+            width=420,
+            height=260,
+        )
+        # No se muestra aún — se coloca con .place() al detectar éxito
+
+        # Contenido del overlay de éxito
+        self.lbl_success_icon = ctk.CTkLabel(
+            self.success_frame,
+            text="✓",
+            font=ctk.CTkFont(size=52, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+        )
+        self.lbl_success_icon.pack(pady=(15, 2))
+
+        self.lbl_success_title = ctk.CTkLabel(
+            self.success_frame,
+            text="Escaneo exitoso",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+        )
+        self.lbl_success_title.pack(pady=(0, 4))
+
+        self.lbl_success_name = ctk.CTkLabel(
+            self.success_frame,
+            text="—",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+        )
+        self.lbl_success_name.pack(pady=(0, 2))
+
+        self.lbl_success_locker = ctk.CTkLabel(
+            self.success_frame,
+            text="Casillero —",
+            font=ctk.CTkFont(size=16),
+            text_color="#E8F5E9",
+            fg_color="transparent",
+        )
+        self.lbl_success_locker.pack(pady=(0, 2))
+
+        self.lbl_success_fecha = ctk.CTkLabel(
+            self.success_frame,
+            text="—",
+            font=ctk.CTkFont(size=14),
+            text_color="#C8E6C9",
+            fg_color="transparent",
+        )
+        self.lbl_success_fecha.pack(pady=(0, 2))
+
+        self.lbl_countdown = ctk.CTkLabel(
+            self.success_frame,
+            text="",
+            font=ctk.CTkFont(size=13),
+            text_color="#A5D6A7",
+            fg_color="transparent",
+        )
+        self.lbl_countdown.pack(pady=(2, 8))
 
     # ── Captura de video en background ────────────────────────────────────────
 
     def _camera_loop(self) -> None:
         """Thread worker que captura frames y detecta rostros."""
         import time
-        
+
         if not self.face_manager:
             logger.error("FaceManager no inicializado")
             return
@@ -161,97 +262,67 @@ class ScanningScreen(ctk.CTkFrame):
 
         logger.info("Camera loop iniciado")
         frame_count = 0
-        last_status_update = 0
 
         try:
             while self._camera_running:
-                # Capturar frame y detectar rostros
                 frame, faces = self.face_manager.detect_faces_in_frame()
 
                 if frame is None:
-                    time.sleep(0.05)  # Pequeña pausa si no hay frame
+                    time.sleep(0.05)
                     continue
 
                 frame_count += 1
-
-                # Guardar frame y rostros detectados
                 self._camera_frame = frame
                 self._detected_faces = faces
+                self._face_detected = len(faces) > 0
 
-                # Convertir a PIL Image para mostrar
                 try:
                     self._update_camera_display(frame, faces)
-                    logger.debug(f"Frame actualizado #{frame_count}, rostros: {len(faces)}")
                 except Exception as e:
                     logger.error(f"Error actualizando display: {e}")
 
-                # Pequeña pausa para no saturar la UI (~15 FPS)
                 time.sleep(0.066)
 
-                # Log de progreso cada 30 frames (~2 segundos)
                 if frame_count % 30 == 0:
-                    logger.info(f"Camera loop activo: {frame_count} frames capturados, {len(faces)} rostros últimos")
+                    logger.info(f"Camera loop: {frame_count} frames, {len(faces)} rostros")
 
         except Exception as e:
             logger.error(f"Error en camera loop: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
         finally:
             if self.face_manager:
                 try:
                     self.face_manager.release()
                 except:
                     pass
-            logger.info(f"Camera loop finalizado. Total frames: {frame_count}")
+            logger.info(f"Camera loop finalizado. Total: {frame_count}")
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
-        """Actualiza la pantalla con el frame actual y dibuja caras detectadas."""
+        """Dibuja el frame de cámara a pantalla completa con silueta superpuesta."""
         try:
-            # Los frames de la cámara ya vienen en RGB, no necesitan conversión
             frame_rgb = frame
+            frame_resized = cv2.resize(frame_rgb, (self.WIN_W, self.WIN_H))
 
-            # Redimensionar a 380×380 (tamaño del camera_frame)
-            frame_resized = cv2.resize(frame_rgb, (380, 380))
+            pil_image = Image.fromarray(frame_resized).convert("RGBA")
 
-            # Dibujar rectángulos alrededor de rostros detectados
-            pil_image = Image.fromarray(frame_resized)
+            # Superponer la máscara de silueta semitransparente
+            pil_image = Image.alpha_composite(pil_image, self._silhouette_mask)
+
+            # Dibujar contorno de silueta: rojo si no hay rostro, verde si sí
             draw = ImageDraw.Draw(pil_image)
+            if len(faces) > 0:
+                self._draw_silhouette_outline(draw, self.SILHOUETTE_FACE_OK)
+            else:
+                self._draw_silhouette_outline(draw, self.SILHOUETTE_NO_FACE)
 
-            # Escala de coordenadas (del frame original al redimensionado)
-            scale_x = 380 / frame_rgb.shape[1]
-            scale_y = 380 / frame_rgb.shape[0]
+            # Convertir a RGB para PhotoImage
+            pil_rgb = pil_image.convert("RGB")
 
-            for face in faces:
-                x, y, w, h = face["box"]
-                # Redimensionar coordenadas
-                x1 = int(x * scale_x)
-                y1 = int(y * scale_y)
-                x2 = int((x + w) * scale_x)
-                y2 = int((y + h) * scale_y)
-
-                # Dibujar rectángulo verde
-                draw.rectangle(
-                    [(x1, y1), (x2, y2)],
-                    outline=(34, 197, 94),  # GREEN #22C55E
-                    width=3,
-                )
-
-            # Convertir PIL Image a tkinter PhotoImage usando formato PPM
-            # Nota: Usar archivo temporal porque carga es más rápida
             import tempfile
-            import os
-            
-            ppm_path = "/tmp/locker_frame.ppm"
+            ppm_path = "/tmp/locker_scan.ppm"
             try:
-                pil_image.save(ppm_path, "PPM")
-                
-                # Crear nuevo PhotoImage
+                pil_rgb.save(ppm_path, "PPM")
                 new_photo = tkinter.PhotoImage(file=ppm_path)
-                
-                # Guardar referencia ANTES de actualizar (critical!)
                 self._photo_image = new_photo
-                
-                # Actualizar label en main thread
                 self.after(0, self._set_camera_image)
             except Exception as e:
                 logger.warning(f"Error creando PhotoImage: {e}")
@@ -260,64 +331,111 @@ class ScanningScreen(ctk.CTkFrame):
             logger.error(f"Error actualizando display: {e}")
 
     def _set_camera_image(self) -> None:
-        """Actualiza la imagen en el label (debe llamarse desde main thread)."""
+        """Pone la imagen en el canvas (main thread)."""
         try:
             if self._photo_image is not None:
-                self.lbl_camera.configure(image=self._photo_image, text="")
-                self.lbl_camera.image = self._photo_image  # Mantener referencia
+                self.canvas.delete("all")
+                self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
+                self.canvas.image = self._photo_image
+
+                # Actualizar texto del status según detección
+                if not self._success_shown:
+                    if self._face_detected:
+                        self.lbl_status.configure(
+                            text="Rostro detectado — analizando…",
+                            text_color="#A5D6A7",
+                        )
+                    else:
+                        self.lbl_status.configure(
+                            text="Posiciona tu rostro en la silueta",
+                            text_color="#FFFFFF",
+                        )
         except Exception as e:
             logger.error(f"Error mostrando imagen: {e}")
 
     # ── API pública ───────────────────────────────────────────────────────────
 
     def on_show(self) -> None:
-        """Inicia captura de vídeo cuando la pantalla se vuelve activa."""
+        """Inicia captura de vídeo cuando la pantalla se activa."""
         self._attempts = 0
-        self._update_status("Iniciando cámara…", color="#6b7a8a")
-        self.lbl_attempts.configure(text=f"Intentos: 0 / {self.MAX_ATTEMPTS}")
+        self._success_shown = False
+        self._user_data = None
+        self.lbl_status.configure(text="Iniciando cámara…", text_color="#FFFFFF")
+        self.lbl_attempts.configure(text="")
+        self.success_frame.place_forget()
+        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_dev.place(x=400, rely=0.94, anchor="center")
 
-        # Iniciar thread de captura de cámara
         if not self._camera_running:
-            logger.info("Iniciando ScanningScreen - preparando captura de video")
             self._camera_running = True
             self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self._camera_thread.start()
-            logger.info("Camera capture thread iniciado exitosamente")
-            
-            # Actualizar status después de 1 segundo (cuando ya debe estar capturando)
-            self.after(1000, lambda: self._update_status("Posiciona tu rostro en el recuadro…", color="#6b7a8a"))
+            self.after(1000, lambda: self.lbl_status.configure(
+                text="Posiciona tu rostro en la silueta", text_color="#FFFFFF"
+            ))
 
     def on_hide(self) -> None:
-        """Detiene captura de vídeo cuando se sale de la pantalla."""
+        """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
         if self._camera_thread:
             self._camera_thread.join(timeout=2.0)
+        if self._return_job:
+            self.after_cancel(self._return_job)
+            self._return_job = None
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
-        """Llamado por el motor de reconocimiento al obtener un match."""
-        self._update_status("✓ Acceso concedido", color=self.SUCCESS)
-        self.after(800, lambda: self.controller.show_user(user_data))
+        """Muestra el overlay verde de éxito con los datos del usuario."""
+        self._success_shown = True
+        self._user_data = user_data
+
+        self.lbl_status.configure(text="✓ Escaneo exitoso", text_color="#A5D6A7")
+        self.lbl_attempts.configure(text="")
+
+        # Llenar datos en el overlay
+        self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
+        self.lbl_success_locker.configure(
+            text=f"Casillero  {user_data.get('locker_numero', '—')}"
+        )
+        self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
+
+        # Mostrar overlay verde
+        self.success_frame.place(relx=0.5, rely=0.75, anchor="center")
+        self.btn_back.place_forget()
+        self.btn_dev.place_forget()
+
+        # Iniciar countdown
+        self._start_countdown(self.DISPLAY_SECONDS)
 
     def on_face_no_match(self) -> None:
-        """Llamado por el motor de reconocimiento cuando no hay match."""
+        """Llamado cuando no hay match."""
         self._attempts += 1
         self.lbl_attempts.configure(
             text=f"Intentos: {self._attempts} / {self.MAX_ATTEMPTS}"
         )
         if self._attempts >= self.MAX_ATTEMPTS:
-            self._update_status("✗ Acceso denegado", color=self.DANGER)
+            self.lbl_status.configure(text="✗ Acceso denegado", text_color="#EF9A9A")
             self.after(2500, self._go_standby)
         else:
-            self._update_status(
-                f"Rostro no reconocido. Intento {self._attempts}/{self.MAX_ATTEMPTS}",
-                color=self.WARNING,
+            self.lbl_status.configure(
+                text=f"Rostro no reconocido ({self._attempts}/{self.MAX_ATTEMPTS})",
+                text_color="#FFCC80",
             )
 
-    # ── Métodos internos ──────────────────────────────────────────────────────
+    # ── Countdown ─────────────────────────────────────────────────────────────
 
-    def _update_status(self, text: str, color: str = "#6b7a8a") -> None:
-        self.lbl_status.configure(text=text, text_color=color)
+    def _start_countdown(self, seconds: int) -> None:
+        if self._return_job is not None:
+            self.after_cancel(self._return_job)
+
+        if seconds <= 0:
+            self._go_standby()
+            return
+
+        self.lbl_countdown.configure(text=f"Volviendo al inicio en {seconds} s…")
+        self._return_job = self.after(1000, self._start_countdown, seconds - 1)
+
+    # ── Métodos internos ──────────────────────────────────────────────────────
 
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
@@ -328,6 +446,6 @@ class ScanningScreen(ctk.CTkFrame):
         dummy_user = {
             "nombre":        "Juan Pérez López",
             "locker_numero": 3,
-            "fecha":         "07/03/2026  14:32",
+            "fecha":         datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }
         self.on_face_match(dummy_user)

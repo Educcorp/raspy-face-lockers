@@ -18,10 +18,11 @@ class UserDisplayScreen(ctk.CTkFrame):
     controller : LockerApp – expone show_frame()
     """
 
-    BG_COLOR   = "#0c112f"
-    SUCCESS    = "#22C55E"
-    TEXT_COLOR = "#c7cfd5"
-    MUTED      = "#6b7a8a"
+    BG_COLOR   = "#F5F0EB"
+    PRIMARY    = "#5B8C5A"
+    SUCCESS    = "#5B8C5A"
+    TEXT_COLOR = "#3D3D3D"
+    MUTED      = "#8C8279"
 
     DISPLAY_SECONDS = 8   # tiempo antes de volver a standby
 
@@ -39,7 +40,7 @@ class UserDisplayScreen(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # ── Espacio superior ──────────────────────────────────────────────────
-        ctk.CTkLabel(self, text="").grid(row=0, column=0)
+        ctk.CTkLabel(self, text="", fg_color="transparent").grid(row=0, column=0)
 
         # ── Ícono de éxito ────────────────────────────────────────────────────
         lbl_check = ctk.CTkLabel(
@@ -47,6 +48,7 @@ class UserDisplayScreen(ctk.CTkFrame):
             text="✓",
             font=ctk.CTkFont(size=110, weight="bold"),
             text_color=self.SUCCESS,
+            fg_color="transparent",
         )
         lbl_check.grid(row=1, column=0)
 
@@ -56,6 +58,7 @@ class UserDisplayScreen(ctk.CTkFrame):
             text="Acceso concedido",
             font=ctk.CTkFont(size=22),
             text_color=self.MUTED,
+            fg_color="transparent",
         )
         lbl_welcome.grid(row=2, column=0)
 
@@ -65,6 +68,7 @@ class UserDisplayScreen(ctk.CTkFrame):
             text="—",
             font=ctk.CTkFont(size=34, weight="bold"),
             text_color=self.TEXT_COLOR,
+            fg_color="transparent",
         )
         self.lbl_nombre.grid(row=3, column=0, pady=(10, 0))
 
@@ -73,7 +77,8 @@ class UserDisplayScreen(ctk.CTkFrame):
             self,
             text="Casillero  —",
             font=ctk.CTkFont(size=30),
-            text_color=self.SUCCESS,
+            text_color=self.PRIMARY,
+            fg_color="transparent",
         )
         self.lbl_locker.grid(row=4, column=0, pady=(6, 0))
 
@@ -83,6 +88,7 @@ class UserDisplayScreen(ctk.CTkFrame):
             text="—",
             font=ctk.CTkFont(size=18),
             text_color=self.MUTED,
+            fg_color="transparent",
         )
         self.lbl_fecha.grid(row=5, column=0, pady=(6, 0))
 
@@ -92,6 +98,7 @@ class UserDisplayScreen(ctk.CTkFrame):
             text="",
             font=ctk.CTkFont(size=15),
             text_color=self.MUTED,
+            fg_color="transparent",
         )
         self.lbl_countdown.grid(row=6, column=0, pady=(0, 30))
 

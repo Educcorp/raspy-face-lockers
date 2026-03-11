@@ -15,9 +15,9 @@ Uso desde main.py (--mode locker):
 import os
 import customtkinter as ctk
 
-_THEME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "Greengage.json")
+_THEME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "School.json")
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("light")
 ctk.set_default_color_theme(_THEME)
 
 
@@ -78,7 +78,7 @@ class LockerApp(ctk.CTk):
 
     def show_user(self, user_data: dict) -> None:
         """
-        Navega a UserDisplayScreen con los datos del usuario autenticado.
+        Muestra overlay de éxito en ScanningScreen con los datos del usuario.
 
         user_data = {
             "nombre":        str,
@@ -86,7 +86,6 @@ class LockerApp(ctk.CTk):
             "fecha":         str,   # formato legible, ej. "07/03/2026 14:32"
         }
         """
-        from ui.locker_screen.user_display import UserDisplayScreen
-        screen: UserDisplayScreen = self._frames[UserDisplayScreen]
-        screen.load_user(user_data)
-        self.show_frame(UserDisplayScreen)
+        from ui.locker_screen.scanning_screen import ScanningScreen
+        screen: ScanningScreen = self._frames[ScanningScreen]
+        screen.on_face_match(user_data)

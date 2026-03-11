@@ -32,9 +32,8 @@ def main() -> None:
         LockerApp().mainloop()
 
     elif args.mode == "admin":
-        # TODO: implementar AdminApp
-        from ui.app import LockerApp   # placeholder hasta tener AdminApp
-        LockerApp().mainloop()
+        from ui.admin_app import AdminApp
+        AdminApp().mainloop()
 
 
 if __name__ == "__main__":

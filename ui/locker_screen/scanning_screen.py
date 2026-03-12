@@ -275,21 +275,6 @@ class ScanningScreen(ctk.CTkFrame):
                     time.sleep(0.05)
                     continue
 
-                # Si DNN no detectó, intentar Haar cascade como fallback
-                if not faces:
-                    try:
-                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                        cascade = cv2.CascadeClassifier(
-                            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-                        )
-                        haar_faces = cascade.detectMultiScale(
-                            gray, scaleFactor=1.05, minNeighbors=3, minSize=(30, 30)
-                        )
-                        if len(haar_faces) > 0:
-                            faces = [{"box": (x, y, w, h)} for (x, y, w, h) in haar_faces]
-                    except Exception as e:
-                        logger.debug(f"Haar fallback error: {e}")
-
                 frame_count += 1
                 self._camera_frame = frame
                 self._detected_faces = faces

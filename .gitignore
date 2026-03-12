@@ -7,5 +7,16 @@ ctk_theme_builder/
 # Python cache directories
 __pycache__/
 */__pycache__/
+**/__pycache__/
 
+# Large model files (download with download_models.py)
+assets/models/*.dat
+
+# Logs
+logs/
+
+# Database
 database/migrations/raspi-face-lockers.db
+
+# Virtual environment
+venv/

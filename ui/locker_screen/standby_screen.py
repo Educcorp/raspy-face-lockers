@@ -44,7 +44,7 @@ class StandbyScreen(ctk.CTkFrame):
         # ── Logo / ícono ──────────────────────────────────────────────────────
         lbl_icon = ctk.CTkLabel(
             self,
-            text="🎓",
+            text="",
             font=ctk.CTkFont(size=96),
             text_color=self.PRIMARY,
             fg_color="transparent",

@@ -57,13 +57,13 @@ class UsersCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="👤  Usuarios",
+            hdr, text="Usuarios",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
 
         ctk.CTkButton(
-            hdr, text="➕", width=46, height=46,
+            hdr, text="+", width=46, height=46,
             font=ctk.CTkFont(size=22),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
@@ -225,25 +225,21 @@ class UsersCatalogScreen(ctk.CTkFrame):
 
 # ── Detalle / edición de usuario ──────────────────────────────────────────────
 
-class UserDetailOverlay(ctk.CTkToplevel):
+class UserDetailOverlay(ctk.CTkFrame):
     """
-    Ventana de detalle + edición de un usuario.
-    Se muestra como ventana modal sobre la pantalla de lista.
-    Tamaño: 480×800 (igual que la pantalla del locker).
+    Overlay de pantalla completa para detalle + edición de usuario.
+    Reemplaza CTkToplevel para compatibilidad con Linux/Raspberry Pi.
     """
 
     def __init__(self, parent, controller, user_id: int, on_close=None):
-        super().__init__(parent)
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller  = controller
         self.user_id     = user_id
         self._on_close   = on_close
         self._edit_mode  = False
-
-        self.title("Detalle de Usuario")
-        self.geometry("480x800")
-        self.resizable(False, False)
-        self.configure(fg_color=PALETTE["BG"])
-        self.grab_set()   # modal
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
 
         self._vars: dict[str, tk.StringVar] = {}
         self._user: dict = {}
@@ -283,7 +279,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
         ).pack(side="left", padx=4)
 
         self.btn_edit = ctk.CTkButton(
-            hdr, text="✏️  Editar", width=90, height=40,
+            hdr, text="Editar", width=90, height=40,
             font=ctk.CTkFont(size=14),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], command=self._toggle_edit,
@@ -351,7 +347,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
 
         self.btn_delete = ctk.CTkButton(
             self._action_frame,
-            text="🗑  Inhabilitar",
+            text="Inhabilitar",
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["DANGER"], hover_color="#922b21",
             text_color=PALETTE["WHITE"], height=52, corner_radius=12,
@@ -438,8 +434,8 @@ class UserDetailOverlay(ctk.CTkToplevel):
         )
         n = face_count["n"] if face_count else 0
         self.face_badge.configure(
-            text=f"✅ {n} perfil(es) facial(es) registrado(s)"
-                 if n else "⚠️  Sin rostro registrado",
+            text=f"[OK] {n} perfil(es) facial(es) registrado(s)"
+                 if n else "(!) Sin rostro registrado",
             text_color=PALETTE["ACCENT"] if n else PALETTE["WARN"] if "WARN" in PALETTE else "#d4a034",
         )
 
@@ -502,7 +498,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
             w.configure(state=state)
         btn_color = PALETTE["ACCENT_HOVER"] if active else PALETTE["BORDER"]
         self.btn_edit.configure(
-            text="✖  Cancelar" if active else "✏️  Editar",
+            text="Cancelar" if active else "Editar",
             fg_color=btn_color,
         )
         if active:
@@ -519,34 +515,38 @@ class UserDetailOverlay(ctk.CTkToplevel):
 
 # ── Diálogo de confirmación reutilizable ──────────────────────────────────────
 
-class _ConfirmDialog(ctk.CTkToplevel):
+class _ConfirmDialog(ctk.CTkFrame):
+    """Diálogo de confirmación como overlay en-ventana (compatible Linux/RPi)."""
+
     def __init__(self, parent, message: str, on_confirm):
-        super().__init__(parent)
-        self.title("Confirmar")
-        self.geometry("360x220")
-        self.resizable(False, False)
-        self.configure(fg_color=PALETTE["CARD"])
-        self.grab_set()
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+
+        # Tarjeta centrada
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=400, height=250)
 
         ctk.CTkLabel(
-            self, text=message,
+            card, text=message,
             font=ctk.CTkFont(size=15),
             text_color=PALETTE["TEXT"], fg_color="transparent",
-            wraplength=320,
-        ).pack(pady=(28, 14))
+            wraplength=360, justify="center",
+        ).place(relx=0.5, y=60, anchor="n")
 
-        btn_row = ctk.CTkFrame(self, fg_color="transparent")
-        btn_row.pack(fill="x", padx=20, pady=10)
+        btn_row = ctk.CTkFrame(card, fg_color="transparent")
+        btn_row.place(x=20, y=170, width=360, height=60)
 
         ctk.CTkButton(
-            btn_row, text="Cancelar", height=50,
-            fg_color=PALETTE["BORDER"], hover_color="#2a3a5a",
+            btn_row, text="Cancelar", height=52,
+            fg_color=PALETTE["BORDER"], hover_color=PALETTE["MUTED"],
             text_color=PALETTE["TEXT"],
             command=self.destroy,
         ).pack(side="left", expand=True, fill="x", padx=(0, 6))
 
         ctk.CTkButton(
-            btn_row, text="Confirmar", height=50,
+            btn_row, text="Confirmar", height=52,
             fg_color=PALETTE["DANGER"], hover_color="#922b21",
             text_color=PALETTE["WHITE"],
             command=lambda: (on_confirm(), self.destroy()),

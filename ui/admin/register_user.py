@@ -325,12 +325,12 @@ class _Step3PIN(ctk.CTkFrame):
             text_color=PALETTE["TEXT"],
             width=120, height=80, corner_radius=14,
         )
-        for i, label in enumerate(["1","2","3","4","5","6","7","8","9","⌫","0","✓"]):
+        for i, label in enumerate(["1","2","3","4","5","6","7","8","9","⌫","0","OK"]):
             r, c = divmod(i, 3)
             if label == "⌫":
                 cmd = self._backspace
                 cfg = {**btn_cfg, "text_color": PALETTE["DANGER"]}
-            elif label == "✓":
+            elif label == "OK":
                 cmd = self._confirm
                 cfg = {**btn_cfg, "fg_color": PALETTE["ACCENT"],
                        "hover_color": PALETTE["ACCENT_HOVER"],
@@ -436,7 +436,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         btn_row.grid_columnconfigure((0, 1), weight=1)
 
         ctk.CTkButton(
-            btn_row, text="📸  Capturar",
+            btn_row, text="Capturar",
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], height=60, corner_radius=12,
@@ -444,7 +444,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         ).grid(row=0, column=0, padx=(12, 6), pady=15, sticky="ew")
 
         self.btn_save = ctk.CTkButton(
-            btn_row, text="💾  Registrar",
+            btn_row, text="Registrar",
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["SUCCESS"] if "SUCCESS" in PALETTE else "#27ae60",
             hover_color="#1e8449",
@@ -478,7 +478,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         if self._camera_running:
             return
         if not _CV2_AVAILABLE:
-            self.lbl_status.configure(text="⚠️  OpenCV no instalado (pip install opencv-python)")
+            self.lbl_status.configure(text="(!) OpenCV no instalado (pip install opencv-python)")
             return
         try:
             from core.face_recognition import get_face_recognition_manager
@@ -489,7 +489,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
         self._cap = cv2.VideoCapture(0)
         if not self._cap.isOpened():
-            self.lbl_status.configure(text="⚠️  Cámara no disponible")
+            self.lbl_status.configure(text="(!) Cámara no disponible")
             return
 
         self._camera_running = True
@@ -555,7 +555,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
             # Status
             if has_face:
-                self.lbl_status.configure(text="✓  Rostro detectado — listo para capturar",
+                self.lbl_status.configure(text="Rostro detectado — listo para capturar",
                                           text_color="#A5D6A7")
             else:
                 self.lbl_status.configure(text="Posiciona tu rostro en la silueta",
@@ -567,26 +567,26 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
     def _capture(self) -> None:
         if not _CV2_AVAILABLE:
-            self.lbl_status.configure(text="⚠️  OpenCV no disponible",
+            self.lbl_status.configure(text="(!) OpenCV no disponible",
                                       text_color=PALETTE["DANGER"])
             return
         if self._current_frame is None:
             return
         if not self._detected_faces:
-            self.lbl_status.configure(text="⚠️  No se detectó rostro", text_color=PALETTE["DANGER"])
+            self.lbl_status.configure(text="(!) No se detectó rostro", text_color=PALETTE["DANGER"])
             return
 
         frame = self._current_frame.copy()
         embedding = self._extract_embedding(frame)
         if embedding is None:
-            self.lbl_status.configure(text="⚠️  No se pudo extraer el perfil",
+            self.lbl_status.configure(text="(!) No se pudo extraer el perfil",
                                       text_color=PALETTE["DANGER"])
             return
 
         self._captured_embedding = embedding
-        self.lbl_status.configure(text="✅  Perfil facial capturado",
+        self.lbl_status.configure(text="(OK) Perfil facial capturado",
                                   text_color="#A5D6A7")
-        self.lbl_profile.configure(text="Perfil frontal listo  📸")
+        self.lbl_profile.configure(text="Perfil frontal listo")
         self.btn_save.configure(state="normal")
 
     def _extract_embedding(self, frame: np.ndarray) -> Optional[np.ndarray]:
@@ -643,7 +643,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
             ))
         except Exception as exc:
             self.lbl_status.configure(
-                text=f"❌  Error al registrar: {exc}",
+                text=f"Error al registrar: {exc}",
                 text_color=PALETTE["DANGER"])
             return
 
@@ -696,7 +696,7 @@ class _Step5Confirm(ctk.CTkFrame):
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.grid(row=0, column=0)
 
-        ctk.CTkLabel(center, text="✅",
+        ctk.CTkLabel(center, text="[OK]",
                      font=ctk.CTkFont(size=80),
                      fg_color="transparent",
                      text_color="#27ae60").pack(pady=(0, 12))
@@ -714,10 +714,10 @@ class _Step5Confirm(ctk.CTkFrame):
                      text_color=PALETTE["MUTED"],
                      fg_color="transparent").pack(pady=4)
 
-        _big_btn(center, "🏠  Volver al dashboard", self.wizard.finish)
+        _big_btn(center, "Volver al inicio", self.wizard.finish)
 
         ctk.CTkButton(
-            center, text="➕  Registrar otro usuario",
+            center, text="+  Registrar otro usuario",
             font=ctk.CTkFont(size=15),
             fg_color=PALETTE["CARD"], hover_color=PALETTE["BORDER"],
             text_color=PALETTE["TEXT"], height=50, corner_radius=12,

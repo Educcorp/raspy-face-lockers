@@ -45,13 +45,13 @@ class LockersCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="🔒  Lockers",
+            hdr, text="Lockers",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
 
         ctk.CTkButton(
-            hdr, text="➕", width=46, height=46,
+            hdr, text="+", width=46, height=46,
             font=ctk.CTkFont(size=22),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
@@ -169,16 +169,16 @@ class LockersCatalogScreen(ctk.CTkFrame):
 
 # ── Detalle Locker ────────────────────────────────────────────────────────────
 
-class LockerDetailOverlay(ctk.CTkToplevel):
+class LockerDetailOverlay(ctk.CTkFrame):
+    """Overlay de pantalla completa – compatible con Linux/RPi."""
+
     def __init__(self, parent, locker_id: int, on_close=None):
-        super().__init__(parent)
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self.locker_id = locker_id
         self._on_close = on_close
-        self.title("Detalle Locker")
-        self.geometry("480x560")
-        self.resizable(False, False)
-        self.configure(fg_color=PALETTE["BG"])
-        self.grab_set()
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
         self._build_ui()
         self._load()
 
@@ -249,7 +249,7 @@ class LockerDetailOverlay(ctk.CTkToplevel):
                                corner_radius=0)
         btn_row.pack(fill="x")
         btn_row.pack_propagate(False)
-        ctk.CTkButton(btn_row, text="💾  Guardar estado",
+        ctk.CTkButton(btn_row, text="Guardar estado",
                       font=ctk.CTkFont(size=15, weight="bold"),
                       fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=50, corner_radius=12,
@@ -282,7 +282,7 @@ class LockerDetailOverlay(ctk.CTkToplevel):
         """, (self.locker_id,))
         if asign:
             self.lbl_asign.configure(
-                text=f"✅ {asign['usuario']}  ({asign['asignEstado']})")
+                text=f"[OK] {asign['usuario']}  ({asign['asignEstado']})")
         else:
             self.lbl_asign.configure(text="Sin asignación activa")
 
@@ -301,15 +301,15 @@ class LockerDetailOverlay(ctk.CTkToplevel):
 
 # ── Formulario nuevo locker ───────────────────────────────────────────────────
 
-class LockerFormOverlay(ctk.CTkToplevel):
+class LockerFormOverlay(ctk.CTkFrame):
+    """Overlay de pantalla completa – compatible con Linux/RPi."""
+
     def __init__(self, parent, on_close=None):
-        super().__init__(parent)
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self._on_close = on_close
-        self.title("Nuevo Locker")
-        self.geometry("480x420")
-        self.resizable(False, False)
-        self.configure(fg_color=PALETTE["BG"])
-        self.grab_set()
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
 
         self._areas: list[dict] = fetch_all(
             "SELECT idArea, nombreArea FROM area_lockers ORDER BY nombreArea"
@@ -330,7 +330,7 @@ class LockerFormOverlay(ctk.CTkToplevel):
                       font=ctk.CTkFont(size=22, weight="bold"),
                       fg_color="transparent", hover_color=PALETTE["BORDER"],
                       text_color=PALETTE["TEXT"],
-                      command=self.destroy).pack(side="left", padx=8)
+                      command=self._close).pack(side="left", padx=8)
         ctk.CTkLabel(hdr, text="Nuevo Locker",
                      font=ctk.CTkFont(size=18, weight="bold"),
                      text_color=PALETTE["TEXT"],
@@ -362,7 +362,7 @@ class LockerFormOverlay(ctk.CTkToplevel):
         selector("Unidad Académica", self._unidad_var, unidad_names or ["—"])
         selector("Estado",           self._estado_var, ["activo", "inactivo", "mantenimiento"])
 
-        ctk.CTkButton(frm, text="💾  Crear Locker",
+        ctk.CTkButton(frm, text="Crear Locker",
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
@@ -379,6 +379,9 @@ class LockerFormOverlay(ctk.CTkToplevel):
             INSERT INTO lockers (idUnidadAcademica, idArea, estado, creadoPor)
             VALUES (?, ?, ?, 1)
         """, (unidad_id, area_id, self._estado_var.get()))
+        self._close()
+
+    def _close(self) -> None:
         if self._on_close:
             self._on_close()
         self.destroy()

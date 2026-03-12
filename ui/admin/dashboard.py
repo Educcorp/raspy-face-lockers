@@ -21,37 +21,37 @@ from ui.admin_app import PALETTE
 # Catálogos con ícono, nombre, consulta SQL de conteo y pantalla destino
 _CATALOGS = [
     {
-        "icon":   "👤",
+        "icon":   "USR",
         "label":  "Usuarios",
         "sql":    "SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'",
         "target": "UsersCatalogScreen",
     },
     {
-        "icon":   "🔒",
+        "icon":   "LCK",
         "label":  "Lockers",
         "sql":    "SELECT COUNT(*) AS n FROM lockers",
         "target": "LockersCatalogScreen",
     },
     {
-        "icon":   "📍",
+        "icon":   "ZNA",
         "label":  "Áreas / Zonas",
         "sql":    "SELECT COUNT(*) AS n FROM area_lockers",
         "target": "AreasCatalogScreen",
     },
     {
-        "icon":   "🏛️",
+        "icon":   "UND",
         "label":  "Unidades Acad.",
         "sql":    "SELECT COUNT(*) AS n FROM unidad_academica WHERE estado='activo'",
         "target": "AreasCatalogScreen",   # misma pantalla, tab diferente
     },
     {
-        "icon":   "🏷️",
+        "icon":   "TIP",
         "label":  "Tipos Usuario",
         "sql":    "SELECT COUNT(*) AS n FROM tipo_usuarios WHERE estado='activo'",
         "target": "AreasCatalogScreen",
     },
     {
-        "icon":   "📋",
+        "icon":   "HST",
         "label":  "Historial",
         "sql":    "SELECT COUNT(*) AS n FROM historial_accesos",
         "target": None,   # pendiente
@@ -134,7 +134,7 @@ class DashboardScreen(ctk.CTkFrame):
         header.pack_propagate(False)
 
         ctk.CTkLabel(
-            header, text="🛡  Super Admin",
+            header, text="Super Admin",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
@@ -142,7 +142,7 @@ class DashboardScreen(ctk.CTkFrame):
 
         # ── Botón alternar tema (🌙 / ☀️) ─────────────────────────────────────
         _mode = getattr(self.controller, "_mode", "light")
-        theme_icon = "🌙" if _mode == "light" else "☀️"
+        theme_icon = "Noche" if _mode == "light" else "Dia"
         ctk.CTkButton(
             header,
             text=theme_icon,
@@ -157,7 +157,7 @@ class DashboardScreen(ctk.CTkFrame):
         # ── Botón destacado: Registrar Usuario ────────────────────────────────
         reg_btn = ctk.CTkButton(
             self,
-            text="➕  Registrar Usuario",
+            text="+  Registrar Usuario",
             font=ctk.CTkFont(size=18, weight="bold"),
             fg_color=PALETTE["ACCENT"],
             hover_color=PALETTE.get("ACCENT_HOVER", PALETTE["ACCENT"]),

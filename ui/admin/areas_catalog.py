@@ -75,13 +75,13 @@ class AreasCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="📍  Catálogos",
+            hdr, text="Catálogos",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
 
         self.btn_add = ctk.CTkButton(
-            hdr, text="➕", width=46, height=46,
+            hdr, text="+", width=46, height=46,
             font=ctk.CTkFont(size=22),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
@@ -233,17 +233,19 @@ class AreasCatalogScreen(ctk.CTkFrame):
 
 # ══ Overlays de formulario ════════════════════════════════════════════════════
 
-class _BaseFormOverlay(ctk.CTkToplevel):
-    """Clase base para formularios de catálogo simples."""
+class _BaseFormOverlay(ctk.CTkFrame):
+    """
+    Overlay de pantalla completa dentro de la ventana principal.
+    Reemplaza CTkToplevel para compatibilidad con Linux/Raspberry Pi.
+    """
 
     def __init__(self, parent, title: str, height: int = 460, on_close=None):
-        super().__init__(parent)
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self._on_close = on_close
-        self.title(title)
-        self.geometry(f"480x{height}")
-        self.resizable(False, False)
-        self.configure(fg_color=PALETTE["BG"])
-        self.grab_set()
+        # Cubrir toda la ventana principal
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
 
         # Header
         hdr = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], height=64,
@@ -254,7 +256,7 @@ class _BaseFormOverlay(ctk.CTkToplevel):
                       fg_color="transparent", hover_color=PALETTE["BORDER"],
                       font=ctk.CTkFont(size=22, weight="bold"),
                       text_color=PALETTE["TEXT"],
-                      command=self.destroy).pack(side="left", padx=8)
+                      command=self._close).pack(side="left", padx=8)
         ctk.CTkLabel(hdr, text=title, font=ctk.CTkFont(size=18, weight="bold"),
                      text_color=PALETTE["TEXT"],
                      fg_color="transparent").pack(side="left", padx=4)
@@ -288,14 +290,14 @@ class _BaseFormOverlay(ctk.CTkToplevel):
         return menu
 
     def _save_btn(self, command) -> None:
-        ctk.CTkButton(self.scroll, text="💾  Guardar",
+        ctk.CTkButton(self.scroll, text="Guardar",
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=16)
 
     def _delete_btn(self, command) -> None:
-        ctk.CTkButton(self.scroll, text="🗑  Inhabilitar",
+        ctk.CTkButton(self.scroll, text="Inhabilitar",
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=PALETTE["DANGER"], hover_color="#922b21",
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
@@ -349,7 +351,7 @@ class AreaFormOverlay(_BaseFormOverlay):
         if n and n["c"] > 0:
             # Mostrar aviso simple
             ctk.CTkLabel(self.scroll,
-                         text="⚠️  Hay lockers asociados, no se puede eliminar.",
+                         text="(!) Hay lockers asociados, no se puede eliminar.",
                          font=ctk.CTkFont(size=13),
                          text_color=PALETTE["DANGER"],
                          fg_color="transparent").pack()

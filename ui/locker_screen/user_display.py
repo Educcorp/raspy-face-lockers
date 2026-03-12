@@ -45,7 +45,7 @@ class UserDisplayScreen(ctk.CTkFrame):
         # ── Ícono de éxito ────────────────────────────────────────────────────
         lbl_check = ctk.CTkLabel(
             self,
-            text="✓",
+            text="OK",
             font=ctk.CTkFont(size=110, weight="bold"),
             text_color=self.SUCCESS,
             fg_color="transparent",

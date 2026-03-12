@@ -38,9 +38,12 @@ FACE_DETECTION_CONFIG = {
 
 # ── Face Recognition / Embeddings ──────────────────────────────────────────
 FACE_RECOGNITION_CONFIG = {
-    "model_type": "facenet",  # facenet | arcface | dlib
+    "model_type": "dlib",
     "embedding_size": 128,
     "distance_threshold": 0.6,  # para considerarse el mismo rostro
+    # dlib models
+    "shape_predictor": str(MODELS_DIR / "shape_predictor_68_face_landmarks.dat"),
+    "face_rec_model": str(MODELS_DIR / "dlib_face_recognition_resnet_model_v1.dat"),
 }
 
 # ── GPIO / Hardware ────────────────────────────────────────────────────────

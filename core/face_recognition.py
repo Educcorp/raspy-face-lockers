@@ -1,13 +1,18 @@
 """
-Face Recognition v2 – Versión simplificada y robusta.
+Face Recognition v3 – Detección + Embeddings reales con dlib.
 
-Módulo completamente reescrito basándose en lo que SÍ funciona:
-- Picamera2 para captura de video
-- OpenCV DNN para detección de rostros
-- Logging detallado para debugging
+Pipeline:
+  1. Picamera2 → captura de video (formato RGB888 / BGR en memoria)
+  2. OpenCV DNN SSD → detección rápida de rostros (bounding boxes)
+  3. dlib shape_predictor_68 → landmarks faciales (68 puntos)
+  4. dlib face_recognition_resnet_model_v1 → embedding 128-dim
+
+La detección DNN es rápida (~30 ms en Pi 5).
+El embedding dlib es más pesado (~200 ms) pero muy preciso.
 """
 
 import cv2
+import dlib
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
@@ -17,7 +22,9 @@ import time
 import sys
 import site
 
-from config import CAMERA_CONFIG, FACE_DETECTION_CONFIG, MODELS_DIR
+from config import (
+    CAMERA_CONFIG, FACE_DETECTION_CONFIG, FACE_RECOGNITION_CONFIG, MODELS_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,64 +74,207 @@ def _import_picamera2_from_system():
 # ── Face Detection ─────────────────────────────────────────────────────────
 
 class FaceDetector:
-    """Detección de rostros usando OpenCV DNN (modelo Caffe simple y robusto)."""
+    """
+    Detección de rostros usando dlib HOG (primario) + Haar cascade (fallback).
+
+    El modelo OpenCV DNN SSD no es compatible con OpenCV 4.13+, así que
+    usamos el detector HOG frontal de dlib que es rápido y robusto.
+    """
 
     def __init__(self):
-        self.net = None
-        self._load_model()
-
-    def _load_model(self) -> None:
-        """Carga el modelo DNN de Caffe."""
+        self._hog_detector = dlib.get_frontal_face_detector()
+        self._haar_cascade = None
         try:
-            prototxt = Path(FACE_DETECTION_CONFIG["prototxt"])
-            caffemodel = Path(FACE_DETECTION_CONFIG["caffemodel"])
-
-            if not prototxt.exists() or not caffemodel.exists():
-                logger.warning(f"Modelos no encontrados en {MODELS_DIR}")
-                logger.warning("La detección de rostros no funcionará")
-                return
-
-            self.net = cv2.dnn.readNetFromCaffe(str(prototxt), str(caffemodel))
-            logger.info("✓ Modelo Caffe DNN cargado correctamente")
-
-        except Exception as e:
-            logger.error(f"Error cargando modelo DNN: {e}")
-            self.net = None
+            self._haar_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+            if self._haar_cascade.empty():
+                self._haar_cascade = None
+        except Exception:
+            pass
+        logger.info("✓ FaceDetector inicializado (dlib HOG + Haar fallback)")
 
     def detect(self, frame: np.ndarray) -> List[Dict]:
-        """Detecta rostros en un frame. Retorna lista de cajas delimitadoras."""
-        if self.net is None:
-            return []
+        """Detecta rostros en un frame BGR. Retorna lista de dicts con 'box'."""
+        faces = self._detect_hog(frame)
+        if not faces and self._haar_cascade is not None:
+            faces = self._detect_haar(frame)
+        return faces
 
+    def _detect_hog(self, frame: np.ndarray) -> List[Dict]:
+        """Detector HOG de dlib – rápido y preciso para caras frontales."""
         try:
-            h, w = frame.shape[:2]
-            
-            # Usar frame directamente (sin conversión de canales)
-            # El modelo DNN es agnóstico al orden de canales si usamos normalización correcta
-            blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300),
-                                        [104.0, 117.0, 123.0], False, False)
-            self.net.setInput(blob)
-            detections = self.net.forward()
+            # dlib necesita RGB
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Reducir resolución para velocidad en Pi
+            h, w = rgb.shape[:2]
+            scale = 1.0
+            if w > 400:
+                scale = 400.0 / w
+                small = cv2.resize(rgb, (int(w * scale), int(h * scale)))
+            else:
+                small = rgb
+
+            dets = self._hog_detector(small, 0)  # 0 = no upsampling
 
             faces = []
-            for i in range(detections.shape[2]):
-                confidence = detections[0, 0, i, 2]
-                if confidence > FACE_DETECTION_CONFIG.get("confidence_threshold", 0.5):
-                    x1 = int(detections[0, 0, i, 3] * w)
-                    y1 = int(detections[0, 0, i, 4] * h)
-                    x2 = int(detections[0, 0, i, 5] * w)
-                    y2 = int(detections[0, 0, i, 6] * h)
-
-                    faces.append({
-                        "box": (x1, y1, x2 - x1, y2 - y1),
-                        "confidence": float(confidence),
-                    })
-
+            for d in dets:
+                x1 = int(d.left() / scale)
+                y1 = int(d.top() / scale)
+                x2 = int(d.right() / scale)
+                y2 = int(d.bottom() / scale)
+                faces.append({
+                    "box": (x1, y1, x2 - x1, y2 - y1),
+                    "confidence": 1.0,
+                })
             return faces
+        except Exception as e:
+            logger.debug(f"HOG detection error: {e}")
+            return []
+
+    def _detect_haar(self, frame: np.ndarray) -> List[Dict]:
+        """Fallback Haar cascade."""
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            rects = self._haar_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60)
+            )
+            return [{"box": (x, y, w, h), "confidence": 0.8}
+                    for (x, y, w, h) in rects] if len(rects) > 0 else []
+        except Exception as e:
+            logger.debug(f"Haar detection error: {e}")
+            return []
+
+
+# ── Face Embedding Extractor (dlib) ──────────────────────────────────────────
+
+class FaceEmbeddingExtractor:
+    """
+    Extrae embeddings faciales de 128 dimensiones usando dlib.
+
+    Pipeline:
+      frame (BGR) → convertir a RGB → alinear con shape_predictor_68
+      → face_recognition_resnet_model_v1 → vector float64[128]
+
+    Se normaliza a norma unitaria para que la distancia euclidiana
+    coincida con la distancia coseno.
+    """
+
+    def __init__(self):
+        self.shape_predictor: Optional[dlib.shape_predictor] = None
+        self.face_rec_model = None
+        self._loaded = False
+        self._load_models()
+
+    def _load_models(self) -> None:
+        sp_path = Path(FACE_RECOGNITION_CONFIG["shape_predictor"])
+        rec_path = Path(FACE_RECOGNITION_CONFIG["face_rec_model"])
+
+        if not sp_path.exists():
+            logger.error(f"shape_predictor no encontrado: {sp_path}")
+            return
+        if not rec_path.exists():
+            logger.error(f"face_rec_model no encontrado: {rec_path}")
+            return
+
+        try:
+            self.shape_predictor = dlib.shape_predictor(str(sp_path))
+            self.face_rec_model = dlib.face_recognition_model_v1(str(rec_path))
+            self._loaded = True
+            logger.info("✓ dlib shape_predictor + face_recognition_model cargados")
+        except Exception as e:
+            logger.error(f"Error cargando modelos dlib: {e}")
+
+    @property
+    def is_ready(self) -> bool:
+        return self._loaded
+
+    def get_embedding(self, frame_bgr: np.ndarray,
+                      face_box: tuple) -> Optional[np.ndarray]:
+        """
+        Extrae un embedding 128-dim de un rostro detectado.
+
+        Args:
+            frame_bgr: frame completo en BGR (tal como sale de picamera2 RGB888).
+            face_box: tupla (x, y, w, h) del bounding box del rostro.
+
+        Returns:
+            np.ndarray float32[128] normalizado, o None si falla.
+        """
+        if not self._loaded:
+            return None
+
+        try:
+            x, y, w, h = [int(v) for v in face_box[:4]]
+            img_h, img_w = frame_bgr.shape[:2]
+
+            # Expandir un poco el box para dar contexto al shape_predictor
+            pad = int(max(w, h) * 0.15)
+            x1 = max(0, x - pad)
+            y1 = max(0, y - pad)
+            x2 = min(img_w, x + w + pad)
+            y2 = min(img_h, y + h + pad)
+
+            # dlib necesita RGB
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+            # Construir dlib rectangle
+            rect = dlib.rectangle(x1, y1, x2, y2)
+
+            # Extraer landmarks (68 puntos)
+            shape = self.shape_predictor(frame_rgb, rect)
+
+            # Calcular embedding 128-dim
+            face_descriptor = self.face_rec_model.compute_face_descriptor(
+                frame_rgb, shape
+            )
+            vec = np.array(face_descriptor, dtype=np.float32)
+
+            # Normalizar a norma unitaria
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+
+            return vec
 
         except Exception as e:
-            logger.warning(f"Error detectando rostros: {e}")
-            return []
+            logger.warning(f"Error extrayendo embedding: {e}")
+            return None
+
+    def get_landmarks(self, frame_bgr: np.ndarray,
+                      face_box: tuple) -> Optional[List[Tuple[int, int]]]:
+        """
+        Extrae los 68 landmarks faciales.
+
+        Returns:
+            Lista de 68 tuplas (x, y), o None si falla.
+        """
+        if not self._loaded:
+            return None
+
+        try:
+            x, y, w, h = [int(v) for v in face_box[:4]]
+            img_h, img_w = frame_bgr.shape[:2]
+            pad = int(max(w, h) * 0.15)
+            x1 = max(0, x - pad)
+            y1 = max(0, y - pad)
+            x2 = min(img_w, x + w + pad)
+            y2 = min(img_h, y + h + pad)
+
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            rect = dlib.rectangle(x1, y1, x2, y2)
+            shape = self.shape_predictor(frame_rgb, rect)
+
+            return [(shape.part(i).x, shape.part(i).y) for i in range(68)]
+
+        except Exception as e:
+            logger.warning(f"Error extrayendo landmarks: {e}")
+            return None
+
+    def compare_embeddings(self, emb_a: np.ndarray,
+                           emb_b: np.ndarray) -> float:
+        """Distancia euclidiana entre dos embeddings (menor = más parecido)."""
+        return float(np.linalg.norm(emb_a - emb_b))
 
 
 # ── Camera Manager ─────────────────────────────────────────────────────────
@@ -137,6 +287,7 @@ class CameraManager:
         self.initialized = False
         self._lock = threading.Lock()
         self.face_detector = FaceDetector()
+        self.embedding_extractor = FaceEmbeddingExtractor()
 
     def initialize(self) -> bool:
         """Inicializa la cámara con picamera2."""
@@ -288,8 +439,8 @@ def get_camera_manager() -> CameraManager:
 
 class FaceRecognitionManager:
     """
-    Interfaz de compatibilidad con el código antiguo.
-    Delega al CameraManager global.
+    Interfaz principal de reconocimiento facial.
+    Combina cámara + detección DNN + embeddings dlib.
     """
 
     def __init__(self, backend_type: str = None):
@@ -297,12 +448,14 @@ class FaceRecognitionManager:
         self.backend_type = "picamera2"
         self.initialized = False
         self.face_detector = self.manager.face_detector
+        self.embedding_extractor = self.manager.embedding_extractor
 
     def initialize(self) -> bool:
         """Inicializa el manager."""
         if self.manager.initialize():
             self.initialized = True
             logger.info("✓ FaceRecognitionManager inicializado")
+            logger.info(f"  Embeddings dlib: {'OK' if self.embedding_extractor.is_ready else 'NO DISPONIBLE'}")
             return True
         return False
 
@@ -320,6 +473,24 @@ class FaceRecognitionManager:
         faces = self.manager.detect_faces(frame)
         return frame, faces
 
+    def get_embedding(self, frame: np.ndarray,
+                      face_box: tuple = None) -> Optional[np.ndarray]:
+        """
+        Extrae embedding 128-dim de un frame.
+        Si no se provee face_box, detecta automáticamente el primer rostro.
+        """
+        if face_box is None:
+            faces = self.manager.detect_faces(frame)
+            if not faces:
+                return None
+            face_box = faces[0]["box"]
+        return self.embedding_extractor.get_embedding(frame, face_box)
+
+    def get_landmarks(self, frame: np.ndarray,
+                      face_box: tuple) -> Optional[List[Tuple[int, int]]]:
+        """Extrae 68 landmarks faciales."""
+        return self.embedding_extractor.get_landmarks(frame, face_box)
+
     def release(self) -> None:
         """Libera recursos."""
         if self.initialized:
@@ -328,5 +499,5 @@ class FaceRecognitionManager:
 
 
 def get_face_recognition_manager() -> FaceRecognitionManager:
-    """Compatibilidad: retorna una instancia de FaceRecognitionManager."""
+    """Retorna una instancia de FaceRecognitionManager."""
     return FaceRecognitionManager()

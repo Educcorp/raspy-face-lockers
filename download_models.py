@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-Download face detection models for OpenCV DNN.
+Download face detection and recognition models.
+
+Modelos:
+  1. OpenCV DNN SSD – detección de rostros (Caffe)
+  2. dlib shape_predictor_68 – landmarks faciales (68 puntos)
+  3. dlib face_recognition_resnet_v1 – embeddings 128-dim
 
 Uso: python download_models.py
 """
 
 import os
+import bz2
 import urllib.request
 from pathlib import Path
 import sys
@@ -59,7 +65,21 @@ def main():
         ),
     }
     
+    # dlib models (compressed with bz2)
+    dlib_models = {
+        "shape_predictor_68_face_landmarks.dat": (
+            "http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2",
+            95,
+        ),
+        "dlib_face_recognition_resnet_model_v1.dat": (
+            "http://dlib.net/files/dlib_face_recognition_resnet_model_v1.dat.bz2",
+            22,
+        ),
+    }
+
     print("Modelos requeridos:")
+
+    # OpenCV DNN models
     for filename, url in models.items():
         filepath = models_dir / filename
         size_mb = 27 if "caffemodel" in filename else 0.08
@@ -73,6 +93,31 @@ def main():
                 print(f"    {url}")
                 print(f"  Y guardar en: {filepath}")
                 continue
+
+    # dlib models (need bz2 decompression)
+    for filename, (url, size_mb) in dlib_models.items():
+        filepath = models_dir / filename
+        print(f"\n  • {filename} (~{size_mb} MB)")
+        
+        if filepath.exists():
+            print(f"    ✓ Ya existe")
+        else:
+            bz2_path = str(filepath) + ".bz2"
+            if not download_file(url, bz2_path):
+                print(f"\n  Nota: Puedes descargar manualmente desde:")
+                print(f"    {url}")
+                print(f"  Y guardar en: {filepath}")
+                continue
+            print(f"    Descomprimiendo...")
+            try:
+                with open(bz2_path, "rb") as f_in:
+                    data = bz2.decompress(f_in.read())
+                with open(str(filepath), "wb") as f_out:
+                    f_out.write(data)
+                os.remove(bz2_path)
+                print(f"    ✓ Descomprimido ({len(data)/1024/1024:.1f} MB)")
+            except Exception as e:
+                print(f"    ✗ Error descomprimiendo: {e}")
     
     # Verify
     print("\n" + "="*60)
@@ -80,7 +125,8 @@ def main():
     print("="*60)
     
     all_ok = True
-    for filename in models.keys():
+    all_files = list(models.keys()) + list(dlib_models.keys())
+    for filename in all_files:
         filepath = models_dir / filename
         if filepath.exists():
             size = filepath.stat().st_size / (1024*1024)

@@ -65,7 +65,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
         ctk.CTkButton(
             hdr, text="➕", width=46, height=46,
             font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
             command=self._go_register,
         ).pack(side="right", padx=8)
@@ -285,7 +285,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
         self.btn_edit = ctk.CTkButton(
             hdr, text="✏️  Editar", width=90, height=40,
             font=ctk.CTkFont(size=14),
-            fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], command=self._toggle_edit,
         )
         self.btn_edit.pack(side="right", padx=8)
@@ -342,7 +342,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
             self._action_frame,
             text="💾  Guardar cambios",
             font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], height=52, corner_radius=12,
             command=self._save,
         )
@@ -394,7 +394,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
             values=values,
             fg_color=PALETTE["CARD"],
             button_color=PALETTE["ACCENT"],
-            button_hover_color="#268f8a",
+            button_hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["TEXT"],
             dropdown_fg_color=PALETTE["CARD"],
             dropdown_text_color=PALETTE["TEXT"],
@@ -500,7 +500,7 @@ class UserDetailOverlay(ctk.CTkToplevel):
         state = "normal" if active else "disabled"
         for w in self._field_widgets.values():
             w.configure(state=state)
-        btn_color = "#268f8a" if active else PALETTE["BORDER"]
+        btn_color = PALETTE["ACCENT_HOVER"] if active else PALETTE["BORDER"]
         self.btn_edit.configure(
             text="✖  Cancelar" if active else "✏️  Editar",
             fg_color=btn_color,

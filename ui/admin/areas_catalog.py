@@ -83,7 +83,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
         self.btn_add = ctk.CTkButton(
             hdr, text="➕", width=46, height=46,
             font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
             command=self._add_item,
         )
@@ -107,7 +107,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
                 font=ctk.CTkFont(size=14, weight="bold"),
                 height=42, corner_radius=0,
                 fg_color=PALETTE["ACCENT"] if key == "areas" else PALETTE["CARD"],
-                hover_color="#268f8a",
+                hover_color=PALETTE["ACCENT_HOVER"],
                 text_color=PALETTE["WHITE"] if key == "areas" else PALETTE["MUTED"],
                 command=lambda k=key: self._switch_tab(k),
             )
@@ -281,7 +281,7 @@ class _BaseFormOverlay(ctk.CTkToplevel):
         menu = ctk.CTkOptionMenu(self.scroll, variable=var, values=values,
                                  fg_color=PALETTE["CARD"],
                                  button_color=PALETTE["ACCENT"],
-                                 button_hover_color="#268f8a",
+                                 button_hover_color=PALETTE["ACCENT_HOVER"],
                                  text_color=PALETTE["TEXT"],
                                  font=ctk.CTkFont(size=15), height=46)
         menu.pack(fill="x", padx=4)
@@ -290,7 +290,7 @@ class _BaseFormOverlay(ctk.CTkToplevel):
     def _save_btn(self, command) -> None:
         ctk.CTkButton(self.scroll, text="💾  Guardar",
                       font=ctk.CTkFont(size=16, weight="bold"),
-                      fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=16)
 

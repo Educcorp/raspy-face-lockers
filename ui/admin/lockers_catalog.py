@@ -53,7 +53,7 @@ class LockersCatalogScreen(ctk.CTkFrame):
         ctk.CTkButton(
             hdr, text="➕", width=46, height=46,
             font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
             command=self._new_locker,
         ).pack(side="right", padx=8)
@@ -228,7 +228,7 @@ class LockerDetailOverlay(ctk.CTkToplevel):
             variable=self._estado_var,
             values=["activo", "inactivo", "mantenimiento"],
             fg_color=PALETTE["CARD"], button_color=PALETTE["ACCENT"],
-            button_hover_color="#268f8a", text_color=PALETTE["TEXT"],
+            button_hover_color=PALETTE["ACCENT_HOVER"], text_color=PALETTE["TEXT"],
             font=ctk.CTkFont(size=15), height=46,
         )
         self._estado_menu.pack(fill="x", padx=4)
@@ -251,7 +251,7 @@ class LockerDetailOverlay(ctk.CTkToplevel):
         btn_row.pack_propagate(False)
         ctk.CTkButton(btn_row, text="💾  Guardar estado",
                       font=ctk.CTkFont(size=15, weight="bold"),
-                      fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=50, corner_radius=12,
                       command=self._save).pack(fill="x", padx=14, pady=12)
 
@@ -346,7 +346,7 @@ class LockerFormOverlay(ctk.CTkToplevel):
             ctk.CTkOptionMenu(frm, variable=var, values=values,
                               fg_color=PALETTE["CARD"],
                               button_color=PALETTE["ACCENT"],
-                              button_hover_color="#268f8a",
+                              button_hover_color=PALETTE["ACCENT_HOVER"],
                               text_color=PALETTE["TEXT"],
                               font=ctk.CTkFont(size=15), height=46,
                               ).pack(fill="x", padx=4)
@@ -364,7 +364,7 @@ class LockerFormOverlay(ctk.CTkToplevel):
 
         ctk.CTkButton(frm, text="💾  Crear Locker",
                       font=ctk.CTkFont(size=16, weight="bold"),
-                      fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=self._create).pack(fill="x", padx=4, pady=18)
 

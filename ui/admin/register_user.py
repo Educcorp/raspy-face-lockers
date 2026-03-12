@@ -221,7 +221,7 @@ class _Step2TypeUnit(ctk.CTkFrame):
         self._tipo_menu = ctk.CTkOptionMenu(
             scroll, variable=self._tipo_var, values=["…"],
             fg_color=PALETTE["CARD"], button_color=PALETTE["ACCENT"],
-            button_hover_color="#268f8a", text_color=PALETTE["TEXT"],
+            button_hover_color=PALETTE["ACCENT_HOVER"], text_color=PALETTE["TEXT"],
             font=ctk.CTkFont(size=16), height=50,
         )
         self._tipo_menu.pack(fill="x", padx=4, pady=(0, 10))
@@ -230,7 +230,7 @@ class _Step2TypeUnit(ctk.CTkFrame):
         self._unidad_menu = ctk.CTkOptionMenu(
             scroll, variable=self._unidad_var, values=["…"],
             fg_color=PALETTE["CARD"], button_color=PALETTE["ACCENT"],
-            button_hover_color="#268f8a", text_color=PALETTE["TEXT"],
+            button_hover_color=PALETTE["ACCENT_HOVER"], text_color=PALETTE["TEXT"],
             font=ctk.CTkFont(size=16), height=50,
         )
         self._unidad_menu.pack(fill="x", padx=4, pady=(0, 10))
@@ -333,7 +333,7 @@ class _Step3PIN(ctk.CTkFrame):
             elif label == "✓":
                 cmd = self._confirm
                 cfg = {**btn_cfg, "fg_color": PALETTE["ACCENT"],
-                       "hover_color": "#268f8a",
+                       "hover_color": PALETTE["ACCENT_HOVER"],
                        "text_color": PALETTE["WHITE"]}
             else:
                 cmd = lambda d=label: self._digit(d)
@@ -438,7 +438,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row, text="📸  Capturar",
             font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], height=60, corner_radius=12,
             command=self._capture,
         ).grid(row=0, column=0, padx=(12, 6), pady=15, sticky="ew")
@@ -780,7 +780,7 @@ def _big_btn(parent, text: str, command) -> None:
     ctk.CTkButton(
         parent, text=text,
         font=ctk.CTkFont(size=17, weight="bold"),
-        fg_color=PALETTE["ACCENT"], hover_color="#268f8a",
+        fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
         text_color=PALETTE["WHITE"], height=58, corner_radius=14,
         command=command,
     ).pack(fill="x", padx=4, pady=18)

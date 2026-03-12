@@ -393,6 +393,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._photo_ref = None
         self._captured_embedding: Optional[np.ndarray] = None
         self._detector = None
+        self._face_mgr = None
 
         self._silhouette_mask = self._make_silhouette()
         self._build()
@@ -481,15 +482,15 @@ class _Step4FaceCapture(ctk.CTkFrame):
             self.lbl_status.configure(text="(!) OpenCV no instalado (pip install opencv-python)")
             return
         try:
-            from core.face_recognition import get_face_recognition_manager
-            mgr = get_face_recognition_manager()
-            self._detector = mgr.face_detector if hasattr(mgr, "face_detector") else None
-        except Exception:
-            self._detector = None
-
-        self._cap = cv2.VideoCapture(0)
-        if not self._cap.isOpened():
-            self.lbl_status.configure(text="(!) Cámara no disponible")
+            from core.face_recognition import FaceRecognitionManager
+            self._face_mgr = FaceRecognitionManager()
+            if not self._face_mgr.initialize():
+                self.lbl_status.configure(text="(!) Cámara no disponible")
+                self._face_mgr = None
+                return
+            self._detector = self._face_mgr.face_detector
+        except Exception as exc:
+            self.lbl_status.configure(text=f"(!) Error al inicializar cámara: {exc}")
             return
 
         self._camera_running = True
@@ -501,16 +502,21 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
     def stop_camera(self) -> None:
         self._camera_running = False
-        if hasattr(self, "_cap") and self._cap:
-            self._cap.release()
+        if self._face_mgr is not None:
+            try:
+                self._face_mgr.release()
+            except Exception:
+                pass
+            self._face_mgr = None
 
     def _camera_loop(self) -> None:
+        import time
         while self._camera_running:
-            ret, frame = self._cap.read()
-            if ret:
+            frame, faces = self._face_mgr.detect_faces_in_frame()
+            if frame is not None:
                 self._current_frame = frame
-                self._detected_faces = self._detect_faces(frame)
-            cv2.waitKey(1)
+                self._detected_faces = faces
+            time.sleep(0.033)
 
     def _detect_faces(self, frame) -> list:
         if not _CV2_AVAILABLE:

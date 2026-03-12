@@ -17,7 +17,7 @@ DATABASE_URL = "sqlite:///locker_system.db"
 # ── Cámara / Visión ───────────────────────────────────────────────────────
 # En Raspberry Pi 5, usa libcamera para acceso a cámaras
 CAMERA_CONFIG = {
-    "backend": "libcamera",  # libcamera | opencv | picamera2
+    "backend": "picamera2",  # libcamera | opencv | picamera2
     "camera_index": 0,
     "width": 640,
     "height": 480,

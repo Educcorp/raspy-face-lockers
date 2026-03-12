@@ -18,12 +18,15 @@ import hashlib
 import threading
 import tkinter as tk
 from typing import Optional
+import logging
 
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
 from database.connection import execute, fetch_all, fetch_one
 from ui.admin_app import PALETTE
+
+logger = logging.getLogger(__name__)
 
 # cv2 y numpy se importan de forma lazy en _Step4FaceCapture para no bloquear
 # si OpenCV no está instalado en el entorno de desarrollo.
@@ -480,17 +483,26 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return
         if not _CV2_AVAILABLE:
             self.lbl_status.configure(text="(!) OpenCV no instalado (pip install opencv-python)")
+            logger.error("OpenCV not available")
             return
         try:
             from core.face_recognition import FaceRecognitionManager
+            logger.info("Inicializando FaceRecognitionManager para admin...")
             self._face_mgr = FaceRecognitionManager()
+            logger.info(f"Backend seleccionado: {self._face_mgr.backend_type}")
+            
             if not self._face_mgr.initialize():
-                self.lbl_status.configure(text="(!) Cámara no disponible")
+                error_msg = "No se pudo inicializar la cámara. Verifica:\n1. Cámara conectada\n2. Permisos de acceso\n3. Configuración en raspi-config"
+                logger.error(f"FaceRecognitionManager initialization failed: {error_msg}")
+                self.lbl_status.configure(text=f"✗ Cámara no disponible")
                 self._face_mgr = None
                 return
+                
+            logger.info("✓ FaceRecognitionManager inicializado correctamente")
             self._detector = self._face_mgr.face_detector
         except Exception as exc:
-            self.lbl_status.configure(text=f"(!) Error al inicializar cámara: {exc}")
+            logger.error(f"Error al inicializar cámara: {exc}", exc_info=True)
+            self.lbl_status.configure(text=f"(!) Error: {str(exc)[:50]}")
             return
 
         self._camera_running = True
@@ -498,6 +510,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
             target=self._camera_loop, daemon=True
         )
         self._camera_thread.start()
+        logger.info("Camera thread started")
         self._update_canvas()
 
     def stop_camera(self) -> None:
@@ -505,18 +518,28 @@ class _Step4FaceCapture(ctk.CTkFrame):
         if self._face_mgr is not None:
             try:
                 self._face_mgr.release()
-            except Exception:
-                pass
+                logger.info("Camera released")
+            except Exception as e:
+                logger.error(f"Error releasing camera: {e}")
             self._face_mgr = None
 
     def _camera_loop(self) -> None:
         import time
+        logger.info("Camera loop started")
         while self._camera_running:
-            frame, faces = self._face_mgr.detect_faces_in_frame()
-            if frame is not None:
-                self._current_frame = frame
-                self._detected_faces = faces
+            try:
+                if self._face_mgr is None:
+                    time.sleep(0.1)
+                    break
+                frame, faces = self._face_mgr.detect_faces_in_frame()
+                if frame is not None:
+                    self._current_frame = frame
+                    self._detected_faces = faces
+            except Exception as e:
+                logger.error(f"Error en camera_loop: {e}")
+                break
             time.sleep(0.033)
+        logger.info("Camera loop ended")
 
     def _detect_faces(self, frame) -> list:
         if not _CV2_AVAILABLE:
@@ -540,9 +563,24 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
         if self._current_frame is not None:
             frame = self._current_frame.copy()
-            # Redimensionar al canvas
-            frame = cv2.resize(frame, (WIN_W, 600))
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Redimensionar manteniendo aspect ratio (no estirar)
+            h, w = frame.shape[:2]
+            scale = min(WIN_W / w, 600 / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            
+            # Redimensionar
+            frame_resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            
+            # Crear canvas con fondo negro y centrar la imagen
+            canvas = np.zeros((600, WIN_W, 3), dtype=np.uint8)
+            y_offset = (600 - new_h) // 2
+            x_offset = (WIN_W - new_w) // 2
+            canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = frame_resized
+            
+            # Convertir BGR → RGB
+            frame_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb).convert("RGBA")
 
             has_face = len(self._detected_faces) > 0
@@ -676,11 +714,13 @@ class _Step4FaceCapture(ctk.CTkFrame):
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def on_enter(self, data: dict) -> None:
+        logger.info("=== Entrando a Step4FaceCapture (Admin) ===")
         self._captured_embedding = None
         self.btn_save.configure(state="disabled")
         self.lbl_profile.configure(text="")
         self.lbl_status.configure(text="Posiciona tu rostro en la silueta",
                                   text_color=PALETTE["WHITE"])
+        logger.info("Iniciando cámara para registro...")
         self._start_camera()
 
 

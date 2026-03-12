@@ -253,14 +253,18 @@ class ScanningScreen(ctk.CTkFrame):
 
         if not self.face_manager:
             logger.error("FaceManager no inicializado")
+            self.after(0, self._show_camera_error, "Gestor de reconocimiento facial no disponible")
             return
 
         if not self.face_manager.initialized:
+            logger.warning("Intentando inicializar cámara...")
             if not self.face_manager.initialize():
-                logger.error("No se pudo inicializar cámara")
+                logger.error("✗ No se pudo inicializar cámara")
+                error_msg = "No se pudo acceder a la cámara. Verifica:\n1. Cámara conectada\n2. Permisos de acceso\n3. Configuración en raspi-config"
+                self.after(0, self._show_camera_error, error_msg)
                 return
 
-        logger.info("Camera loop iniciado")
+        logger.info("✓ Camera loop iniciado correctamente")
         frame_count = 0
 
         try:
@@ -288,6 +292,7 @@ class ScanningScreen(ctk.CTkFrame):
 
         except Exception as e:
             logger.error(f"Error en camera loop: {e}")
+            self.after(0, self._show_camera_error, f"Error crítico: {str(e)}")
         finally:
             if self.face_manager:
                 try:
@@ -299,10 +304,26 @@ class ScanningScreen(ctk.CTkFrame):
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
         """Dibuja el frame de cámara a pantalla completa con silueta superpuesta."""
         try:
-            frame_rgb = frame
-            frame_resized = cv2.resize(frame_rgb, (self.WIN_W, self.WIN_H))
-
-            pil_image = Image.fromarray(frame_resized).convert("RGBA")
+            # Convertir BGR → RGB (picamera2 devuelve BGR)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Redimensionar manteniendo aspect ratio (no estirar)
+            h, w = frame_rgb.shape[:2]
+            scale = min(self.WIN_W / w, self.WIN_H / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            
+            # Redimensionar
+            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            
+            # Crear canvas con fondo negro y centrar la imagen
+            canvas = np.zeros((self.WIN_H, self.WIN_W, 3), dtype=np.uint8)
+            y_offset = (self.WIN_H - new_h) // 2
+            x_offset = (self.WIN_W - new_w) // 2
+            canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = frame_resized
+            
+            # Convertir a PIL
+            pil_image = Image.fromarray(canvas).convert("RGBA")
 
             # Superponer la máscara de silueta semitransparente
             pil_image = Image.alpha_composite(pil_image, self._silhouette_mask)
@@ -329,6 +350,57 @@ class ScanningScreen(ctk.CTkFrame):
 
         except Exception as e:
             logger.error(f"Error actualizando display: {e}")
+
+    def _show_camera_error(self, error_msg: str) -> None:
+        """Muestra un mensaje de error cuando la cámara no está disponible."""
+        logger.error(f"Camera Error: {error_msg}")
+        
+        # Mostrar error en el canvas
+        self.canvas.delete("all")
+        self.canvas.create_rectangle(
+            0, 0, self.WIN_W, self.WIN_H,
+            fill=self.BG_COLOR,
+            outline=self.BG_COLOR
+        )
+        
+        # Título de error
+        self.canvas.create_text(
+            self.WIN_W // 2, 150,
+            text="✗ Error de Cámara",
+            font=("Arial", 24, "bold"),
+            fill="#FF6B6B",
+            justify="center"
+        )
+        
+        # Mensaje de error detallado
+        self.canvas.create_text(
+            self.WIN_W // 2, 300,
+            text=error_msg,
+            font=("Arial", 14),
+            fill="#FFFFFF",
+            justify="center",
+            width=360
+        )
+        
+        # Instrucción
+        self.canvas.create_text(
+            self.WIN_W // 2, 550,
+            text="Presiona ← para volver al inicio",
+            font=("Arial", 12),
+            fill="#CCCCCC",
+            justify="center"
+        )
+        
+        # Actualizar status label
+        self.lbl_status.configure(
+            text="✗ Cámara no disponible",
+            text_color="#FF6B6B"
+        )
+        
+        # Asegurarse de que los botones estén visibles
+        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_dev.place_forget()  # Ocultar botón de simulación en caso de error
+
 
     def _set_camera_image(self) -> None:
         """Pone la imagen en el canvas (main thread)."""

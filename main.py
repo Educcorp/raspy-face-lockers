@@ -9,8 +9,33 @@ Uso:
 import argparse
 import sys
 import os
+import logging
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
+    handlers=[
+        logging.FileHandler('logs/locker_system.log', mode='a'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Pre-load camera dependencies to avoid GUI threading issues
+def _preload_camera() -> None:
+    """Pre-cargar dependencias de cámara antes de iniciar la GUI."""
+    logger.info("Pre-cargando dependencias de cámara...")
+    try:
+        # Intentar cargar picamera2 del sistema
+        import importlib.util
+        spec = importlib.util.find_spec("picamera2")
+        if spec is not None:
+            logger.info("✓ picamera2 disponible en el sistema")
+    except Exception as e:
+        logger.warning(f"Advertencia al pre-cargar: {e}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,6 +51,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    logger.info(f"Starting app in {args.mode} mode...")
+    
+    # Pre-cargar dependencias de cámara
+    _preload_camera()
 
     if args.mode == "locker":
         from ui.app import LockerApp

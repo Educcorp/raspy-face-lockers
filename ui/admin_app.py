@@ -5,11 +5,18 @@ Resolución fija: 480×800 px  (igual que la pantalla física del locker).
 Toda la navegación es interna (tkraise), sin abrir ventanas nuevas.
 Todo está diseñado para ser touchable (botones ≥ 52 px de alto).
 
-Paleta de colores (dark mode):
+Paleta de colores (modo claro – locker-style):
+    BG        #F5F0EB   Fondo crema claro escolar
+    CARD      #EDE8E2   Cards
+    ACCENT    #5B8C5A   Verde pizarrón (igual que locker)
+    TEXT      #3D3D3D   Texto oscuro legible
+    MUTED     #8C8279   Texto secundario cálido
+    BORDER    #CCC5BC   Bordes suaves
+
+Paleta de colores (modo oscuro):
     BG        #0c112f   Fondo principal
     CARD      #151d3b   Cards / elementos elevados
     ACCENT    #33a8a3   Verde-azulado principal
-    DANGER    #c0392b   Rojo para borrar / alertas
     TEXT      #c7cfd5   Texto principal
     MUTED     #6b7a8a   Texto secundario
     BORDER    #1e2d4a   Bordes sutiles
@@ -18,32 +25,51 @@ Paleta de colores (dark mode):
 import os
 import customtkinter as ctk
 
-# ── Tema ──────────────────────────────────────────────────────────────────────
+# ── Tema base (mismo que la pantalla física del locker) ───────────────────────
 _THEME = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "assets", "Greengage.json"
+    os.path.dirname(os.path.abspath(__file__)), "..", "assets", "School.json"
 )
-ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme(_THEME)
 
-# ── Paleta global accesible por todas las pantallas ───────────────────────────
-PALETTE = {
-    "BG":     "#0c112f",
-    "CARD":   "#151d3b",
-    "ACCENT": "#33a8a3",
-    "DANGER": "#c0392b",
-    "WARN":   "#d4a034",
-    "TEXT":   "#c7cfd5",
-    "MUTED":  "#6b7a8a",
-    "BORDER": "#1e2d4a",
-    "WHITE":  "#ffffff",
-    "SUCCESS":"#27ae60",
+# ── Paletas ───────────────────────────────────────────────────────────────────
+LIGHT_PALETTE = {
+    "BG":          "#F5F0EB",
+    "CARD":        "#EDE8E2",
+    "ACCENT":      "#5B8C5A",
+    "ACCENT_HOVER":"#4A7A49",
+    "DANGER":      "#c0392b",
+    "WARN":        "#d4a034",
+    "TEXT":        "#3D3D3D",
+    "MUTED":       "#8C8279",
+    "BORDER":      "#CCC5BC",
+    "WHITE":       "#ffffff",
+    "SUCCESS":     "#5B8C5A",
 }
+
+DARK_PALETTE = {
+    "BG":          "#0c112f",
+    "CARD":        "#151d3b",
+    "ACCENT":      "#33a8a3",
+    "ACCENT_HOVER":"#268f8a",
+    "DANGER":      "#c0392b",
+    "WARN":        "#d4a034",
+    "TEXT":        "#c7cfd5",
+    "MUTED":       "#6b7a8a",
+    "BORDER":      "#1e2d4a",
+    "WHITE":       "#ffffff",
+    "SUCCESS":     "#27ae60",
+}
+
+# ── Paleta activa (mutable – todas las pantallas la referencian) ──────────────
+PALETTE: dict = dict(LIGHT_PALETTE)
+ctk.set_appearance_mode("light")
 
 
 class AdminApp(ctk.CTk):
     """
     Ventana raíz del panel de administración.
     Fija en 480×800 px. Gestiona navegación entre pantallas sin sub-ventanas.
+    Soporta alternancia de tema claro/oscuro vía toggle_theme().
     """
 
     WIDTH  = 480
@@ -51,6 +77,7 @@ class AdminApp(ctk.CTk):
 
     def __init__(self) -> None:
         super().__init__()
+        self._mode = "light"
 
         self.title("Smart Locker – Super Admin")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
@@ -60,14 +87,22 @@ class AdminApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Importaciones diferidas para evitar ciclos
-        from ui.admin.dashboard         import DashboardScreen
-        from ui.admin.users_catalog     import UsersCatalogScreen
-        from ui.admin.lockers_catalog   import LockersCatalogScreen
-        from ui.admin.areas_catalog     import AreasCatalogScreen
-        from ui.admin.register_user     import RegisterUserScreen
-
         self._frames: dict[type, ctk.CTkFrame] = {}
+        self._build_frames()
+
+        from ui.admin.dashboard import DashboardScreen
+        self.show_frame(DashboardScreen)
+
+    # ── Construcción / reconstrucción de pantallas ────────────────────────────
+
+    def _build_frames(self) -> None:
+        """Instancia todas las pantallas y las apila en la cuadrícula."""
+        from ui.admin.dashboard       import DashboardScreen
+        from ui.admin.users_catalog   import UsersCatalogScreen
+        from ui.admin.lockers_catalog import LockersCatalogScreen
+        from ui.admin.areas_catalog   import AreasCatalogScreen
+        from ui.admin.register_user   import RegisterUserScreen
+
         for FrameClass in (
             DashboardScreen,
             UsersCatalogScreen,
@@ -79,7 +114,28 @@ class AdminApp(ctk.CTk):
             self._frames[FrameClass] = frame
             frame.grid(row=0, column=0, sticky="nsew")
 
-        # Pantalla inicial
+    # ── Tema ──────────────────────────────────────────────────────────────────
+
+    def toggle_theme(self) -> None:
+        """Alterna entre modo claro (locker-style) y modo oscuro."""
+        if self._mode == "light":
+            self._mode = "dark"
+            ctk.set_appearance_mode("dark")
+            PALETTE.update(DARK_PALETTE)
+        else:
+            self._mode = "light"
+            ctk.set_appearance_mode("light")
+            PALETTE.update(LIGHT_PALETTE)
+        self._rebuild_frames()
+
+    def _rebuild_frames(self) -> None:
+        """Destruye todos los frames y los recrea con la paleta actualizada."""
+        for frame in list(self._frames.values()):
+            frame.destroy()
+        self._frames.clear()
+        self.configure(fg_color=PALETTE["BG"])
+        self._build_frames()
+        from ui.admin.dashboard import DashboardScreen
         self.show_frame(DashboardScreen)
 
     # ── Navegación ────────────────────────────────────────────────────────────

@@ -140,13 +140,27 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
         ).pack(side="left", padx=20, pady=16)
 
+        # ── Botón alternar tema (🌙 / ☀️) ─────────────────────────────────────
+        _mode = getattr(self.controller, "_mode", "light")
+        theme_icon = "🌙" if _mode == "light" else "☀️"
+        ctk.CTkButton(
+            header,
+            text=theme_icon,
+            width=48, height=48,
+            font=ctk.CTkFont(size=24),
+            fg_color="transparent",
+            hover_color=PALETTE["BORDER"],
+            text_color=PALETTE["TEXT"],
+            command=self.controller.toggle_theme,
+        ).pack(side="right", padx=12, pady=12)
+
         # ── Botón destacado: Registrar Usuario ────────────────────────────────
         reg_btn = ctk.CTkButton(
             self,
             text="➕  Registrar Usuario",
             font=ctk.CTkFont(size=18, weight="bold"),
             fg_color=PALETTE["ACCENT"],
-            hover_color="#268f8a",
+            hover_color=PALETTE.get("ACCENT_HOVER", PALETTE["ACCENT"]),
             text_color=PALETTE["WHITE"],
             height=58,
             corner_radius=14,

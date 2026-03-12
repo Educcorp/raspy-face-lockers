@@ -275,6 +275,21 @@ class ScanningScreen(ctk.CTkFrame):
                     time.sleep(0.05)
                     continue
 
+                # Si DNN no detectó, intentar Haar cascade como fallback
+                if not faces:
+                    try:
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        cascade = cv2.CascadeClassifier(
+                            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+                        )
+                        haar_faces = cascade.detectMultiScale(
+                            gray, scaleFactor=1.05, minNeighbors=3, minSize=(30, 30)
+                        )
+                        if len(haar_faces) > 0:
+                            faces = [{"box": (x, y, w, h)} for (x, y, w, h) in haar_faces]
+                    except Exception as e:
+                        logger.debug(f"Haar fallback error: {e}")
+
                 frame_count += 1
                 self._camera_frame = frame
                 self._detected_faces = faces
@@ -304,7 +319,7 @@ class ScanningScreen(ctk.CTkFrame):
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
         """Dibuja el frame de cámara a pantalla completa con silueta superpuesta."""
         try:
-            # Convertir BGR → RGB (picamera2 devuelve BGR)
+            # Picamera2 "RGB888" retorna BGR en memoria — convertir a RGB para PIL
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             # Redimensionar manteniendo aspect ratio (no estirar)
@@ -322,8 +337,8 @@ class ScanningScreen(ctk.CTkFrame):
             x_offset = (self.WIN_W - new_w) // 2
             canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = frame_resized
             
-            # Convertir a PIL
-            pil_image = Image.fromarray(canvas).convert("RGBA")
+            # Convertir a PIL directamente (sin conversión de canales)
+            pil_image = Image.fromarray(canvas, mode="RGB").convert("RGBA")
 
             # Superponer la máscara de silueta semitransparente
             pil_image = Image.alpha_composite(pil_image, self._silhouette_mask)

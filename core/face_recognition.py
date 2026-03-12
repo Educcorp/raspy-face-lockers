@@ -98,6 +98,9 @@ class FaceDetector:
 
         try:
             h, w = frame.shape[:2]
+            
+            # Usar frame directamente (sin conversión de canales)
+            # El modelo DNN es agnóstico al orden de canales si usamos normalización correcta
             blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300),
                                         [104.0, 117.0, 123.0], False, False)
             self.net.setInput(blob)
@@ -139,23 +142,35 @@ class CameraManager:
         """Inicializa la cámara con picamera2."""
         with self._lock:
             if self.initialized:
-                logger.info("Cámara ya inicializada")
+                logger.debug("Cámara ya inicializada")
                 return True
 
             try:
-                logger.info("Importando Picamera2...")
+                logger.info("Inicializando cámara...")
                 
-                # Intentar importar picamera2 desde sistema o venv
+                # Si la cámara estaba inicializada antes, limpiar estado
+                if self.cam is not None:
+                    try:
+                        logger.debug("Limpiando cámara anterior...")
+                        self.cam.stop()
+                        time.sleep(0.1)
+                    except Exception as e:
+                        logger.debug(f"Error limpiando cámara anterior: {e}")
+                    self.cam = None
+                
+                # Importar picamera2
                 picamera2_module = _import_picamera2_from_system()
                 if picamera2_module is None:
                     raise ImportError("Could not import picamera2")
                 
                 Picamera2 = picamera2_module.Picamera2
+                logger.debug("Creando instancia de Picamera2...")
 
                 self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
-                logger.info(f"Picamera2 creado (índice {CAMERA_CONFIG.get('camera_index', 0)})")
+                logger.debug(f"✓ Picamera2 creado (índice {CAMERA_CONFIG.get('camera_index', 0)})")
 
                 # Configuración
+                logger.debug("Configurando cámara...")
                 config = self.cam.create_preview_configuration(
                     main={
                         "format": "RGB888",
@@ -166,10 +181,16 @@ class CameraManager:
                     }
                 )
                 self.cam.configure(config)
-                logger.info("Configuración de cámara aplicada")
+                logger.debug("✓ Configuración de cámara aplicada")
 
                 # Iniciar captura
+                logger.debug("Iniciando captura...")
                 self.cam.start()
+                logger.debug("✓ Captura iniciada")
+                
+                # Esperar a que el buffer de picamera2 se establezca
+                time.sleep(0.5)
+                
                 logger.info("✓ Cámara inicializada correctamente")
                 self.initialized = True
                 return True
@@ -177,31 +198,33 @@ class CameraManager:
             except ImportError as e:
                 logger.error(f"✗ Picamera2 no disponible: {e}")
                 logger.error("Instala: sudo apt install python3-picamera2")
+                self.initialized = False
                 return False
 
             except PermissionError as e:
                 logger.error(f"✗ Permisos denegados: {e}")
                 logger.error("Ejecuta con sudo o agrega permisos a /dev/video*")
+                self.initialized = False
                 return False
 
             except Exception as e:
                 logger.error(f"✗ Error inicializando cámara: {e}")
                 import traceback
                 logger.debug(traceback.format_exc())
+                self.initialized = False
+                self.cam = None
                 return False
 
     def get_frame(self) -> Optional[np.ndarray]:
-        """Captura un frame de la cámara. Retorna BGR numpy array."""
+        """Captura un frame de la cámara. Retorna el array sin conversión."""
         if not self.initialized or self.cam is None:
             return None
 
         try:
-            # Picamera2 retorna RGB, convertir a BGR para OpenCV
-            rgb_array = self.cam.capture_array()
-            if rgb_array is None:
-                return None
-            bgr_frame = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
-            return bgr_frame
+            # Picamera2 retorna el frame directamente
+            # Sin conversiones de canales - usar tal cual para evitar confusión
+            frame_array = self.cam.capture_array()
+            return frame_array
 
         except Exception as e:
             logger.warning(f"Error capturando frame: {e}")
@@ -214,18 +237,34 @@ class CameraManager:
         return self.face_detector.detect(frame)
 
     def release(self) -> None:
-        """Libera la cámara."""
+        """Libera la cámara completa y resetea el estado."""
         with self._lock:
-            if self.cam is not None:
-                try:
-                    self.cam.stop()
-                    logger.info("Cámara detenida")
-                except Exception as e:
-                    logger.warning(f"Error deteniendo cámara: {e}")
-
-            self.initialized = False
-            self.cam = None
-            logger.info("✓ Cámara liberada")
+            logger.info("Liberando cámara...")
+            
+            try:
+                if self.cam is not None:
+                    try:
+                        self.cam.stop()
+                        logger.debug("✓ Cámara detenida")
+                    except Exception as e:
+                        logger.debug(f"Error deteniendo cámara: {e}")
+                    
+                    try:
+                        del self.cam
+                        logger.debug("✓ Instancia de cámara eliminada")
+                    except Exception as e:
+                        logger.debug(f"Error eliminando instancia: {e}")
+            except Exception as e:
+                logger.debug(f"Error en release: {e}")
+            finally:
+                self.initialized = False
+                self.cam = None
+                logger.info("✓ Cámara completamente liberada")
+        
+        # CRÍTICO: Reset global singleton después de liberar
+        global _camera_manager
+        _camera_manager = None
+        logger.info("✓ Singleton global resetado")
 
 
 # ── Singleton Global ──────────────────────────────────────────────────────

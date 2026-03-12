@@ -29,7 +29,7 @@ CAMERA_CONFIG = {
 # ── OpenCV DNN / Face Detection ────────────────────────────────────────────
 FACE_DETECTION_CONFIG = {
     "model_type": "opencv_dnn",  # opencv_dnn | mediapipe | dlib
-    "confidence_threshold": 0.5,
+    "confidence_threshold": 0.3,  # Bajado de 0.5 para más sensibilidad
     "nms_threshold": 0.4,
     # Modelos DNN
     "prototxt": str(MODELS_DIR / "deploy.prototxt"),

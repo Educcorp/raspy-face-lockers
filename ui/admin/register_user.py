@@ -61,6 +61,7 @@ class RegisterUserScreen(ctk.CTkFrame):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller = controller
         self._step_frames: list[ctk.CTkFrame] = []
+        self._current_step = 0  # Initialize to avoid AttributeError
         self._data: dict = {}  # datos recopilados a lo largo del wizard
         self._build_wizard()
 
@@ -88,6 +89,12 @@ class RegisterUserScreen(ctk.CTkFrame):
     # ── Navegación interna del wizard ─────────────────────────────────────────
 
     def _goto_step(self, idx: int) -> None:
+        # Llamar on_leave en el paso anterior si existe
+        old_frame = self._step_frames[self._current_step]
+        if hasattr(old_frame, "on_leave"):
+            old_frame.on_leave()
+        
+        # Ir al nuevo paso
         self._current_step = idx
         frame = self._step_frames[idx]
         frame.tkraise()
@@ -531,10 +538,11 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 if self._face_mgr is None:
                     time.sleep(0.1)
                     break
-                frame, faces = self._face_mgr.detect_faces_in_frame()
+                frame = self._face_mgr.get_frame()
                 if frame is not None:
                     self._current_frame = frame
-                    self._detected_faces = faces
+                    # Usar detección con fallback (DNN + Haar cascade)
+                    self._detected_faces = self._detect_faces(frame)
             except Exception as e:
                 logger.error(f"Error en camera_loop: {e}")
                 break
@@ -546,15 +554,23 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return []
         if self._detector and hasattr(self._detector, "detect"):
             try:
-                return self._detector.detect(frame)
-            except Exception:
+                faces = self._detector.detect(frame)
+                logger.debug(f"Detector DNN encontró {len(faces)} rostro(s)")
+                return faces
+            except Exception as e:
+                logger.debug(f"Detector DNN falló: {e}")
                 pass
-        # Fallback: Haar cascade
+        
+        # Fallback: Haar cascade (más sensible - scaleFactor=1.05, minNeighbors=3)
+        logger.debug("Usando fallback Haar cascade para detección")
+        # Convertir a grises para Haar (funciona con cualquier espacio de color)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
-        faces = cascade.detectMultiScale(gray, 1.1, 4)
+        # Parámetros más sensibles: scaleFactor menor = más detecciones, minNeighbors menor = menos filtrado
+        faces = cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=3, minSize=(30, 30))
+        logger.debug(f"Haar cascade encontró {len(faces)} rostro(s)")
         return [{"box": (x, y, w, h)} for (x, y, w, h) in faces] if len(faces) > 0 else []
 
     def _update_canvas(self) -> None:
@@ -564,14 +580,17 @@ class _Step4FaceCapture(ctk.CTkFrame):
         if self._current_frame is not None:
             frame = self._current_frame.copy()
             
+            # Picamera2 "RGB888" retorna BGR en memoria — convertir a RGB para PIL
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
             # Redimensionar manteniendo aspect ratio (no estirar)
-            h, w = frame.shape[:2]
+            h, w = frame_rgb.shape[:2]
             scale = min(WIN_W / w, 600 / h)
             new_w = int(w * scale)
             new_h = int(h * scale)
             
             # Redimensionar
-            frame_resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
             
             # Crear canvas con fondo negro y centrar la imagen
             canvas = np.zeros((600, WIN_W, 3), dtype=np.uint8)
@@ -579,9 +598,8 @@ class _Step4FaceCapture(ctk.CTkFrame):
             x_offset = (WIN_W - new_w) // 2
             canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = frame_resized
             
-            # Convertir BGR → RGB
-            frame_rgb = cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame_rgb).convert("RGBA")
+            # PIL Image directamente (sin conversión de canales)
+            img = Image.fromarray(canvas, mode="RGB").convert("RGBA")
 
             has_face = len(self._detected_faces) > 0
             outline_color = SILO_OK_FACE if has_face else SILO_NO_FACE
@@ -610,12 +628,20 @@ class _Step4FaceCapture(ctk.CTkFrame):
     # ── Captura ───────────────────────────────────────────────────────────────
 
     def _capture(self) -> None:
+        logger.info("=== Botón Capturar presionado ===")
         if not _CV2_AVAILABLE:
             self.lbl_status.configure(text="(!) OpenCV no disponible",
                                       text_color=PALETTE["DANGER"])
             return
         if self._current_frame is None:
+            logger.warning("Captura: current_frame es None")
+            self.lbl_status.configure(text="(!) Cámara no lista",
+                                      text_color=PALETTE["DANGER"])
             return
+        # Si no hay faces detectadas por el loop, intentar detección directa
+        if not self._detected_faces:
+            logger.info("Captura: sin faces del loop, intentando detección directa...")
+            self._detected_faces = self._detect_faces(self._current_frame)
         if not self._detected_faces:
             self.lbl_status.configure(text="(!) No se detectó rostro", text_color=PALETTE["DANGER"])
             return
@@ -722,6 +748,11 @@ class _Step4FaceCapture(ctk.CTkFrame):
                                   text_color=PALETTE["WHITE"])
         logger.info("Iniciando cámara para registro...")
         self._start_camera()
+
+    def on_leave(self) -> None:
+        """Detiene la cámara cuando se sale de este paso."""
+        logger.info("=== Saliendo de Step4FaceCapture ===")
+        self.stop_camera()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

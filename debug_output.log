@@ -1,0 +1,207 @@
+2026-03-11 23:27:10,163 - __main__ - INFO - ✓ OpenCV y NumPy importados correctamente
+2026-03-11 23:27:10,164 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:10,164 - __main__ - INFO - DIAGNÓSTICO PROFUNDO DE CÁMARA
+2026-03-11 23:27:10,164 - __main__ - INFO - ======================================================================
+2026-03-11 23:27:10,164 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:10,164 - __main__ - INFO - TEST 1: Picamera2
+2026-03-11 23:27:10,164 - __main__ - INFO - ======================================================================
+2026-03-11 23:27:10,713 - __main__ - INFO - ✓ Picamera2 importado correctamente
+[1:33:48.152873052] [11966]  INFO Camera camera_manager.cpp:340 libcamera v0.7.0+rpt20260205
+[1:33:48.166648704] [11994]  INFO RPI pisp.cpp:720 libpisp version 1.3.0
+[1:33:48.314781467] [11994]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/share/libcamera/ipa/rpi/pisp/ov5647.json
+[1:33:48.325877798] [11994]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@1000120000/rp1/i2c@88000/ov5647@36' for pipeline handler rpi/pisp
+[1:33:48.325913003] [11994]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@1000120000/rp1/i2c@88000/ov5647@36 to CFE device /dev/media2 and ISP device /dev/media0 using PiSP variant BCM2712_D0
+2026-03-11 23:27:10,907 - picamera2.picamera2 - INFO - Initialization successful.
+2026-03-11 23:27:10,910 - picamera2.picamera2 - INFO - Camera now open.
+2026-03-11 23:27:10,910 - picamera2.picamera2 - DEBUG - <libcamera._libcamera.CameraManager object at 0x7ffec048dd30>
+2026-03-11 23:27:10,912 - __main__ - INFO - ✓ Picamera2(0) creado
+2026-03-11 23:27:10,913 - picamera2.picamera2 - DEBUG - Requesting configuration: {'use_case': 'preview', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'sYCC'>, 'buffer_count': 4, 'queue': True, 'main': {'format': 'RGB888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Minimal: 3>, 'FrameDurationLimits': (100, 83333)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+2026-03-11 23:27:10,913 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[1:33:48.334581185] [11966]  INFO Camera camera.cpp:1215 configuring streams: (0) 640x480-RGB888/sRGB (1) 640x480-GBRG_PISP_COMP1/RAW
+[1:33:48.334702910] [11994]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@1000120000/rp1/i2c@88000/ov5647@36 - Selected sensor format: 640x480-SGBRG10_1X10/RAW - Selected CFE format: 640x480-PC1g/RAW
+2026-03-11 23:27:10,913 - picamera2.picamera2 - INFO - Configuration successful!
+2026-03-11 23:27:10,914 - picamera2.picamera2 - DEBUG - Final configuration: {'use_case': 'preview', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'sYCC'>, 'buffer_count': 4, 'queue': True, 'main': {'format': 'RGB888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Minimal: 3>, 'FrameDurationLimits': (100, 83333)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+2026-03-11 23:27:10,914 - picamera2.picamera2 - DEBUG - Streams: {'main': <libcamera._libcamera.Stream object at 0x7ffebbf16530>, 'lores': None, 'raw': <libcamera._libcamera.Stream object at 0x7ffebbf16570>}
+2026-03-11 23:27:10,921 - picamera2 - DEBUG - Allocated 4 buffers for stream 0 with fds [29, 32, 35, 38]
+2026-03-11 23:27:10,921 - picamera2 - DEBUG - Allocated 4 buffers for stream 1 with fds [41, 44, 47, 50]
+2026-03-11 23:27:10,922 - __main__ - INFO - ✓ Configuración RGB888 640x480 aplicada
+2026-03-11 23:27:10,925 - picamera2.picamera2 - INFO - Camera started
+2026-03-11 23:27:10,925 - __main__ - INFO - ✓ Cámara iniciada
+2026-03-11 23:27:11,429 - picamera2.picamera2 - DEBUG - Execute job: <picamera2.job.Job object at 0x7ffec0461a90>
+2026-03-11 23:27:11,493 - picamera2.picamera2 - DEBUG - Execute job: <picamera2.job.Job object at 0x7ffec0461a90>
+2026-03-11 23:27:11,494 - __main__ - INFO - 
+Frame 1:
+2026-03-11 23:27:11,494 - __main__ - INFO -   Shape: (480, 640, 3)
+2026-03-11 23:27:11,495 - __main__ - INFO -   Dtype: uint8
+2026-03-11 23:27:11,495 - __main__ - INFO -   Min/Max: 13 / 61
+2026-03-11 23:27:11,498 - __main__ - INFO -   Canal R (promedio): 43.9
+2026-03-11 23:27:11,498 - __main__ - INFO -   Canal G (promedio): 19.7
+2026-03-11 23:27:11,498 - __main__ - INFO -   Canal B (promedio): 32.4
+2026-03-11 23:27:11,587 - __main__ - INFO -   Guardado: /tmp/test_frame_0_picamera2_rgb.png
+2026-03-11 23:27:11,612 - __main__ - INFO - 
+Después de cvtColor(RGB→BGR):
+2026-03-11 23:27:11,613 - __main__ - INFO -   Shape: (480, 640, 3)
+2026-03-11 23:27:11,613 - __main__ - INFO -   Dtype: uint8
+2026-03-11 23:27:11,614 - __main__ - INFO -   Canal B (promedio): 32.4
+2026-03-11 23:27:11,614 - __main__ - INFO -   Canal G (promedio): 19.7
+2026-03-11 23:27:11,614 - __main__ - INFO -   Canal R (promedio): 43.9
+2026-03-11 23:27:11,678 - __main__ - INFO -   Guardado (después roundtrip): /tmp/test_frame_0_after_roundtrip_rgb.png
+2026-03-11 23:27:12,178 - picamera2.picamera2 - DEBUG - Execute job: <picamera2.job.Job object at 0x7ffec049b250>
+2026-03-11 23:27:12,179 - __main__ - INFO - 
+Frame 2:
+2026-03-11 23:27:12,179 - __main__ - INFO -   Shape: (480, 640, 3)
+2026-03-11 23:27:12,179 - __main__ - INFO -   Dtype: uint8
+2026-03-11 23:27:12,180 - __main__ - INFO -   Min/Max: 13 / 59
+2026-03-11 23:27:12,181 - __main__ - INFO -   Canal R (promedio): 44.1
+2026-03-11 23:27:12,181 - __main__ - INFO -   Canal G (promedio): 19.7
+2026-03-11 23:27:12,181 - __main__ - INFO -   Canal B (promedio): 32.2
+2026-03-11 23:27:12,247 - __main__ - INFO -   Guardado: /tmp/test_frame_1_picamera2_rgb.png
+2026-03-11 23:27:12,248 - __main__ - INFO - 
+Después de cvtColor(RGB→BGR):
+2026-03-11 23:27:12,248 - __main__ - INFO -   Shape: (480, 640, 3)
+2026-03-11 23:27:12,248 - __main__ - INFO -   Dtype: uint8
+2026-03-11 23:27:12,250 - __main__ - INFO -   Canal B (promedio): 32.2
+2026-03-11 23:27:12,250 - __main__ - INFO -   Canal G (promedio): 19.7
+2026-03-11 23:27:12,250 - __main__ - INFO -   Canal R (promedio): 44.1
+2026-03-11 23:27:12,314 - __main__ - INFO -   Guardado (después roundtrip): /tmp/test_frame_1_after_roundtrip_rgb.png
+2026-03-11 23:27:12,815 - picamera2.picamera2 - DEBUG - Execute job: <picamera2.job.Job object at 0x7ffec0499bd0>
+2026-03-11 23:27:12,816 - __main__ - INFO - 
+Frame 3:
+2026-03-11 23:27:12,816 - __main__ - INFO -   Shape: (480, 640, 3)
+2026-03-11 23:27:12,816 - __main__ - INFO -   Dtype: uint8
+2026-03-11 23:27:12,817 - __main__ - INFO -   Min/Max: 13 / 59
+2026-03-11 23:27:12,819 - __main__ - INFO -   Canal R (promedio): 44.4
+2026-03-11 23:27:12,819 - __main__ - INFO -   Canal G (promedio): 19.9
+2026-03-11 23:27:12,819 - __main__ - INFO -   Canal B (promedio): 31.5
+2026-03-11 23:27:12,883 - __main__ - INFO -   Guardado: /tmp/test_frame_2_picamera2_rgb.png
+2026-03-11 23:27:12,883 - __main__ - INFO - 
+Después de cvtColor(RGB→BGR):
+2026-03-11 23:27:12,883 - __main__ - INFO -   Shape: (480, 640, 3)
+2026-03-11 23:27:12,884 - __main__ - INFO -   Dtype: uint8
+2026-03-11 23:27:12,885 - __main__ - INFO -   Canal B (promedio): 31.5
+2026-03-11 23:27:12,885 - __main__ - INFO -   Canal G (promedio): 19.9
+2026-03-11 23:27:12,885 - __main__ - INFO -   Canal R (promedio): 44.4
+2026-03-11 23:27:12,949 - __main__ - INFO -   Guardado (después roundtrip): /tmp/test_frame_2_after_roundtrip_rgb.png
+2026-03-11 23:27:12,949 - picamera2.picamera2 - DEBUG - Execute job: <picamera2.job.Job object at 0x7ffebbf9c180>
+2026-03-11 23:27:12,953 - picamera2.picamera2 - INFO - Camera stopped
+2026-03-11 23:27:12,953 - __main__ - INFO - 
+✓ Picamera2 test completado
+2026-03-11 23:27:12,954 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:12,954 - __main__ - INFO - TEST 2: FaceRecognitionManager
+2026-03-11 23:27:12,954 - __main__ - INFO - ======================================================================
+2026-03-11 23:27:12,956 - __main__ - INFO - ✓ FaceRecognitionManager importado
+2026-03-11 23:27:13,128 - core.face_recognition - INFO - ✓ Modelo Caffe DNN cargado correctamente
+2026-03-11 23:27:13,128 - core.face_recognition - INFO - Creada nueva instancia de CameraManager
+2026-03-11 23:27:13,128 - __main__ - INFO - ✓ FaceRecognitionManager creado
+2026-03-11 23:27:13,128 - core.face_recognition - INFO - Importando Picamera2...
+2026-03-11 23:27:13,128 - core.face_recognition - INFO - ✓ picamera2 importado desde venv
+2026-03-11 23:27:13,129 - picamera2.picamera2 - INFO - Initialization successful.
+[1:33:50.550182826] [11998] ERROR Camera camera.cpp:702 Camera in Configured state trying acquire() requiring state Available
+2026-03-11 23:27:13,129 - picamera2.picamera2 - ERROR - Camera __init__ sequence did not complete.
+2026-03-11 23:27:13,129 - core.face_recognition - ERROR - ✗ Error inicializando cámara: Camera __init__ sequence did not complete.
+2026-03-11 23:27:13,136 - core.face_recognition - DEBUG - Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 353, in __init__
+    self._open_camera()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 565, in _open_camera
+    self.camera.acquire()
+    ~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: Failed to acquire camera: Device or resource busy
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/raspi/Documents/GitHub/raspy-face-lockers/core/face_recognition.py", line 155, in initialize
+    self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
+               ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 365, in __init__
+    raise RuntimeError("Camera __init__ sequence did not complete.")
+RuntimeError: Camera __init__ sequence did not complete.
+
+2026-03-11 23:27:13,137 - __main__ - ERROR - ✗ No se pudo inicializar FaceRecognitionManager
+2026-03-11 23:27:13,137 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:13,137 - __main__ - INFO - TEST 3: Simulación Step4FaceCapture
+2026-03-11 23:27:13,137 - __main__ - INFO - ======================================================================
+2026-03-11 23:27:13,137 - core.face_recognition - INFO - Importando Picamera2...
+2026-03-11 23:27:13,137 - core.face_recognition - INFO - ✓ picamera2 importado desde venv
+2026-03-11 23:27:13,137 - picamera2.picamera2 - INFO - Initialization successful.
+[1:33:50.558852767] [11998] ERROR Camera camera.cpp:702 Camera in Configured state trying acquire() requiring state Available
+2026-03-11 23:27:13,137 - picamera2.picamera2 - ERROR - Camera __init__ sequence did not complete.
+2026-03-11 23:27:13,138 - core.face_recognition - ERROR - ✗ Error inicializando cámara: Camera __init__ sequence did not complete.
+2026-03-11 23:27:13,138 - core.face_recognition - DEBUG - Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 353, in __init__
+    self._open_camera()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 565, in _open_camera
+    self.camera.acquire()
+    ~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: Failed to acquire camera: Device or resource busy
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/raspi/Documents/GitHub/raspy-face-lockers/core/face_recognition.py", line 155, in initialize
+    self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
+               ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 365, in __init__
+    raise RuntimeError("Camera __init__ sequence did not complete.")
+RuntimeError: Camera __init__ sequence did not complete.
+
+2026-03-11 23:27:13,139 - __main__ - ERROR - ✗ No se pudo inicializar cámara
+2026-03-11 23:27:13,139 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:13,139 - __main__ - INFO - TEST 4: Lógica del botón Capturar
+2026-03-11 23:27:13,139 - __main__ - INFO - ======================================================================
+2026-03-11 23:27:13,139 - core.face_recognition - INFO - Importando Picamera2...
+2026-03-11 23:27:13,139 - core.face_recognition - INFO - ✓ picamera2 importado desde venv
+2026-03-11 23:27:13,139 - picamera2.picamera2 - INFO - Initialization successful.
+[1:33:50.560764774] [11998] ERROR Camera camera.cpp:702 Camera in Configured state trying acquire() requiring state Available
+2026-03-11 23:27:13,139 - picamera2.picamera2 - ERROR - Camera __init__ sequence did not complete.
+2026-03-11 23:27:13,139 - core.face_recognition - ERROR - ✗ Error inicializando cámara: Camera __init__ sequence did not complete.
+2026-03-11 23:27:13,140 - core.face_recognition - DEBUG - Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 353, in __init__
+    self._open_camera()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 565, in _open_camera
+    self.camera.acquire()
+    ~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: Failed to acquire camera: Device or resource busy
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/raspi/Documents/GitHub/raspy-face-lockers/core/face_recognition.py", line 155, in initialize
+    self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
+               ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/picamera2/picamera2.py", line 365, in __init__
+    raise RuntimeError("Camera __init__ sequence did not complete.")
+RuntimeError: Camera __init__ sequence did not complete.
+
+2026-03-11 23:27:13,140 - __main__ - ERROR - ✗ No se pudo inicializar cámara
+2026-03-11 23:27:13,140 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:13,140 - __main__ - INFO - RESUMEN
+2026-03-11 23:27:13,140 - __main__ - INFO - ======================================================================
+2026-03-11 23:27:13,140 - __main__ - INFO - ✓ Picamera2
+2026-03-11 23:27:13,141 - __main__ - INFO - ✗ FaceRecognitionManager
+2026-03-11 23:27:13,141 - __main__ - INFO - ✗ Simulación Admin Screen
+2026-03-11 23:27:13,141 - __main__ - INFO - ✗ Lógica Botón Capturar
+2026-03-11 23:27:13,141 - __main__ - INFO - 
+======================================================================
+2026-03-11 23:27:13,141 - __main__ - INFO - Archivos generados en /tmp/:
+2026-03-11 23:27:13,141 - __main__ - INFO -   - test_frame_*_picamera2_rgb.png (Raw de Picamera2)
+2026-03-11 23:27:13,141 - __main__ - INFO -   - test_frame_*_after_roundtrip_rgb.png (Después de BGR→RGB)
+2026-03-11 23:27:13,141 - __main__ - INFO -   - test_frame_*_mgr_bgr.png (De FaceRecognitionManager)
+2026-03-11 23:27:13,141 - __main__ - INFO -   - test_admin_canvas.png (Simulación del canvas admin)
+2026-03-11 23:27:13,141 - __main__ - INFO - ======================================================================
+
+2026-03-11 23:27:13,154 - picamera2.picamera2 - DEBUG - Camera was not started
+2026-03-11 23:27:13,156 - picamera2.picamera2 - INFO - Camera closed successfully.
+2026-03-11 23:27:13,180 - picamera2.picamera2 - DEBUG - Resources now free: <picamera2.picamera2.Picamera2 object at 0x7ffec049bc50>
+2026-03-11 23:27:13,180 - picamera2.picamera2 - DEBUG - Resources now free: <picamera2.picamera2.Picamera2 object at 0x7ffec049bed0>
+2026-03-11 23:27:13,180 - picamera2.picamera2 - DEBUG - Resources now free: <picamera2.picamera2.Picamera2 object at 0x7ffec316af90>
+2026-03-11 23:27:13,180 - picamera2.picamera2 - DEBUG - Resources now free: <picamera2.picamera2.Picamera2 object at 0x7ffec049b890>

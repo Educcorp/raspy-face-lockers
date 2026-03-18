@@ -311,10 +311,13 @@ class _BaseFormOverlay(ctk.CTkFrame):
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=16)
 
-    def _delete_btn(self, command) -> None:
-        ctk.CTkButton(self.scroll, text="Inhabilitar",
+    def _delete_btn(self, command, text: str = "Inhabilitar") -> None:
+        is_enable_action = text == "Habilitar"
+        fg_color = PALETTE["SUCCESS"] if is_enable_action else PALETTE["DANGER"]
+        hover_color = "#1e8449" if is_enable_action else "#922b21"
+        ctk.CTkButton(self.scroll, text=text,
                       font=ctk.CTkFont(size=16, weight="bold"),
-                      fg_color=PALETTE["DANGER"], hover_color="#922b21",
+                      fg_color=fg_color, hover_color=hover_color,
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=(0, 8))
 
@@ -341,7 +344,8 @@ class AreaFormOverlay(_BaseFormOverlay):
             self.e_nombre.insert(0, row.get("nombreArea", ""))
         self._save_btn(self._save)
         if is_edit:
-            self._delete_btn(self._disable)
+            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
+            self._delete_btn(self._toggle_status, text=action_text)
 
     def _save(self) -> None:
         nombre = self.e_nombre.get().strip()
@@ -361,13 +365,14 @@ class AreaFormOverlay(_BaseFormOverlay):
             )
         self._close()
 
-    def _disable(self) -> None:
-        # Cambiar estado a inactivo en lugar de borrar
+    def _toggle_status(self) -> None:
+        current_state = (self._row.get("estado") or "activo").strip().lower()
+        new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(
-            "UPDATE area_lockers SET estado='inactivo', "
+            "UPDATE area_lockers SET estado=?, "
             "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
             "modificadoPor=1 WHERE idArea=?",
-            (self._row["idArea"],)
+            (new_state, self._row["idArea"])
         )
         self._close()
 

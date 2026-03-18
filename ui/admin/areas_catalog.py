@@ -398,6 +398,9 @@ class UnidadFormOverlay(_BaseFormOverlay):
             self.e_zona.insert(0,   row.get("zona", "") or "")
 
         self._save_btn(self._save)
+        if is_edit:
+            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
+            self._delete_btn(self._toggle_status, text=action_text)
 
     def _save(self) -> None:
         nombre = self.e_nombre.get().strip()
@@ -417,6 +420,17 @@ class UnidadFormOverlay(_BaseFormOverlay):
                 "VALUES (?, ?, ?, 1)",
                 (nombre, zona, self._estado_var.get())
             )
+        self._close()
+
+    def _toggle_status(self) -> None:
+        current_state = (self._row.get("estado") or "activo").strip().lower()
+        new_state = "activo" if current_state == "inactivo" else "inactivo"
+        execute(
+            "UPDATE unidad_academica SET estado=?, "
+            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+            "modificadoPor=1 WHERE idUnidadAcademica=?",
+            (new_state, self._row["idUnidadAcademica"])
+        )
         self._close()
 
 
@@ -439,6 +453,9 @@ class TipoFormOverlay(_BaseFormOverlay):
             self.e_nombre.insert(0, row.get("nombreTipoUsuario", ""))
 
         self._save_btn(self._save)
+        if is_edit:
+            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
+            self._delete_btn(self._toggle_status, text=action_text)
 
     def _save(self) -> None:
         nombre = self.e_nombre.get().strip()
@@ -457,4 +474,15 @@ class TipoFormOverlay(_BaseFormOverlay):
                 "VALUES (?, ?, 1)",
                 (nombre, self._estado_var.get())
             )
+        self._close()
+
+    def _toggle_status(self) -> None:
+        current_state = (self._row.get("estado") or "activo").strip().lower()
+        new_state = "activo" if current_state == "inactivo" else "inactivo"
+        execute(
+            "UPDATE tipo_usuarios SET estado=?, "
+            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+            "modificadoPor=1 WHERE idTipoUsuario=?",
+            (new_state, self._row["idTipoUsuario"])
+        )
         self._close()

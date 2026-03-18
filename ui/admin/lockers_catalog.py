@@ -258,16 +258,31 @@ class LockerDetailOverlay(ctk.CTkFrame):
                                       corner_radius=8, height=42)
         self.lbl_asign.pack(fill="x", padx=4)
 
-        # Botones
-        btn_row = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], height=74,
-                               corner_radius=0)
-        btn_row.pack(fill="x")
-        btn_row.pack_propagate(False)
-        ctk.CTkButton(btn_row, text="Guardar estado",
-                      font=ctk.CTkFont(size=15, weight="bold"),
-                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
-                      text_color=PALETTE["WHITE"], height=50, corner_radius=12,
-                      command=self._save).pack(fill="x", padx=14, pady=12)
+        # Botones (mismo patrón visual que panel de Área)
+        ctk.CTkButton(
+            scroll,
+            text="Guardar estado",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            fg_color=PALETTE["ACCENT"],
+            hover_color=PALETTE["ACCENT_HOVER"],
+            text_color=PALETTE["WHITE"],
+            height=50,
+            corner_radius=12,
+            command=self._save,
+        ).pack(fill="x", padx=4, pady=(16, 8))
+
+        self.btn_toggle = ctk.CTkButton(
+            scroll,
+            text="Inhabilitar",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            fg_color=PALETTE["DANGER"],
+            hover_color="#922b21",
+            text_color=PALETTE["WHITE"],
+            height=50,
+            corner_radius=12,
+            command=self._toggle_status,
+        )
+        self.btn_toggle.pack(fill="x", padx=4, pady=(0, 8))
 
     def _load(self) -> None:
         row = fetch_one("""
@@ -286,6 +301,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self._labels["area"].configure(text=row.get("area", "—") or "—")
         self._labels["unidad"].configure(text=row.get("unidad", "—") or "—")
         self._estado_var.set(row.get("estado", "activo"))
+        self._refresh_toggle_button()
 
         asign = fetch_one("""
             SELECT u.nombre || ' ' || u.apPaterno AS usuario,
@@ -304,6 +320,25 @@ class LockerDetailOverlay(ctk.CTkFrame):
         execute(
             "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
             (self._estado_var.get(), self.locker_id),
+        )
+        self._close()
+
+    def _refresh_toggle_button(self) -> None:
+        current_state = (self._estado_var.get() or "activo").strip().lower()
+        is_inactive = current_state == "inactivo"
+        self.btn_toggle.configure(
+            text="Habilitar" if is_inactive else "Inhabilitar",
+            fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
+            hover_color="#1e8449" if is_inactive else "#922b21",
+        )
+
+    def _toggle_status(self) -> None:
+        current_state = (self._estado_var.get() or "activo").strip().lower()
+        new_state = "activo" if current_state == "inactivo" else "inactivo"
+        self._estado_var.set(new_state)
+        execute(
+            "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
+            (new_state, self.locker_id),
         )
         self._close()
 

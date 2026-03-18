@@ -347,33 +347,25 @@ class UserDetailOverlay(ctk.CTkFrame):
         )
         self.face_badge.pack(anchor="w", padx=4, pady=(6, 0))
 
-        # Botones de acción
-        self._action_frame = ctk.CTkFrame(self, fg_color=PALETTE["CARD"],
-                                          corner_radius=0, height=80)
-        self._action_frame.pack(fill="x")
-        self._action_frame.pack_propagate(False)
-
+        # Botones de acción (mismo patrón visual que panel de Área)
         self.btn_save = ctk.CTkButton(
-            self._action_frame,
-            text="💾  Guardar cambios",
+            self._scroll,
+            text="Guardar cambios",
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], height=52, corner_radius=12,
             command=self._save,
         )
-        self.btn_save.pack(side="left", expand=True, fill="both",
-                           padx=(12, 6), pady=14)
 
         self.btn_delete = ctk.CTkButton(
-            self._action_frame,
+            self._scroll,
             text="Inhabilitar",
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["DANGER"], hover_color="#922b21",
             text_color=PALETTE["WHITE"], height=52, corner_radius=12,
             command=self._confirm_delete,
         )
-        self.btn_delete.pack(side="right", expand=True, fill="both",
-                             padx=(6, 12), pady=14)
+        self.btn_delete.pack(fill="x", padx=4, pady=(0, 8))
 
         self._set_edit_mode(False)
 
@@ -446,6 +438,14 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._vars["unidad"].set(row.get("unidad", ""))
         self._vars["estado"].set(row.get("estado", "activo"))
 
+        current_state = (row.get("estado") or "activo").strip().lower()
+        is_inactive = current_state == "inactivo"
+        self.btn_delete.configure(
+            text="Habilitar" if is_inactive else "Inhabilitar",
+            fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
+            hover_color="#1e8449" if is_inactive else "#922b21",
+        )
+
         # Verificar si tiene rostro
         face_count = fetch_one(
             "SELECT COUNT(*) AS n FROM encoding WHERE idUsuario=? AND estado='activo'",
@@ -492,16 +492,26 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._load_user()
 
     def _confirm_delete(self) -> None:
+        current_state = (self._vars["estado"].get() or "activo").strip().lower()
+        activating = current_state == "inactivo"
         _ConfirmDialog(
             self,
-            message="¿Inhabilitar este usuario?\nSu acceso quedará desactivado.",
+            message=(
+                "¿Habilitar este usuario?\nSu acceso quedará activo nuevamente."
+                if activating else
+                "¿Inhabilitar este usuario?\nSu acceso quedará desactivado."
+            ),
             on_confirm=self._do_delete,
         )
 
     def _do_delete(self) -> None:
+        current_state = (self._vars["estado"].get() or "activo").strip().lower()
+        new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(
-            "UPDATE usuarios SET estado='inactivo', modificadoPor=1 WHERE idUsuario=?",
-            (self.user_id,),
+            "UPDATE usuarios SET estado=?, "
+            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+            "modificadoPor=1 WHERE idUsuario=?",
+            (new_state, self.user_id),
         )
         self._close()
 
@@ -521,8 +531,7 @@ class UserDetailOverlay(ctk.CTkFrame):
             fg_color=btn_color,
         )
         if active:
-            self.btn_save.pack(side="left", expand=True, fill="both",
-                               padx=(12, 6), pady=14)
+            self.btn_save.pack(fill="x", padx=4, pady=(16, 8), before=self.btn_delete)
         else:
             self.btn_save.pack_forget()
 

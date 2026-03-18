@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw
 
 from database.connection import execute, fetch_all, fetch_one
 from ui.admin_app import PALETTE
+from auth.session import can_create_users, filter_assignable_user_types
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,10 @@ class RegisterUserScreen(ctk.CTkFrame):
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def on_show(self, **_kwargs) -> None:
+        if not can_create_users():
+            from ui.admin.dashboard import DashboardScreen
+            self.controller.show_frame(DashboardScreen)
+            return
         self._data = {}
         self._goto_step(0)
 
@@ -255,6 +260,7 @@ class _Step2TypeUnit(ctk.CTkFrame):
         self._tipos = fetch_all(
             "SELECT idTipoUsuario, nombreTipoUsuario FROM tipo_usuarios WHERE estado='activo' ORDER BY nombreTipoUsuario"
         )
+        self._tipos = filter_assignable_user_types(self._tipos)
         self._unidades = fetch_all(
             "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica WHERE estado='activo' ORDER BY nombreUnidadAcademica"
         )
@@ -268,6 +274,14 @@ class _Step2TypeUnit(ctk.CTkFrame):
             self._tipo_var.set(data.get("tipo_nombre") or tipo_names[0])
         if unidad_names:
             self._unidad_var.set(data.get("unidad_nombre") or unidad_names[0])
+        if not can_create_users():
+            self.lbl_err.configure(text="Tu rol es de solo lectura")
+            self._tipo_menu.configure(state="disabled")
+            self._unidad_menu.configure(state="disabled")
+            return
+
+        self._tipo_menu.configure(state="normal")
+        self._unidad_menu.configure(state="normal")
         self.lbl_err.configure(text="")
 
     def _next(self) -> None:

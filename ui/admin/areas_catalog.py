@@ -13,6 +13,7 @@ import customtkinter as ctk
 import tkinter as tk
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
+from auth.session import can_edit_catalogs
 
 
 # ── Widget genérico de fila de catálogo ──────────────────────────────────────
@@ -72,6 +73,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller = controller
         self._active_tab = "areas"
+        self._can_edit = can_edit_catalogs()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -97,9 +99,10 @@ class AreasCatalogScreen(ctk.CTkFrame):
         self.btn_add = ctk.CTkButton(
             hdr, text="+", width=46, height=46,
             font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+            fg_color=PALETTE["ACCENT"] if self._can_edit else PALETTE["BORDER"],
+            hover_color=PALETTE["ACCENT_HOVER"] if self._can_edit else PALETTE["BORDER"],
             text_color=PALETTE["WHITE"],
-            command=self._add_item,
+            command=self._add_item if self._can_edit else None,
         )
         self.btn_add.pack(side="right", padx=8)
 
@@ -229,6 +232,8 @@ class AreasCatalogScreen(ctk.CTkFrame):
     # ── Añadir ────────────────────────────────────────────────────────────────
 
     def _add_item(self) -> None:
+        if not self._can_edit:
+            return
         if self._active_tab == "areas":
             AreaFormOverlay(self, None, on_close=self._load)
         elif self._active_tab == "unidades":
@@ -258,6 +263,7 @@ class _BaseFormOverlay(ctk.CTkFrame):
         root = parent.winfo_toplevel()
         super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self._on_close = on_close
+        self._can_edit = can_edit_catalogs()
         # Cubrir toda la ventana principal
         self.place(x=0, y=0, relwidth=1, relheight=1)
         self.lift()
@@ -288,6 +294,8 @@ class _BaseFormOverlay(ctk.CTkFrame):
                              border_color=PALETTE["BORDER"],
                              text_color=PALETTE["TEXT"], height=46)
         entry.pack(fill="x", padx=4)
+        if not self._can_edit:
+            entry.configure(state="disabled")
         return entry
 
     def _selector(self, label: str, var: tk.StringVar,
@@ -302,9 +310,13 @@ class _BaseFormOverlay(ctk.CTkFrame):
                                  text_color=PALETTE["TEXT"],
                                  font=ctk.CTkFont(size=15), height=46)
         menu.pack(fill="x", padx=4)
+        if not self._can_edit:
+            menu.configure(state="disabled")
         return menu
 
     def _save_btn(self, command) -> None:
+        if not self._can_edit:
+            return
         ctk.CTkButton(self.scroll, text="Guardar",
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
@@ -312,6 +324,8 @@ class _BaseFormOverlay(ctk.CTkFrame):
                       command=command).pack(fill="x", padx=4, pady=16)
 
     def _delete_btn(self, command, text: str = "Inhabilitar") -> None:
+        if not self._can_edit:
+            return
         is_enable_action = text == "Habilitar"
         fg_color = PALETTE["SUCCESS"] if is_enable_action else PALETTE["DANGER"]
         hover_color = "#1e8449" if is_enable_action else "#922b21"

@@ -10,6 +10,7 @@ import customtkinter as ctk
 import tkinter as tk
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
+from auth.session import can_edit_catalogs
 
 
 def _estado_badge(estado: str) -> tuple[str, str]:
@@ -25,6 +26,7 @@ class LockersCatalogScreen(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller = controller
+        self._can_edit = can_edit_catalogs()
         self._search_var = tk.StringVar()
         self._rows: list[dict] = []
         self._build_ui()
@@ -53,9 +55,10 @@ class LockersCatalogScreen(ctk.CTkFrame):
         ctk.CTkButton(
             hdr, text="+", width=46, height=46,
             font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+            fg_color=PALETTE["ACCENT"] if self._can_edit else PALETTE["BORDER"],
+            hover_color=PALETTE["ACCENT_HOVER"] if self._can_edit else PALETTE["BORDER"],
             text_color=PALETTE["WHITE"],
-            command=self._new_locker,
+            command=self._new_locker if self._can_edit else None,
         ).pack(side="right", padx=8)
 
         # Búsqueda
@@ -175,6 +178,8 @@ class LockersCatalogScreen(ctk.CTkFrame):
         LockerDetailOverlay(self, locker_id, on_close=self._load)
 
     def _new_locker(self) -> None:
+        if not self._can_edit:
+            return
         LockerFormOverlay(self, on_close=self._load)
 
     def on_show(self, **_kwargs) -> None:
@@ -191,6 +196,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
         super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self.locker_id = locker_id
         self._on_close = on_close
+        self._can_edit = can_edit_catalogs()
         self.place(x=0, y=0, relwidth=1, relheight=1)
         self.lift()
         self._build_ui()
@@ -246,6 +252,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
             font=ctk.CTkFont(size=15), height=46,
         )
         self._estado_menu.pack(fill="x", padx=4)
+        if not self._can_edit:
+            self._estado_menu.configure(state="disabled")
 
         # Asignación actual
         ctk.CTkLabel(scroll, text="Asignación actual",
@@ -259,30 +267,32 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self.lbl_asign.pack(fill="x", padx=4)
 
         # Botones (mismo patrón visual que panel de Área)
-        ctk.CTkButton(
-            scroll,
-            text="Guardar estado",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            fg_color=PALETTE["ACCENT"],
-            hover_color=PALETTE["ACCENT_HOVER"],
-            text_color=PALETTE["WHITE"],
-            height=50,
-            corner_radius=12,
-            command=self._save,
-        ).pack(fill="x", padx=4, pady=(16, 8))
+        self.btn_toggle = None
+        if self._can_edit:
+            ctk.CTkButton(
+                scroll,
+                text="Guardar estado",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                fg_color=PALETTE["ACCENT"],
+                hover_color=PALETTE["ACCENT_HOVER"],
+                text_color=PALETTE["WHITE"],
+                height=50,
+                corner_radius=12,
+                command=self._save,
+            ).pack(fill="x", padx=4, pady=(16, 8))
 
-        self.btn_toggle = ctk.CTkButton(
-            scroll,
-            text="Inhabilitar",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            fg_color=PALETTE["DANGER"],
-            hover_color="#922b21",
-            text_color=PALETTE["WHITE"],
-            height=50,
-            corner_radius=12,
-            command=self._toggle_status,
-        )
-        self.btn_toggle.pack(fill="x", padx=4, pady=(0, 8))
+            self.btn_toggle = ctk.CTkButton(
+                scroll,
+                text="Inhabilitar",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                fg_color=PALETTE["DANGER"],
+                hover_color="#922b21",
+                text_color=PALETTE["WHITE"],
+                height=50,
+                corner_radius=12,
+                command=self._toggle_status,
+            )
+            self.btn_toggle.pack(fill="x", padx=4, pady=(0, 8))
 
     def _load(self) -> None:
         row = fetch_one("""
@@ -301,7 +311,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self._labels["area"].configure(text=row.get("area", "—") or "—")
         self._labels["unidad"].configure(text=row.get("unidad", "—") or "—")
         self._estado_var.set(row.get("estado", "activo"))
-        self._refresh_toggle_button()
+        if self._can_edit:
+            self._refresh_toggle_button()
 
         asign = fetch_one("""
             SELECT u.nombre || ' ' || u.apPaterno AS usuario,
@@ -317,6 +328,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
             self.lbl_asign.configure(text="Sin asignación activa")
 
     def _save(self) -> None:
+        if not self._can_edit:
+            return
         execute(
             "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
             (self._estado_var.get(), self.locker_id),
@@ -324,6 +337,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self._close()
 
     def _refresh_toggle_button(self) -> None:
+        if not self.btn_toggle:
+            return
         current_state = (self._estado_var.get() or "activo").strip().lower()
         is_inactive = current_state == "inactivo"
         self.btn_toggle.configure(
@@ -333,6 +348,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
         )
 
     def _toggle_status(self) -> None:
+        if not self._can_edit:
+            return
         current_state = (self._estado_var.get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         self._estado_var.set(new_state)

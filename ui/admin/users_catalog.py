@@ -15,6 +15,10 @@ import tkinter as tk
 from tkinter import ttk
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
+from auth.session import (
+    can_create_users,
+    can_edit_catalogs,
+)
 
 
 # ── Helpers de estilo ─────────────────────────────────────────────────────────
@@ -62,12 +66,14 @@ class UsersCatalogScreen(ctk.CTkFrame):
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
 
+        can_register = can_create_users()
         ctk.CTkButton(
             hdr, text="+", width=46, height=46,
             font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+            fg_color=PALETTE["ACCENT"] if can_register else PALETTE["BORDER"],
+            hover_color=PALETTE["ACCENT_HOVER"] if can_register else PALETTE["BORDER"],
             text_color=PALETTE["WHITE"],
-            command=self._go_register,
+            command=self._go_register if can_register else None,
         ).pack(side="right", padx=8)
 
         # Search
@@ -226,6 +232,8 @@ class UsersCatalogScreen(ctk.CTkFrame):
         self.controller.show_frame(DashboardScreen)
 
     def _go_register(self) -> None:
+        if not can_create_users():
+            return
         from ui.admin.register_user import RegisterUserScreen
         self.controller.show_frame(RegisterUserScreen)
 
@@ -257,6 +265,7 @@ class UserDetailOverlay(ctk.CTkFrame):
         self.user_id     = user_id
         self._on_close   = on_close
         self._edit_mode  = False
+        self._can_edit = can_edit_catalogs()
         self.place(x=0, y=0, relwidth=1, relheight=1)
         self.lift()
 
@@ -301,9 +310,11 @@ class UserDetailOverlay(ctk.CTkFrame):
             hdr, text="Editar", width=90, height=40,
             font=ctk.CTkFont(size=14),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
-            text_color=PALETTE["WHITE"], command=self._toggle_edit,
+            text_color=PALETTE["WHITE"], command=self._toggle_edit if self._can_edit else None,
         )
         self.btn_edit.pack(side="right", padx=8)
+        if not self._can_edit:
+            self.btn_edit.configure(text="Solo lectura", fg_color=PALETTE["BORDER"])
 
         # Scroll area con formulario
         self._scroll = ctk.CTkScrollableFrame(
@@ -366,6 +377,8 @@ class UserDetailOverlay(ctk.CTkFrame):
             command=self._confirm_delete,
         )
         self.btn_delete.pack(fill="x", padx=4, pady=(0, 8))
+        if not self._can_edit:
+            self.btn_delete.pack_forget()
 
         self._set_edit_mode(False)
 
@@ -459,6 +472,8 @@ class UserDetailOverlay(ctk.CTkFrame):
         )
 
     def _save(self) -> None:
+        if not self._can_edit:
+            return
         # Resolver FK de tipo y unidad
         tipo_name   = self._vars["tipo"].get()
         unidad_name = self._vars["unidad"].get()
@@ -492,6 +507,8 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._load_user()
 
     def _confirm_delete(self) -> None:
+        if not self._can_edit:
+            return
         current_state = (self._vars["estado"].get() or "activo").strip().lower()
         activating = current_state == "inactivo"
         _ConfirmDialog(
@@ -505,6 +522,8 @@ class UserDetailOverlay(ctk.CTkFrame):
         )
 
     def _do_delete(self) -> None:
+        if not self._can_edit:
+            return
         current_state = (self._vars["estado"].get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(
@@ -518,9 +537,13 @@ class UserDetailOverlay(ctk.CTkFrame):
     # ── Modo edición ──────────────────────────────────────────────────────────
 
     def _toggle_edit(self) -> None:
+        if not self._can_edit:
+            return
         self._set_edit_mode(not self._edit_mode)
 
     def _set_edit_mode(self, active: bool) -> None:
+        if not self._can_edit:
+            active = False
         self._edit_mode = active
         state = "normal" if active else "disabled"
         for w in self._field_widgets.values():

@@ -24,6 +24,13 @@ Paleta de colores (modo oscuro):
 
 import os
 import customtkinter as ctk
+from auth.session import (
+    clear_session,
+    get_current_role_label,
+    has_env_role_override,
+    initialize_session_from_env,
+    is_authenticated,
+)
 
 # ── Tema base (mismo que la pantalla física del locker) ───────────────────────
 _THEME = os.path.join(
@@ -78,8 +85,14 @@ class AdminApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self._mode = "light"
+        self._bypass_login = has_env_role_override()
 
-        self.title("Smart Locker – Super Admin")
+        if self._bypass_login:
+            initialize_session_from_env()
+        else:
+            clear_session()
+
+        self.title(f"Smart Locker – {get_current_role_label()}")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
         self.configure(fg_color=PALETTE["BG"])
@@ -91,19 +104,22 @@ class AdminApp(ctk.CTk):
         self._build_frames()
 
         from ui.admin.dashboard import DashboardScreen
-        self.show_frame(DashboardScreen)
+        from ui.admin.login_screen import LoginScreen
+        self.show_frame(DashboardScreen if self._bypass_login else LoginScreen)
 
     # ── Construcción / reconstrucción de pantallas ────────────────────────────
 
     def _build_frames(self) -> None:
         """Instancia todas las pantallas y las apila en la cuadrícula."""
         from ui.admin.dashboard       import DashboardScreen
+        from ui.admin.login_screen    import LoginScreen
         from ui.admin.users_catalog   import UsersCatalogScreen
         from ui.admin.lockers_catalog import LockersCatalogScreen
         from ui.admin.areas_catalog   import AreasCatalogScreen
         from ui.admin.register_user   import RegisterUserScreen
 
         for FrameClass in (
+            LoginScreen,
             DashboardScreen,
             UsersCatalogScreen,
             LockersCatalogScreen,
@@ -134,14 +150,24 @@ class AdminApp(ctk.CTk):
             frame.destroy()
         self._frames.clear()
         self.configure(fg_color=PALETTE["BG"])
+        self.title(f"Smart Locker – {get_current_role_label()}")
         self._build_frames()
         from ui.admin.dashboard import DashboardScreen
         self.show_frame(DashboardScreen)
+
+    def on_login_success(self) -> None:
+        """Se invoca cuando LoginScreen autentica al usuario en BD."""
+        self._rebuild_frames()
 
     # ── Navegación ────────────────────────────────────────────────────────────
 
     def show_frame(self, frame_class: type, **kwargs) -> None:
         """Trae al frente la pantalla indicada. Llama on_hide / on_show."""
+        from ui.admin.login_screen import LoginScreen
+
+        if frame_class is not LoginScreen and not is_authenticated():
+            frame_class = LoginScreen
+
         for frame in self._frames.values():
             if frame.winfo_ismapped():
                 if hasattr(frame, "on_hide"):

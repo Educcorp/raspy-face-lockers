@@ -96,8 +96,18 @@ class LockersCatalogScreen(ctk.CTkFrame):
 
     def _make_row(self, r: dict) -> None:
         badge_text, badge_color = _estado_badge(r.get("estado", ""))
+        
+        # Determinar si está inactivo
+        estado = r.get("estado", "")
+        is_inactive = estado in ["inactivo", "mantenimiento"]
+        
+        # Color de fondo para estado inactivo
+        row_bg = "#e8e8e8" if is_inactive else PALETTE["CARD"]
+        text_color = "#888888" if is_inactive else PALETTE["TEXT"]
+        number_color = "#888888" if is_inactive else PALETTE["ACCENT"]
+        subtitle_color = "#999999" if is_inactive else PALETTE["MUTED"]
 
-        row_frame = ctk.CTkFrame(self._list_frame, fg_color=PALETTE["CARD"],
+        row_frame = ctk.CTkFrame(self._list_frame, fg_color=row_bg,
                                  corner_radius=12, border_width=1,
                                  border_color=PALETTE["BORDER"], cursor="hand2")
         row_frame.pack(fill="x", padx=4, pady=4)
@@ -108,17 +118,21 @@ class LockersCatalogScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(inner, text=f"#  {r['idLocker']}",
                      font=ctk.CTkFont(size=20, weight="bold"),
-                     text_color=PALETTE["ACCENT"], fg_color="transparent",
+                     text_color=number_color, fg_color="transparent",
                      ).grid(row=0, column=0, rowspan=2, padx=(0, 14))
 
-        ctk.CTkLabel(inner, text=f"Área: {r.get('area', '—')}",
+        # Área + indicador inactivo
+        area_text = f"Área: {r.get('area', '—')}"
+        if is_inactive:
+            area_text += " [INACTIVO]"
+        ctk.CTkLabel(inner, text=area_text,
                      font=ctk.CTkFont(size=15, weight="bold"),
-                     text_color=PALETTE["TEXT"], fg_color="transparent",
+                     text_color=text_color, fg_color="transparent",
                      anchor="w").grid(row=0, column=1, sticky="ew")
 
         ctk.CTkLabel(inner, text=f"{r.get('unidad', '—')}",
                      font=ctk.CTkFont(size=12),
-                     text_color=PALETTE["MUTED"], fg_color="transparent",
+                     text_color=subtitle_color, fg_color="transparent",
                      anchor="w").grid(row=1, column=1, sticky="ew")
 
         ctk.CTkLabel(inner, text=badge_text,

@@ -19,8 +19,17 @@ from ui.admin_app import PALETTE
 
 def _catalog_row(parent, primary_text: str, sub_text: str,
                  on_click, estado: str = "activo") -> ctk.CTkFrame:
+    # Determinar si está inactivo
+    is_inactive = estado != "activo"
+    
+    # Colores para estado inactivo
     dot_color = "#27ae60" if estado == "activo" else PALETTE["MUTED"]
-    row_frame = ctk.CTkFrame(parent, fg_color=PALETTE["CARD"], corner_radius=12,
+    row_bg = "#e8e8e8" if is_inactive else PALETTE["CARD"]
+    text_color = "#888888" if is_inactive else PALETTE["TEXT"]
+    subtitle_color = "#999999" if is_inactive else PALETTE["MUTED"]
+    arrow_color = "#888888" if is_inactive else PALETTE["ACCENT"]
+    
+    row_frame = ctk.CTkFrame(parent, fg_color=row_bg, corner_radius=12,
                              border_width=1, border_color=PALETTE["BORDER"],
                              cursor="hand2")
     row_frame.pack(fill="x", padx=4, pady=4)
@@ -29,19 +38,24 @@ def _catalog_row(parent, primary_text: str, sub_text: str,
     inner.pack(fill="x", padx=14, pady=10)
     inner.grid_columnconfigure(1, weight=1)
 
-    ctk.CTkLabel(inner, text="●", font=ctk.CTkFont(size=14),
+    # Indicador de estado
+    estado_text = "⊘" if is_inactive else "●"
+    ctk.CTkLabel(inner, text=estado_text, font=ctk.CTkFont(size=14),
                  text_color=dot_color,
                  fg_color="transparent").grid(row=0, column=0, rowspan=2,
                                               padx=(0, 10))
-    ctk.CTkLabel(inner, text=primary_text,
+    
+    # Nombre + indicador inactivo
+    display_text = primary_text + (" [INACTIVO]" if is_inactive else "")
+    ctk.CTkLabel(inner, text=display_text,
                  font=ctk.CTkFont(size=15, weight="bold"),
-                 text_color=PALETTE["TEXT"], fg_color="transparent",
+                 text_color=text_color, fg_color="transparent",
                  anchor="w").grid(row=0, column=1, sticky="ew")
     ctk.CTkLabel(inner, text=sub_text, font=ctk.CTkFont(size=12),
-                 text_color=PALETTE["MUTED"], fg_color="transparent",
+                 text_color=subtitle_color, fg_color="transparent",
                  anchor="w").grid(row=1, column=1, sticky="ew")
     ctk.CTkLabel(inner, text="›", font=ctk.CTkFont(size=22),
-                 text_color=PALETTE["ACCENT"],
+                 text_color=arrow_color,
                  fg_color="transparent").grid(row=0, column=2, rowspan=2,
                                               padx=(10, 0))
 
@@ -167,6 +181,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
                 primary_text=r["nombreArea"],
                 sub_text=f"Encargado: {r.get('encargado', '—') or '—'}  ·  ID {r['idArea']}",
                 on_click=lambda row=r: AreaFormOverlay(self, row, on_close=self._load),
+                estado=r.get("estado", "activo"),
             )
 
     # ── Unidades académicas ───────────────────────────────────────────────────
@@ -318,6 +333,10 @@ class AreaFormOverlay(_BaseFormOverlay):
                          on_close=on_close)
         self._row = row
         self.e_nombre = self._field("Nombre del área")
+        self._estado_var = tk.StringVar(
+            value=row.get("estado", "activo") if row else "activo"
+        )
+        self._selector("Estado", self._estado_var, ["activo", "inactivo"])
         if is_edit:
             self.e_nombre.insert(0, row.get("nombreArea", ""))
         self._save_btn(self._save)
@@ -330,34 +349,26 @@ class AreaFormOverlay(_BaseFormOverlay):
             return
         if self._row:
             execute(
-                "UPDATE area_lockers SET nombreArea=?, "
+                "UPDATE area_lockers SET nombreArea=?, estado=?, "
                 "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
                 "modificadoPor=1 WHERE idArea=?",
-                (nombre, self._row["idArea"])
+                (nombre, self._estado_var.get(), self._row["idArea"])
             )
         else:
             execute(
-                "INSERT INTO area_lockers (nombreArea, creadoPor) VALUES (?, 1)",
-                (nombre,)
+                "INSERT INTO area_lockers (nombreArea, estado, creadoPor) VALUES (?, ?, 1)",
+                (nombre, self._estado_var.get())
             )
         self._close()
 
     def _disable(self) -> None:
-        # Las áreas no tienen campo estado en el schema; solo borramos si no tiene lockers
-        n = fetch_one(
-            "SELECT COUNT(*) AS c FROM lockers WHERE idArea=?",
+        # Cambiar estado a inactivo en lugar de borrar
+        execute(
+            "UPDATE area_lockers SET estado='inactivo', "
+            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+            "modificadoPor=1 WHERE idArea=?",
             (self._row["idArea"],)
         )
-        if n and n["c"] > 0:
-            # Mostrar aviso simple
-            ctk.CTkLabel(self.scroll,
-                         text="(!) Hay lockers asociados, no se puede eliminar.",
-                         font=ctk.CTkFont(size=13),
-                         text_color=PALETTE["DANGER"],
-                         fg_color="transparent").pack()
-            return
-        execute("DELETE FROM area_lockers WHERE idArea=?",
-                (self._row["idArea"],))
         self._close()
 
 

@@ -124,9 +124,16 @@ class UsersCatalogScreen(ctk.CTkFrame):
         if u.get("apMaterno"):
             full_name += f" {u['apMaterno']}"
 
+        # Determinar si está inactivo
+        estado = u.get("estado", "activo")
+        is_inactive = estado in ["inactivo", "suspendido"]
+        
+        # Color de fondo para estado inactivo
+        row_bg = "#e8e8e8" if is_inactive else PALETTE["CARD"]
+
         row_frame = ctk.CTkFrame(
             self._list_frame,
-            fg_color=PALETTE["CARD"],
+            fg_color=row_bg,
             corner_radius=12,
             border_width=1,
             border_color=PALETTE["BORDER"],
@@ -138,18 +145,30 @@ class UsersCatalogScreen(ctk.CTkFrame):
         inner.pack(fill="x", padx=14, pady=10)
         inner.grid_columnconfigure(1, weight=1)
 
-        # Estado dot
+        # Determinar si está inactivo
+        estado = u.get("estado", "activo")
+        is_inactive = estado in ["inactivo", "suspendido"]
+        
+        # Colores para estado inactivo
+        text_color = "#888888" if is_inactive else PALETTE["TEXT"]
+        subtitle_color = "#999999" if is_inactive else PALETTE["MUTED"]
+        arrow_color = "#888888" if is_inactive else PALETTE["ACCENT"]
+
+        # Estado dot + indicador
+        estado_text = "⊘" if is_inactive else "●"
         ctk.CTkLabel(
-            inner, text="●",
+            inner, text=estado_text,
             font=ctk.CTkFont(size=14),
-            text_color=_estado_color(u.get("estado", "activo")),
+            text_color=_estado_color(estado),
             fg_color="transparent",
         ).grid(row=0, column=0, rowspan=2, padx=(0, 10))
 
+        # Nombre + indicador inactivo
+        name_text = full_name + (" [INACTIVO]" if is_inactive else "")
         ctk.CTkLabel(
-            inner, text=full_name,
+            inner, text=name_text,
             font=ctk.CTkFont(size=15, weight="bold"),
-            text_color=PALETTE["TEXT"], fg_color="transparent",
+            text_color=text_color, fg_color="transparent",
             anchor="w",
         ).grid(row=0, column=1, sticky="ew")
 
@@ -157,7 +176,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
             inner,
             text=f"Matr. {u.get('matricula', '—')}  ·  {u.get('tipo', 'N/A')}  ·  {u.get('estado', '')}",
             font=ctk.CTkFont(size=12),
-            text_color=PALETTE["MUTED"], fg_color="transparent",
+            text_color=subtitle_color, fg_color="transparent",
             anchor="w",
         ).grid(row=1, column=1, sticky="ew")
 
@@ -165,7 +184,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
         ctk.CTkLabel(
             inner, text="›",
             font=ctk.CTkFont(size=22),
-            text_color=PALETTE["ACCENT"], fg_color="transparent",
+            text_color=arrow_color, fg_color="transparent",
         ).grid(row=0, column=2, rowspan=2, padx=(10, 0))
 
         # Bind táctil

@@ -13,6 +13,9 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Garantiza que exista el directorio de logs antes de crear FileHandler.
+os.makedirs('logs', exist_ok=True)
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,

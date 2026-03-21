@@ -12,7 +12,6 @@ El embedding dlib es más pesado (~200 ms) pero muy preciso.
 """
 
 import cv2
-import dlib
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
@@ -27,6 +26,41 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _import_dlib_from_system():
+    """
+    Intenta importar dlib desde el entorno actual o desde site-packages del sistema.
+    """
+    try:
+        import dlib as _dlib
+        logger.info("✓ dlib importado desde venv")
+        return _dlib
+    except ImportError:
+        pass
+
+    system_paths = [
+        "/usr/lib/python3/dist-packages",
+        "/usr/local/lib/python3/dist-packages",
+        "/usr/lib/python3.13/dist-packages",
+    ]
+
+    for sitedir in system_paths:
+        if sitedir not in sys.path:
+            sys.path.insert(0, sitedir)
+
+    try:
+        import dlib as _dlib
+        logger.info("✓ dlib importado desde site-packages del sistema")
+        return _dlib
+    except ImportError as e:
+        logger.error("✗ No se pudo importar dlib ni del venv ni del sistema")
+        logger.debug(f"  Error: {e}")
+        return None
+
+
+dlib = _import_dlib_from_system()
+DLIB_AVAILABLE = dlib is not None
 
 
 # ── Helper: Importar picamera2 desde el sistema ─────────────────────────────
@@ -82,7 +116,7 @@ class FaceDetector:
     """
 
     def __init__(self):
-        self._hog_detector = dlib.get_frontal_face_detector()
+        self._hog_detector = dlib.get_frontal_face_detector() if DLIB_AVAILABLE else None
         self._haar_cascade = None
         try:
             self._haar_cascade = cv2.CascadeClassifier(
@@ -92,7 +126,10 @@ class FaceDetector:
                 self._haar_cascade = None
         except Exception:
             pass
-        logger.info("✓ FaceDetector inicializado (dlib HOG + Haar fallback)")
+        if self._hog_detector is not None:
+            logger.info("✓ FaceDetector inicializado (dlib HOG + Haar fallback)")
+        else:
+            logger.warning("⚠ FaceDetector inicializado sin dlib (solo Haar fallback)")
 
     def detect(self, frame: np.ndarray) -> List[Dict]:
         """Detecta rostros en un frame BGR. Retorna lista de dicts con 'box'."""
@@ -103,6 +140,8 @@ class FaceDetector:
 
     def _detect_hog(self, frame: np.ndarray) -> List[Dict]:
         """Detector HOG de dlib – rápido y preciso para caras frontales."""
+        if self._hog_detector is None:
+            return []
         try:
             # dlib necesita RGB
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -167,6 +206,10 @@ class FaceEmbeddingExtractor:
         self._load_models()
 
     def _load_models(self) -> None:
+        if not DLIB_AVAILABLE:
+            logger.error("dlib no disponible; embeddings faciales deshabilitados")
+            return
+
         sp_path = Path(FACE_RECOGNITION_CONFIG["shape_predictor"])
         rec_path = Path(FACE_RECOGNITION_CONFIG["face_rec_model"])
 

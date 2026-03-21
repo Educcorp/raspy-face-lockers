@@ -5,6 +5,18 @@ from typing import Optional
 from database.connection import execute, fetch_one
 
 
+_ALLOWED_ACCESS_REASONS = {"facial", "pin", "sin_asignacion", "limite_intentos"}
+
+
+def _normalize_access_reason(reason: str, access_allowed: bool) -> str:
+	reason_clean = (reason or "").strip().lower()
+	if reason_clean in _ALLOWED_ACCESS_REASONS:
+		return reason_clean
+	if access_allowed:
+		return "facial"
+	return "limite_intentos"
+
+
 def get_active_locker_assignment(user_id: int) -> Optional[dict]:
 	return fetch_one(
 		"""
@@ -27,6 +39,7 @@ def get_active_locker_assignment(user_id: int) -> Optional[dict]:
 
 def register_access_attempt(id_locker_asignado: Optional[int], access_allowed: bool, reason: str) -> int:
 	allowed = "si" if access_allowed else "no"
+	normalized_reason = _normalize_access_reason(reason, access_allowed)
 	return execute(
 		"""
 		INSERT INTO historial_accesos
@@ -34,7 +47,7 @@ def register_access_attempt(id_locker_asignado: Optional[int], access_allowed: b
 		VALUES
 			(?, ?, ?, strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime', '+1 minute'))
 		""",
-		(id_locker_asignado, allowed, reason),
+		(id_locker_asignado, allowed, normalized_reason),
 	)
 
 

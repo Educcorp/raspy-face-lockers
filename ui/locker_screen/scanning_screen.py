@@ -56,7 +56,9 @@ class ScanningScreen(ctk.CTkFrame):
         self._attempts  = 0
         self._face_detected = False
         self._success_shown = False
+        self._recognition_in_flight = False
         self._return_job = None
+        self._deny_job = None
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
@@ -171,20 +173,6 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
-        # ── Botón DEV simular éxito (solo desarrollo) ────────────────────
-        self.btn_dev = ctk.CTkButton(
-            self,
-            text="✓ Simular",
-            font=ctk.CTkFont(size=14),
-            fg_color="#2A3A2A",
-            hover_color="#3A4A3A",
-            text_color="#A5D6A7",
-            width=100, height=40,
-            corner_radius=20,
-            command=self._dev_simulate_success,
-        )
-        self.btn_dev.place(x=400, rely=0.94, anchor="center")
-
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
         self.success_frame = ctk.CTkFrame(
             self,
@@ -287,10 +275,12 @@ class ScanningScreen(ctk.CTkFrame):
 
                 if (
                     not self._success_shown
+                    and not self._recognition_in_flight
                     and self._face_detected
                     and (frame_count - self._last_recognition_frame) >= self.RECOGNITION_INTERVAL_FRAMES
                 ):
                     self._last_recognition_frame = frame_count
+                    self._recognition_in_flight = True
                     try:
                         face_box = faces[0].get("box")
                         match = recognize_user_from_face(self.face_manager, frame, face_box)
@@ -298,6 +288,7 @@ class ScanningScreen(ctk.CTkFrame):
                         if match:
                             payload = build_access_payload(match)
                             payload["fecha"] = datetime.now().strftime("%d/%m/%Y  %H:%M")
+                            self._success_shown = True
                             self.after(0, self.on_face_match, payload)
                         else:
                             register_access_attempt(None, False, "rostro no reconocido")
@@ -425,7 +416,6 @@ class ScanningScreen(ctk.CTkFrame):
         
         # Asegurarse de que los botones estén visibles
         self.btn_back.place(x=80, rely=0.94, anchor="center")
-        self.btn_dev.place_forget()  # Ocultar botón de simulación en caso de error
 
 
     def _set_camera_image(self) -> None:
@@ -457,13 +447,17 @@ class ScanningScreen(ctk.CTkFrame):
         """Inicia captura de vídeo cuando la pantalla se activa."""
         self._attempts = 0
         self._success_shown = False
+        self._recognition_in_flight = False
         self._user_data = None
         self._last_recognition_frame = 0
         self.lbl_status.configure(text="Iniciando cámara…", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.success_frame.place_forget()
         self.btn_back.place(x=80, rely=0.94, anchor="center")
-        self.btn_dev.place(x=400, rely=0.94, anchor="center")
+
+        if self._deny_job:
+            self.after_cancel(self._deny_job)
+            self._deny_job = None
 
         if not self._camera_running:
             self._camera_running = True
@@ -481,48 +475,45 @@ class ScanningScreen(ctk.CTkFrame):
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None
+        if self._deny_job:
+            self.after_cancel(self._deny_job)
+            self._deny_job = None
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
-        """Muestra el overlay verde de éxito con los datos del usuario."""
+        """Muestra la pantalla de acceso concedido con datos reales del usuario."""
         self._success_shown = True
         self._user_data = user_data
 
-        self.lbl_status.configure(text="✓ Escaneo exitoso", text_color="#A5D6A7")
-        self.lbl_attempts.configure(text="")
+        if self._deny_job:
+            self.after_cancel(self._deny_job)
+            self._deny_job = None
 
-        self.lbl_success_title.configure(
-            text=user_data.get("acceso_titulo", "Escaneo exitoso")
+        from ui.locker_screen.user_display import UserDisplayScreen
+        screen: UserDisplayScreen = self.controller._frames[UserDisplayScreen]
+        screen.load_user(user_data)
+        self.controller.show_frame(UserDisplayScreen)
+
+        logger.info(
+            "Acceso concedido: user_id=%s, locker=%s",
+            user_data.get("user_id"),
+            user_data.get("locker_numero"),
         )
-
-        # Llenar datos en el overlay
-        self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
-        locker_numero = user_data.get("locker_numero", "—")
-        if locker_numero == "SIN ASIGNAR":
-            self.lbl_success_locker.configure(
-                text="Acceso garantizado — sin casillero asignado"
-            )
-        else:
-            self.lbl_success_locker.configure(text=f"Casillero  {locker_numero}")
-        self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
-
-        # Mostrar overlay verde
-        self.success_frame.place(relx=0.5, rely=0.75, anchor="center")
-        self.btn_back.place_forget()
-        self.btn_dev.place_forget()
-
-        # Iniciar countdown
-        self._start_countdown(self.DISPLAY_SECONDS)
 
     def on_face_no_match(self) -> None:
         """Llamado cuando no hay match."""
+        self._recognition_in_flight = False
+
+        if self._success_shown:
+            return
+
         self._attempts += 1
         self.lbl_attempts.configure(
             text=f"Intentos: {self._attempts} / {self.MAX_ATTEMPTS}"
         )
         if self._attempts >= self.MAX_ATTEMPTS:
             self.lbl_status.configure(text="✗ Acceso denegado", text_color="#EF9A9A")
-            self.after(2500, self._go_standby)
+            self._deny_job = self.after(2500, self._go_standby)
         else:
             self.lbl_status.configure(
                 text=f"Rostro no reconocido ({self._attempts}/{self.MAX_ATTEMPTS})",
@@ -545,14 +536,6 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Métodos internos ──────────────────────────────────────────────────────
 
     def _go_standby(self) -> None:
+        self._deny_job = None
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
-
-    def _dev_simulate_success(self) -> None:
-        """Solo para desarrollo: simula un acceso exitoso."""
-        dummy_user = {
-            "nombre":        "Juan Pérez López",
-            "locker_numero": 3,
-            "fecha":         datetime.now().strftime("%d/%m/%Y  %H:%M"),
-        }
-        self.on_face_match(dummy_user)

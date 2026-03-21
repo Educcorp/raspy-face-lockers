@@ -54,7 +54,6 @@ def test_picamera2():
         # Crear instancia
         cam = Picamera2(0)
         logger.info("✓ Picamera2(0) creado")
-        
         # Configurar
         config = cam.create_preview_configuration(
             main={

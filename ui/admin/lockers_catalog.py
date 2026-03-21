@@ -197,6 +197,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self.locker_id = locker_id
         self._on_close = on_close
         self._can_edit = can_edit_catalogs()
+        self._users: list[dict] = []
+        self._assign_user_var = tk.StringVar(value="Sin usuarios")
         self.place(x=0, y=0, relwidth=1, relheight=1)
         self.lift()
         self._build_ui()
@@ -266,6 +268,53 @@ class LockerDetailOverlay(ctk.CTkFrame):
                                       corner_radius=8, height=42)
         self.lbl_asign.pack(fill="x", padx=4)
 
+        self.assign_user_menu = None
+        self.btn_assign_user = None
+        self.btn_unassign = None
+        if self._can_edit:
+            ctk.CTkLabel(scroll, text="Asignar usuario",
+                         font=ctk.CTkFont(size=12), text_color=PALETTE["MUTED"],
+                         fg_color="transparent").pack(anchor="w", padx=4, pady=(12, 2))
+
+            self.assign_user_menu = ctk.CTkOptionMenu(
+                scroll,
+                variable=self._assign_user_var,
+                values=["Sin usuarios"],
+                fg_color=PALETTE["CARD"],
+                button_color=PALETTE["ACCENT"],
+                button_hover_color=PALETTE["ACCENT_HOVER"],
+                text_color=PALETTE["TEXT"],
+                font=ctk.CTkFont(size=14),
+                height=44,
+            )
+            self.assign_user_menu.pack(fill="x", padx=4)
+
+            self.btn_assign_user = ctk.CTkButton(
+                scroll,
+                text="Guardar asignación",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                fg_color=PALETTE["ACCENT"],
+                hover_color=PALETTE["ACCENT_HOVER"],
+                text_color=PALETTE["WHITE"],
+                height=46,
+                corner_radius=12,
+                command=self._assign_selected_user,
+            )
+            self.btn_assign_user.pack(fill="x", padx=4, pady=(10, 6))
+
+            self.btn_unassign = ctk.CTkButton(
+                scroll,
+                text="Quitar asignación",
+                font=ctk.CTkFont(size=15, weight="bold"),
+                fg_color=PALETTE["DANGER"],
+                hover_color="#922b21",
+                text_color=PALETTE["WHITE"],
+                height=46,
+                corner_radius=12,
+                command=self._clear_assignment,
+            )
+            self.btn_unassign.pack(fill="x", padx=4, pady=(0, 8))
+
         # Botones (mismo patrón visual que panel de Área)
         self.btn_toggle = None
         if self._can_edit:
@@ -315,17 +364,98 @@ class LockerDetailOverlay(ctk.CTkFrame):
             self._refresh_toggle_button()
 
         asign = fetch_one("""
-            SELECT u.nombre || ' ' || u.apPaterno AS usuario,
-                   al.estado AS asignEstado
+            SELECT u.idUsuario,
+                   u.nombre || ' ' || u.apPaterno AS usuario,
+                   al.estado AS asignEstado,
+                   al.idLockerAsignado
             FROM asignacion_locker al
             JOIN usuarios u ON u.idUsuario = al.idUsuario
             WHERE al.idLocker=? AND al.estado='activo'
+            ORDER BY al.idLockerAsignado DESC
+            LIMIT 1
         """, (self.locker_id,))
+
+        self._users = fetch_all(
+            """
+            SELECT idUsuario, nombre, apPaterno, matricula
+            FROM usuarios
+            WHERE estado='activo'
+            ORDER BY nombre, apPaterno
+            """
+        )
+
+        if self.assign_user_menu is not None:
+            user_values = [
+                f"{u['idUsuario']} · {u['nombre']} {u['apPaterno']} ({u['matricula']})"
+                for u in self._users
+            ]
+            if not user_values:
+                user_values = ["Sin usuarios"]
+
+            self.assign_user_menu.configure(values=user_values)
+            self._assign_user_var.set(user_values[0])
+
         if asign:
             self.lbl_asign.configure(
                 text=f"[OK] {asign['usuario']}  ({asign['asignEstado']})")
+            if self.assign_user_menu is not None:
+                selected = next(
+                    (
+                        f"{u['idUsuario']} · {u['nombre']} {u['apPaterno']} ({u['matricula']})"
+                        for u in self._users
+                        if int(u["idUsuario"]) == int(asign["idUsuario"])
+                    ),
+                    self._assign_user_var.get(),
+                )
+                self._assign_user_var.set(selected)
         else:
             self.lbl_asign.configure(text="Sin asignación activa")
+
+    def _extract_user_id(self, label: str) -> int | None:
+        if not label:
+            return None
+        token = label.split("·", 1)[0].strip()
+        try:
+            return int(token)
+        except ValueError:
+            return None
+
+    def _assign_selected_user(self) -> None:
+        if not self._can_edit:
+            return
+        user_id = self._extract_user_id(self._assign_user_var.get())
+        if user_id is None:
+            return
+
+        execute(
+            """
+            UPDATE asignacion_locker
+            SET estado='inactivo', fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1
+            WHERE estado='activo' AND (idLocker=? OR idUsuario=?)
+            """,
+            (self.locker_id, user_id),
+        )
+        execute(
+            """
+            INSERT INTO asignacion_locker (idUsuario, idLocker, disponible, estado, creadoPor)
+            VALUES (?, ?, 'no', 'activo', 1)
+            """,
+            (user_id, self.locker_id),
+        )
+        self._load()
+
+    def _clear_assignment(self) -> None:
+        if not self._can_edit:
+            return
+        execute(
+            """
+            UPDATE asignacion_locker
+            SET estado='inactivo', disponible='si', fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1
+            WHERE idLocker=? AND estado='activo'
+            """,
+            (self.locker_id,),
+        )
+        self._load()
 
     def _save(self) -> None:
         if not self._can_edit:

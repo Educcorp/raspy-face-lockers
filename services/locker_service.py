@@ -44,8 +44,8 @@ def build_access_payload(user_match: dict) -> dict:
 	if assignment:
 		locker_numero = assignment.get("idLocker")
 		id_locker_asignado = assignment.get("idLockerAsignado")
-		access_title = "Acceso garantizado"
-		access_reason = "rostro reconocido y locker asignado"
+		access_title = f"Acceso garantizado · Locker {locker_numero}"
+		access_reason = f"rostro reconocido y locker asignado {locker_numero}"
 	else:
 		locker_numero = "SIN ASIGNAR"
 		id_locker_asignado = None

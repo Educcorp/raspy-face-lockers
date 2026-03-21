@@ -539,7 +539,7 @@ class ScanningScreen(ctk.CTkFrame):
             self._go_standby()
             return
 
-        self.lbl_countdown.configure(text=f"Volviendo al inicio en {seconds} s…")
+        self.lbl_countdown.configure(text=f"Redirigiendo al inicio en {seconds} s…")
         self._return_job = self.after(1000, self._start_countdown, seconds - 1)
 
     # ── Métodos internos ──────────────────────────────────────────────────────

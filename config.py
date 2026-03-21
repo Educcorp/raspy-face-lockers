@@ -38,10 +38,10 @@ FACE_DETECTION_CONFIG = {
 
 # ── Face Recognition / Embeddings ──────────────────────────────────────────
 FACE_RECOGNITION_CONFIG = {
-    "model_type": "dlib",
+    "model_type": "hog_cv2",       # dlib | hog_cv2 (fallback sin dlib)
     "embedding_size": 128,
-    "distance_threshold": 0.6,  # para considerarse el mismo rostro
-    # dlib models
+    "distance_threshold": 0.35,    # HOG usa distancias euclidianas más pequeñas que dlib
+    # Rutas dlib (usadas automáticamente si dlib está instalado)
     "shape_predictor": str(MODELS_DIR / "shape_predictor_68_face_landmarks.dat"),
     "face_rec_model": str(MODELS_DIR / "dlib_face_recognition_resnet_model_v1.dat"),
 }

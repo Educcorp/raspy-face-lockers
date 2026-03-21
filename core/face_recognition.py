@@ -62,6 +62,10 @@ def _import_dlib_from_system():
 dlib = _import_dlib_from_system()
 DLIB_AVAILABLE = dlib is not None
 
+if not DLIB_AVAILABLE:
+    logger.warning("dlib no disponible: usando Haar cascade para detección")
+    logger.warning("dlib no está instalado; embeddings faciales SERÁN manejados por backend HOG (cv2)")
+
 
 # ── Helper: Importar picamera2 desde el sistema ─────────────────────────────
 
@@ -185,52 +189,102 @@ class FaceDetector:
             return []
 
 
-# ── Face Embedding Extractor (dlib) ──────────────────────────────────────────
+# ── Face Embedding Extractor ─────────────────────────────────────────────────
 
 class FaceEmbeddingExtractor:
     """
-    Extrae embeddings faciales de 128 dimensiones usando dlib.
+    Extrae embeddings faciales de 128 dimensiones.
 
-    Pipeline:
-      frame (BGR) → convertir a RGB → alinear con shape_predictor_68
-      → face_recognition_resnet_model_v1 → vector float64[128]
+    Backend primario: dlib face_recognition_resnet_model_v1 (si dlib está instalado).
+    Backend fallback: HOG descriptor cv2+numpy (128-dim normalizado).
 
-    Se normaliza a norma unitaria para que la distancia euclidiana
-    coincida con la distancia coseno.
+    Ambos backends producen vectores float32 normalizados a norma unitaria,
+    de forma que la distancia euclidiana es comparable entre sesiones
+    siempre que se use el mismo backend.
     """
 
+    # HOG params  (64×64 px crop, celdas 8×8, bloque 16×16, 9 bins)
+    _HOG_WIN   = (64, 64)
+    _HOG_BLOCK = (16, 16)
+    _HOG_STEP  = (8, 8)
+    _HOG_CELL  = (8, 8)
+    _HOG_BINS  = 9
+    # Total HOG dims = 1764 → tomamos los 128 primeros después de normalizar
+    HOG_EMB_SIZE = 128
+
     def __init__(self):
-        self.shape_predictor: Optional[dlib.shape_predictor] = None
-        self.face_rec_model = None
+        self._use_dlib = False
+        self._shape_predictor = None
+        self._face_rec_model  = None
         self._loaded = False
+        self._hog = cv2.HOGDescriptor(
+            self._HOG_WIN,
+            self._HOG_BLOCK,
+            self._HOG_STEP,
+            self._HOG_CELL,
+            self._HOG_BINS,
+        )
         self._load_models()
 
     def _load_models(self) -> None:
-        if not DLIB_AVAILABLE:
-            logger.error("dlib no disponible; embeddings faciales deshabilitados")
-            return
+        """Intenta cargar los modelos dlib. Si no es posible, usa backend HOG."""
+        if DLIB_AVAILABLE:
+            sp_path  = Path(FACE_RECOGNITION_CONFIG["shape_predictor"])
+            rec_path = Path(FACE_RECOGNITION_CONFIG["face_rec_model"])
 
-        sp_path = Path(FACE_RECOGNITION_CONFIG["shape_predictor"])
-        rec_path = Path(FACE_RECOGNITION_CONFIG["face_rec_model"])
+            if sp_path.exists() and rec_path.exists():
+                try:
+                    self._shape_predictor = dlib.shape_predictor(str(sp_path))
+                    self._face_rec_model  = dlib.face_recognition_model_v1(str(rec_path))
+                    self._use_dlib = True
+                    self._loaded   = True
+                    logger.info("✓ Backend dlib cargado (shape_predictor + face_recognition_model)")
+                    return
+                except Exception as e:
+                    logger.error(f"Error cargando modelos dlib: {e}")
+            else:
+                logger.warning("Modelos dlib (.dat) no encontrados en assets/models/")
 
-        if not sp_path.exists():
-            logger.error(f"shape_predictor no encontrado: {sp_path}")
-            return
-        if not rec_path.exists():
-            logger.error(f"face_rec_model no encontrado: {rec_path}")
-            return
-
-        try:
-            self.shape_predictor = dlib.shape_predictor(str(sp_path))
-            self.face_rec_model = dlib.face_recognition_model_v1(str(rec_path))
-            self._loaded = True
-            logger.info("✓ dlib shape_predictor + face_recognition_model cargados")
-        except Exception as e:
-            logger.error(f"Error cargando modelos dlib: {e}")
+        # Fallback: HOG (siempre disponible con cv2)
+        self._use_dlib = False
+        self._loaded   = True
+        logger.info("✓ Backend HOG (cv2) activo como extractor de embeddings")
 
     @property
     def is_ready(self) -> bool:
         return self._loaded
+
+    # ── Embedding HOG ─────────────────────────────────────────────────────────
+
+    def _hog_embedding(self, face_crop_gray: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Calcula un embedding de 128-dim a partir de un recorte facial en escala de grises
+        usando HOG. El vector se normaliza a norma unitaria.
+        """
+        try:
+            # Redimensionar a tamaño fijo
+            face_resized = cv2.resize(face_crop_gray, self._HOG_WIN,
+                                      interpolation=cv2.INTER_LINEAR)
+            # HOG necesita imagen de 3 canales
+            face_bgr = cv2.cvtColor(face_resized, cv2.COLOR_GRAY2BGR)
+            descriptor = self._hog.compute(face_bgr)          # shape: (1764,)
+            vec = descriptor.flatten().astype(np.float32)
+
+            # Reducir a 128 dim con suma-de-bloques (bin aggregation)
+            # 1764 dims → agrupar en 128 bins de 13~14 valores cada uno
+            split = np.array_split(vec, self.HOG_EMB_SIZE)
+            compact = np.array([chunk.mean() for chunk in split], dtype=np.float32)
+
+            # Normalizar a norma unitaria
+            norm = np.linalg.norm(compact)
+            if norm > 1e-6:
+                compact = compact / norm
+            return compact
+        except Exception as e:
+            logger.warning(f"HOG embedding error: {e}")
+            return None
+
+    # ── API pública ───────────────────────────────────────────────────────────
 
     def get_embedding(self, frame_bgr: np.ndarray,
                       face_box: tuple) -> Optional[np.ndarray]:
@@ -238,47 +292,45 @@ class FaceEmbeddingExtractor:
         Extrae un embedding 128-dim de un rostro detectado.
 
         Args:
-            frame_bgr: frame completo en BGR (tal como sale de picamera2 RGB888).
-            face_box: tupla (x, y, w, h) del bounding box del rostro.
+            frame_bgr: frame completo en BGR.
+            face_box:  tupla (x, y, w, h) del bounding box del rostro.
 
         Returns:
             np.ndarray float32[128] normalizado, o None si falla.
         """
-        if not self._loaded:
-            return None
-
         try:
             x, y, w, h = [int(v) for v in face_box[:4]]
             img_h, img_w = frame_bgr.shape[:2]
 
-            # Expandir un poco el box para dar contexto al shape_predictor
-            pad = int(max(w, h) * 0.15)
+            # Expandir bounding box un 20% para dar contexto
+            pad = int(max(w, h) * 0.20)
             x1 = max(0, x - pad)
             y1 = max(0, y - pad)
             x2 = min(img_w, x + w + pad)
             y2 = min(img_h, y + h + pad)
 
-            # dlib necesita RGB
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-            # Construir dlib rectangle
-            rect = dlib.rectangle(x1, y1, x2, y2)
-
-            # Extraer landmarks (68 puntos)
-            shape = self.shape_predictor(frame_rgb, rect)
-
-            # Calcular embedding 128-dim
-            face_descriptor = self.face_rec_model.compute_face_descriptor(
-                frame_rgb, shape
-            )
-            vec = np.array(face_descriptor, dtype=np.float32)
-
-            # Normalizar a norma unitaria
-            norm = np.linalg.norm(vec)
-            if norm > 0:
-                vec = vec / norm
-
-            return vec
+            if self._use_dlib:
+                # ── Backend dlib ──
+                frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+                rect = dlib.rectangle(x1, y1, x2, y2)
+                shape = self._shape_predictor(frame_rgb, rect)
+                descriptor = self._face_rec_model.compute_face_descriptor(
+                    frame_rgb, shape
+                )
+                vec = np.array(descriptor, dtype=np.float32)
+                norm = np.linalg.norm(vec)
+                if norm > 1e-6:
+                    vec = vec / norm
+                return vec
+            else:
+                # ── Backend HOG ──
+                crop = frame_bgr[y1:y2, x1:x2]
+                if crop.size == 0:
+                    return None
+                gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+                # Ecualización de histograma para invariancia a iluminación
+                gray = cv2.equalizeHist(gray)
+                return self._hog_embedding(gray)
 
         except Exception as e:
             logger.warning(f"Error extrayendo embedding: {e}")
@@ -287,29 +339,21 @@ class FaceEmbeddingExtractor:
     def get_landmarks(self, frame_bgr: np.ndarray,
                       face_box: tuple) -> Optional[List[Tuple[int, int]]]:
         """
-        Extrae los 68 landmarks faciales.
-
-        Returns:
-            Lista de 68 tuplas (x, y), o None si falla.
+        Extrae los 68 landmarks faciales (solo disponible con backend dlib).
+        Con HOG retorna None (sin landmarks).
         """
-        if not self._loaded:
+        if not self._use_dlib:
             return None
-
         try:
             x, y, w, h = [int(v) for v in face_box[:4]]
             img_h, img_w = frame_bgr.shape[:2]
             pad = int(max(w, h) * 0.15)
-            x1 = max(0, x - pad)
-            y1 = max(0, y - pad)
-            x2 = min(img_w, x + w + pad)
-            y2 = min(img_h, y + h + pad)
-
+            x1, y1 = max(0, x - pad), max(0, y - pad)
+            x2, y2 = min(img_w, x + w + pad), min(img_h, y + h + pad)
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            rect = dlib.rectangle(x1, y1, x2, y2)
-            shape = self.shape_predictor(frame_rgb, rect)
-
+            rect  = dlib.rectangle(x1, y1, x2, y2)
+            shape = self._shape_predictor(frame_rgb, rect)
             return [(shape.part(i).x, shape.part(i).y) for i in range(68)]
-
         except Exception as e:
             logger.warning(f"Error extrayendo landmarks: {e}")
             return None

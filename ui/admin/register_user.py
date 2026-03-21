@@ -793,14 +793,16 @@ class _Step4FaceCapture(ctk.CTkFrame):
         vec_bytes = vec.tobytes()
         vec_hash = hashlib.sha256(vec_bytes).hexdigest()
         try:
+            from config import FACE_RECOGNITION_CONFIG
+            _modelo = FACE_RECOGNITION_CONFIG.get("model_type", "hog_cv2")
             execute("""
                 INSERT INTO encoding
                     (idUsuario, estado, vector, dimension, hashVector,
                      tipoParte, vectorDtype, modelo, modeloVersion)
                 VALUES (?, 'activo', ?, ?, ?, 'frontal', 'float32',
-                        'dlib_resnet_v1', '1.0')
-            """, (user_id, vec_bytes, len(vec), vec_hash))
-            logger.info(f"✓ Encoding insertado para usuario {user_id}")
+                        ?, '1.0')
+            """, (user_id, vec_bytes, len(vec), vec_hash, _modelo))
+            logger.info(f"✓ Encoding insertado para usuario {user_id} (modelo={_modelo})")
         except Exception as exc:
             logger.warning(f"Error insertando encoding (no bloquea registro): {exc}")
 

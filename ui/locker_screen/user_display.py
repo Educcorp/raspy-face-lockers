@@ -120,9 +120,17 @@ class UserDisplayScreen(ctk.CTkFrame):
         )
         self.lbl_fecha.configure(text=user_data.get("fecha", "—"))
 
-    def on_show(self) -> None:
-        """Inicia el contador regresivo al mostrar la pantalla."""
+    def on_show(self, user_data: dict | None = None, **_kwargs) -> None:
+        """Carga datos (si vienen) e inicia el contador regresivo."""
+        if user_data:
+            self.load_user(user_data)
         self._start_countdown(self.DISPLAY_SECONDS)
+
+    def on_hide(self) -> None:
+        """Cancela el countdown pendiente al salir de la pantalla."""
+        if self._return_job is not None:
+            self.after_cancel(self._return_job)
+            self._return_job = None
 
     # ── Métodos internos ──────────────────────────────────────────────────────
 
@@ -144,3 +152,4 @@ class UserDisplayScreen(ctk.CTkFrame):
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
+

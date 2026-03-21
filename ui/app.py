@@ -61,24 +61,24 @@ class LockerApp(ctk.CTk):
 
     # ── API de navegación ─────────────────────────────────────────────────────
 
-    def show_frame(self, frame_class: type) -> None:
-        """Trae al frente la pantalla indicada y llama on_show() si existe."""
+    def show_frame(self, frame_class: type, **kwargs) -> None:
+        """Trae al frente la pantalla indicada y llama on_show(**kwargs) si existe."""
         # Llamar on_hide() a la pantalla que se oculta
         for registered_class, frame in self._frames.items():
             if frame.winfo_ismapped():
                 if hasattr(frame, "on_hide"):
                     frame.on_hide()
                 break
-        
+
         # Mostrar nueva pantalla y llamar on_show()
         frame = self._frames[frame_class]
         frame.tkraise()
         if hasattr(frame, "on_show"):
-            frame.on_show()
+            frame.on_show(**kwargs)
 
     def show_user(self, user_data: dict) -> None:
         """
-        Muestra overlay de éxito en ScanningScreen con los datos del usuario.
+        Navega directamente a UserDisplayScreen pasando los datos del usuario.
 
         user_data = {
             "nombre":        str,
@@ -86,6 +86,5 @@ class LockerApp(ctk.CTk):
             "fecha":         str,   # formato legible, ej. "07/03/2026 14:32"
         }
         """
-        from ui.locker_screen.scanning_screen import ScanningScreen
-        screen: ScanningScreen = self._frames[ScanningScreen]
-        screen.on_face_match(user_data)
+        from ui.locker_screen.user_display import UserDisplayScreen
+        self.show_frame(UserDisplayScreen, user_data=user_data)

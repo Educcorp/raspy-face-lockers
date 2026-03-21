@@ -443,7 +443,7 @@ class ScanningScreen(ctk.CTkFrame):
 
     # ── API pública ───────────────────────────────────────────────────────────
 
-    def on_show(self) -> None:
+    def on_show(self, **_kwargs) -> None:
         """Inicia captura de vídeo cuando la pantalla se activa."""
         self._attempts = 0
         self._success_shown = False
@@ -467,7 +467,7 @@ class ScanningScreen(ctk.CTkFrame):
                 text="Posiciona tu rostro en la silueta", text_color="#FFFFFF"
             ))
 
-    def on_hide(self) -> None:
+    def on_hide(self, **_kwargs) -> None:
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
         if self._camera_thread:
@@ -481,7 +481,7 @@ class ScanningScreen(ctk.CTkFrame):
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
-        """Muestra la pantalla de acceso concedido con datos reales del usuario."""
+        """Navega a UserDisplayScreen pasando los datos reales del usuario."""
         self._success_shown = True
         self._user_data = user_data
 
@@ -490,9 +490,8 @@ class ScanningScreen(ctk.CTkFrame):
             self._deny_job = None
 
         from ui.locker_screen.user_display import UserDisplayScreen
-        screen: UserDisplayScreen = self.controller._frames[UserDisplayScreen]
-        screen.load_user(user_data)
-        self.controller.show_frame(UserDisplayScreen)
+        # Pasamos user_data como kwarg → on_show() lo recibe y llama load_user()
+        self.controller.show_frame(UserDisplayScreen, user_data=user_data)
 
         logger.info(
             "Acceso concedido: user_id=%s, locker=%s",

@@ -2,9 +2,9 @@
 StandbyScreen – pantalla de espera del locker físico (800×480 px).
 
 Es la primera pantalla visible. Muestra el logo/nombre del sistema
-y una instrucción para acercarse a la cámara.
-Cuando se detecta actividad (o el botón de prueba en desarrollo)
-navega a ScanningScreen vía controller.show_frame().
+y una instrucción de acercarse a la cámara.
+Después de AUTO_DELAY segundos navega automáticamente a ScanningScreen.
+Tocar cualquier parte de la pantalla también inicia el escaneo al instante.
 """
 
 import customtkinter as ctk
@@ -12,7 +12,7 @@ import customtkinter as ctk
 
 class StandbyScreen(ctk.CTkFrame):
     """
-    Pantalla de espera (modo kiosk).
+    Pantalla de espera (modo kiosk). Sin botones manuales.
 
     Parámetros
     ----------
@@ -26,10 +26,20 @@ class StandbyScreen(ctk.CTkFrame):
     TEXT_COLOR  = "#3D3D3D"   # texto oscuro legible
     MUTED       = "#8C8279"   # texto secundario cálido
 
+    AUTO_DELAY  = 3           # segundos antes de entrar a la cámara automáticamente
+
     def __init__(self, parent: ctk.CTk, controller):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
+        self._anim_job  = None
+        self._nav_job   = None
+        self._countdown = self.AUTO_DELAY
         self._build_ui()
+
+        # Tocar la pantalla arranca inmediatamente
+        self.bind("<Button-1>", lambda _: self._go_scanning())
+        for child in self.winfo_children():
+            child.bind("<Button-1>", lambda _: self._go_scanning())
 
     # ── Construcción de widgets ───────────────────────────────────────────────
 
@@ -50,6 +60,7 @@ class StandbyScreen(ctk.CTkFrame):
             fg_color="transparent",
         )
         lbl_icon.grid(row=1, column=0)
+        lbl_icon.bind("<Button-1>", lambda _: self._go_scanning())
 
         # ── Nombre del sistema ────────────────────────────────────────────────
         lbl_title = ctk.CTkLabel(
@@ -60,6 +71,7 @@ class StandbyScreen(ctk.CTkFrame):
             fg_color="transparent",
         )
         lbl_title.grid(row=2, column=0)
+        lbl_title.bind("<Button-1>", lambda _: self._go_scanning())
 
         # ── Instrucción principal ─────────────────────────────────────────────
         lbl_instruction = ctk.CTkLabel(
@@ -70,6 +82,7 @@ class StandbyScreen(ctk.CTkFrame):
             fg_color="transparent",
         )
         lbl_instruction.grid(row=3, column=0)
+        lbl_instruction.bind("<Button-1>", lambda _: self._go_scanning())
 
         # ── Indicador animado ─────────────────────────────────────────────────
         self.lbl_dot = ctk.CTkLabel(
@@ -80,29 +93,56 @@ class StandbyScreen(ctk.CTkFrame):
             fg_color="transparent",
         )
         self.lbl_dot.grid(row=4, column=0)
-        self._animate_dots()
+        self.lbl_dot.bind("<Button-1>", lambda _: self._go_scanning())
 
-        # ── Botón Iniciar escaneo ─────────────────────────────────────────
-        btn_start = ctk.CTkButton(
+        # ── Countdown de auto-inicio ──────────────────────────────────────────
+        self.lbl_countdown = ctk.CTkLabel(
             self,
-            text="Iniciar escaneo",
-            font=ctk.CTkFont(size=19, weight="bold"),
-            fg_color=self.PRIMARY,
-            hover_color="#4A7A49",
-            text_color="#FFFFFF",
-            width=300, height=56,
-            corner_radius=12,
-            command=self._go_scanning,
+            text="",
+            font=ctk.CTkFont(size=15),
+            text_color=self.MUTED,
+            fg_color="transparent",
         )
-        btn_start.grid(row=5, column=0, pady=(0, 30))
+        self.lbl_countdown.grid(row=5, column=0, pady=(0, 30))
+        self.lbl_countdown.bind("<Button-1>", lambda _: self._go_scanning())
 
     # ── Lógica ────────────────────────────────────────────────────────────────
 
-    def on_show(self) -> None:
+    def on_show(self, **_kwargs) -> None:
         """Llamado por LockerApp.show_frame() al traer esta pantalla al frente."""
+        self._countdown = self.AUTO_DELAY
         self._animate_dots()
+        self._tick_countdown()
+
+    def on_hide(self, **_kwargs) -> None:
+        """Cancela timers pendientes al salir de la pantalla."""
+        if self._anim_job is not None:
+            self.after_cancel(self._anim_job)
+            self._anim_job = None
+        if self._nav_job is not None:
+            self.after_cancel(self._nav_job)
+            self._nav_job = None
+
+    def _tick_countdown(self) -> None:
+        """Actualiza el label del countdown y navega a scanning al llegar a 0."""
+        if self._countdown > 0:
+            self.lbl_countdown.configure(
+                text=f"Iniciando escaneo en {self._countdown} s…  (toca para adelantar)"
+            )
+            self._countdown -= 1
+            self._nav_job = self.after(1000, self._tick_countdown)
+        else:
+            self.lbl_countdown.configure(text="")
+            self._go_scanning()
 
     def _go_scanning(self) -> None:
+        """Cancela timers y navega a ScanningScreen."""
+        if self._nav_job is not None:
+            self.after_cancel(self._nav_job)
+            self._nav_job = None
+        if self._anim_job is not None:
+            self.after_cancel(self._anim_job)
+            self._anim_job = None
         from ui.locker_screen.scanning_screen import ScanningScreen
         self.controller.show_frame(ScanningScreen)
 

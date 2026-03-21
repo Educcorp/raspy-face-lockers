@@ -18,6 +18,9 @@ import logging
 from typing import Optional
 from datetime import datetime
 
+from services.recognition_service import recognize_user_from_face
+from services.locker_service import build_access_payload, register_access_attempt
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +44,7 @@ class ScanningScreen(ctk.CTkFrame):
 
     MAX_ATTEMPTS    = 3
     DISPLAY_SECONDS = 8
+    RECOGNITION_INTERVAL_FRAMES = 12
 
     # Dimensiones de la ventana
     WIN_W = 480
@@ -63,6 +67,7 @@ class ScanningScreen(ctk.CTkFrame):
 
         # Datos del usuario reconocido
         self._user_data: Optional[dict] = None
+        self._last_recognition_frame = 0
 
         # Inicializar módulo de reconocimiento facial
         try:
@@ -280,6 +285,27 @@ class ScanningScreen(ctk.CTkFrame):
                 self._detected_faces = faces
                 self._face_detected = len(faces) > 0
 
+                if (
+                    not self._success_shown
+                    and self._face_detected
+                    and (frame_count - self._last_recognition_frame) >= self.RECOGNITION_INTERVAL_FRAMES
+                ):
+                    self._last_recognition_frame = frame_count
+                    try:
+                        face_box = faces[0].get("box")
+                        match = recognize_user_from_face(self.face_manager, frame, face_box)
+
+                        if match:
+                            payload = build_access_payload(match)
+                            payload["fecha"] = datetime.now().strftime("%d/%m/%Y  %H:%M")
+                            self.after(0, self.on_face_match, payload)
+                        else:
+                            register_access_attempt(None, False, "rostro no reconocido")
+                            self.after(0, self.on_face_no_match)
+                    except Exception as recog_error:
+                        logger.error(f"Error durante autenticación facial: {recog_error}")
+                        self.after(0, self.on_face_no_match)
+
                 try:
                     self._update_camera_display(frame, faces)
                 except Exception as e:
@@ -432,6 +458,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._attempts = 0
         self._success_shown = False
         self._user_data = None
+        self._last_recognition_frame = 0
         self.lbl_status.configure(text="Iniciando cámara…", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.success_frame.place_forget()
@@ -464,11 +491,19 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_status.configure(text="✓ Escaneo exitoso", text_color="#A5D6A7")
         self.lbl_attempts.configure(text="")
 
+        self.lbl_success_title.configure(
+            text=user_data.get("acceso_titulo", "Escaneo exitoso")
+        )
+
         # Llenar datos en el overlay
         self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
-        self.lbl_success_locker.configure(
-            text=f"Casillero  {user_data.get('locker_numero', '—')}"
-        )
+        locker_numero = user_data.get("locker_numero", "—")
+        if locker_numero == "SIN ASIGNAR":
+            self.lbl_success_locker.configure(
+                text="Acceso garantizado — sin casillero asignado"
+            )
+        else:
+            self.lbl_success_locker.configure(text=f"Casillero  {locker_numero}")
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
         # Mostrar overlay verde

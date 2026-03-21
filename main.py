@@ -11,14 +11,20 @@ import sys
 import os
 import logging
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+LOG_FILE = os.path.join(LOG_DIR, "locker_system.log")
+
+os.makedirs(LOG_DIR, exist_ok=True)
+
+sys.path.insert(0, BASE_DIR)
 
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
     handlers=[
-        logging.FileHandler('logs/locker_system.log', mode='a'),
+        logging.FileHandler(LOG_FILE, mode='a'),
         logging.StreamHandler(sys.stdout)
     ]
 )

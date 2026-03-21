@@ -283,18 +283,38 @@ class ScanningScreen(ctk.CTkFrame):
                     self._recognition_in_flight = True
                     try:
                         face_box = faces[0].get("box")
-                        match = recognize_user_from_face(self.face_manager, frame, face_box)
+                        logger.info(f"[RECONOCIMIENTO] Intento #{self._attempts + 1}, box={face_box}")
 
-                        if match:
-                            payload = build_access_payload(match)
-                            payload["fecha"] = datetime.now().strftime("%d/%m/%Y  %H:%M")
-                            self._success_shown = True
-                            self.after(0, self.on_face_match, payload)
-                        else:
-                            register_access_attempt(None, False, "rostro no reconocido")
+                        # Generar embedding HOG del frame actual
+                        embedding = self.face_manager.get_embedding(frame, face_box)
+                        if embedding is None:
+                            logger.warning("[RECONOCIMIENTO] Embedding None — sin extracción")
+                            self._recognition_in_flight = False
                             self.after(0, self.on_face_no_match)
+                        else:
+                            logger.info(f"[RECONOCIMIENTO] Embedding OK shape={embedding.shape} norm={float(embedding @ embedding):.3f}")
+
+                            # Buscar en base de datos
+                            from services.recognition_service import find_best_user_match
+                            match = find_best_user_match(embedding)
+                            logger.info(f"[RECONOCIMIENTO] match={match}")
+
+                            if match:
+                                payload = build_access_payload(match)
+                                payload["fecha"] = datetime.now().strftime("%d/%m/%Y  %H:%M")
+                                logger.info(f"[RECONOCIMIENTO] ✓ Acceso: {payload}")
+                                self._success_shown = True
+                                self._recognition_in_flight = False
+                                self.after(0, self.on_face_match, payload)
+                            else:
+                                logger.info("[RECONOCIMIENTO] Sin coincidencia en DB")
+                                register_access_attempt(None, False, "rostro no reconocido")
+                                self._recognition_in_flight = False
+                                self.after(0, self.on_face_no_match)
+
                     except Exception as recog_error:
-                        logger.error(f"Error durante autenticación facial: {recog_error}")
+                        logger.error(f"[RECONOCIMIENTO] Excepción: {recog_error}", exc_info=True)
+                        self._recognition_in_flight = False
                         self.after(0, self.on_face_no_match)
 
                 try:

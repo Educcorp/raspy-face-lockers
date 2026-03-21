@@ -71,13 +71,11 @@ class ScanningScreen(ctk.CTkFrame):
         self._user_data: Optional[dict] = None
         self._last_recognition_frame = 0
 
-        # Inicializar módulo de reconocimiento facial
-        try:
-            from core.face_recognition import get_face_recognition_manager
-            self.face_manager = get_face_recognition_manager()
-        except Exception as e:
-            logger.error(f"Error importando FaceRecognitionManager: {e}")
-            self.face_manager = None
+        # Inicializar backends de cámara via camera_backend
+        from core.camera_backend import Camera, HaarDetector, HOGEmbedder
+        self._cam      = Camera(width=self.WIN_W, height=self.WIN_H)
+        self._detector = HaarDetector()
+        self._embedder = HOGEmbedder()
 
         # Pre-generar la máscara de silueta
         self._silhouette_mask = self._create_silhouette_mask()
@@ -241,60 +239,61 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Captura de video en background ────────────────────────────────────────
 
     def _camera_loop(self) -> None:
-        """Thread worker que captura frames y detecta rostros."""
+        """Thread worker que captura frames, detecta rostros y reconoce."""
         import time
 
-        if not self.face_manager:
-            logger.error("FaceManager no inicializado")
-            self.after(0, self._show_camera_error, "Gestor de reconocimiento facial no disponible")
+        # Abrir cámara (picamera2 → OpenCV → sintético)
+        if not self._cam.open():
+            logger.error("✗ Cámara no disponible")
+            self.after(0, self._show_camera_error,
+                       "No se pudo abrir la cámara.")
             return
 
-        if not self.face_manager.initialized:
-            logger.warning("Intentando inicializar cámara...")
-            if not self.face_manager.initialize():
-                logger.error("✗ No se pudo inicializar cámara")
-                error_msg = "No se pudo acceder a la cámara. Verifica:\n1. Cámara conectada\n2. Permisos de acceso\n3. Configuración en raspi-config"
-                self.after(0, self._show_camera_error, error_msg)
-                return
+        if not self._cam.has_real_camera:
+            logger.warning("Sin cámara física — frame sintético activo")
+            self.after(0, self._show_camera_error,
+                       "Sin cámara conectada.\nConecta una cámara USB o CSI.")
+            # Seguimos corriendo para mostrar el frame sintético en pantalla
 
-        logger.info("✓ Camera loop iniciado correctamente")
+        logger.info("✓ Camera loop iniciado")
         frame_count = 0
 
         try:
             while self._camera_running:
-                frame, faces = self.face_manager.detect_faces_in_frame()
+                frame = self._cam.read()
 
                 if frame is None:
                     time.sleep(0.05)
                     continue
 
-                frame_count += 1
+                frame_count       += 1
                 self._camera_frame = frame
+                faces              = self._detector.detect(frame)
                 self._detected_faces = faces
-                self._face_detected = len(faces) > 0
+                self._face_detected  = len(faces) > 0
 
+                # Reconocimiento cada RECOGNITION_INTERVAL_FRAMES
                 if (
                     not self._success_shown
                     and not self._recognition_in_flight
                     and self._face_detected
-                    and (frame_count - self._last_recognition_frame) >= self.RECOGNITION_INTERVAL_FRAMES
+                    and self._cam.has_real_camera          # no reconocer en frame sintético
+                    and (frame_count - self._last_recognition_frame)
+                        >= self.RECOGNITION_INTERVAL_FRAMES
                 ):
                     self._last_recognition_frame = frame_count
-                    self._recognition_in_flight = True
+                    self._recognition_in_flight  = True
                     try:
-                        face_box = faces[0].get("box")
-                        logger.info(f"[RECONOCIMIENTO] Intento #{self._attempts + 1}, box={face_box}")
+                        face_box  = faces[0].get("box")
+                        logger.info(f"[RECONOCIMIENTO] intento {self._attempts+1} box={face_box}")
 
-                        # Generar embedding HOG del frame actual
-                        embedding = self.face_manager.get_embedding(frame, face_box)
+                        embedding = self._embedder.get_embedding(frame, face_box)
                         if embedding is None:
-                            logger.warning("[RECONOCIMIENTO] Embedding None — sin extracción")
+                            logger.warning("[RECONOCIMIENTO] embedding None")
                             self._recognition_in_flight = False
                             self.after(0, self.on_face_no_match)
                         else:
-                            logger.info(f"[RECONOCIMIENTO] Embedding OK shape={embedding.shape} norm={float(embedding @ embedding):.3f}")
-
-                            # Buscar en base de datos
+                            logger.info(f"[RECONOCIMIENTO] embedding OK norm={np.linalg.norm(embedding):.3f}")
                             from services.recognition_service import find_best_user_match
                             match = find_best_user_match(embedding)
                             logger.info(f"[RECONOCIMIENTO] match={match}")
@@ -303,17 +302,17 @@ class ScanningScreen(ctk.CTkFrame):
                                 payload = build_access_payload(match)
                                 payload["fecha"] = datetime.now().strftime("%d/%m/%Y  %H:%M")
                                 logger.info(f"[RECONOCIMIENTO] ✓ Acceso: {payload}")
-                                self._success_shown = True
+                                self._success_shown         = True
                                 self._recognition_in_flight = False
                                 self.after(0, self.on_face_match, payload)
                             else:
-                                logger.info("[RECONOCIMIENTO] Sin coincidencia en DB")
+                                logger.info("[RECONOCIMIENTO] sin coincidencia")
                                 register_access_attempt(None, False, "rostro no reconocido")
                                 self._recognition_in_flight = False
                                 self.after(0, self.on_face_no_match)
 
-                    except Exception as recog_error:
-                        logger.error(f"[RECONOCIMIENTO] Excepción: {recog_error}", exc_info=True)
+                    except Exception as recog_err:
+                        logger.error(f"[RECONOCIMIENTO] excepción: {recog_err}", exc_info=True)
                         self._recognition_in_flight = False
                         self.after(0, self.on_face_no_match)
 
@@ -331,10 +330,10 @@ class ScanningScreen(ctk.CTkFrame):
             logger.error(f"Error en camera loop: {e}")
             self.after(0, self._show_camera_error, f"Error crítico: {str(e)}")
         finally:
-            if self.face_manager:
+            if self._cam:
                 try:
-                    self.face_manager.release()
-                except:
+                    self._cam.close()
+                except Exception:
                     pass
             logger.info(f"Camera loop finalizado. Total: {frame_count}")
 

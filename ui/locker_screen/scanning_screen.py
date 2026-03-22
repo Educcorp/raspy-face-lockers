@@ -18,6 +18,8 @@ import logging
 from typing import Optional
 from datetime import datetime
 from datetime import timedelta
+from collections import deque
+import random
 
 from config import FACE_RECOGNITION_CONFIG
 from database.connection import fetch_all, execute
@@ -48,6 +50,13 @@ class ScanningScreen(ctk.CTkFrame):
     RECOGNITION_INTERVAL_FRAMES = 6
     STABLE_FACE_FRAMES = 8
     RECOGNITION_COOLDOWN_SECONDS = 2.0
+    LIVENESS_HISTORY_FRAMES = 10
+    LIVENESS_MIN_MOTION = 2.4
+    LIVENESS_MIN_BOX_SHIFT = 0.03
+    LIVENESS_CHALLENGE_TIMEOUT = 9.0
+    CHALLENGE_SHIFT_THRESHOLD = 0.16
+    CHALLENGE_SCALE_IN_THRESHOLD = 0.18
+    CHALLENGE_SCALE_OUT_THRESHOLD = -0.15
 
     # Dimensiones de la ventana
     WIN_W = 480
@@ -64,6 +73,18 @@ class ScanningScreen(ctk.CTkFrame):
         self._stable_face_frames = 0
         self._last_recognition_ts = 0.0
         self._last_seen_face_box = None
+        self._liveness_passed = False
+        self._passive_liveness_ok = False
+        self._active_liveness_ok = False
+        self._liveness_motion_score = 0.0
+        self._liveness_shift_score = 0.0
+        self._liveness_face_history = deque(maxlen=self.LIVENESS_HISTORY_FRAMES)
+        self._liveness_box_history = deque(maxlen=self.LIVENESS_HISTORY_FRAMES)
+        self._challenge_steps: list[str] = []
+        self._challenge_index = 0
+        self._challenge_started_at = 0.0
+        self._challenge_ref_box = None
+        self._blink_closed_seen = False
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
@@ -87,6 +108,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._silhouette_mask = self._create_silhouette_mask()
 
         self._build_ui()
+        self._reset_liveness_state()
 
     # ── Crear silueta de persona ──────────────────────────────────────────────
 
@@ -320,15 +342,19 @@ class ScanningScreen(ctk.CTkFrame):
                 if faces:
                     self._stable_face_frames += 1
                     self._last_seen_face_box = faces[0].get("box")
+                    if self._last_seen_face_box:
+                        self._update_liveness(frame, self._last_seen_face_box)
                 else:
                     self._stable_face_frames = 0
                     self._last_seen_face_box = None
+                    self._reset_liveness_state()
 
                 enough_frames = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
                 enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
                 cooldown_ok = (time.time() - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
+                liveness_ok = self._liveness_passed
 
-                if faces and enough_frames and enough_stability and cooldown_ok:
+                if faces and enough_frames and enough_stability and cooldown_ok and liveness_ok:
                     self._last_recognition_ts = time.time()
                     try:
                         user_data = self._recognize_current_face(frame, faces)
@@ -473,10 +499,16 @@ class ScanningScreen(ctk.CTkFrame):
                 # Actualizar texto del status según detección
                 if not self._success_shown:
                     if self._face_detected:
-                        self.lbl_status.configure(
-                            text="Rostro detectado — autenticando…",
-                            text_color="#A5D6A7",
-                        )
+                        if self._liveness_passed:
+                            self.lbl_status.configure(
+                                text="Rostro vivo detectado — autenticando…",
+                                text_color="#A5D6A7",
+                            )
+                        else:
+                            self.lbl_status.configure(
+                                text=self._challenge_prompt(),
+                                text_color="#FFD54F",
+                            )
                     else:
                         self.lbl_status.configure(
                             text="Posiciona tu rostro en la silueta",
@@ -496,6 +528,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._stable_face_frames = 0
         self._last_recognition_ts = 0.0
         self._last_seen_face_box = None
+        self._reset_liveness_state()
         self.lbl_status.configure(text="Iniciando cámara…", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.success_frame.place_forget()
@@ -551,6 +584,7 @@ class ScanningScreen(ctk.CTkFrame):
         if self._success_shown:
             return
 
+        self._reset_liveness_state()
         self._attempts += 1
         self.lbl_attempts.configure(
             text=f"Intentos: {self._attempts} / {self.MAX_ATTEMPTS}"
@@ -582,6 +616,194 @@ class ScanningScreen(ctk.CTkFrame):
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
+
+    def _reset_liveness_state(self) -> None:
+        self._liveness_passed = False
+        self._passive_liveness_ok = False
+        self._active_liveness_ok = False
+        self._liveness_motion_score = 0.0
+        self._liveness_shift_score = 0.0
+        self._liveness_face_history.clear()
+        self._liveness_box_history.clear()
+        self._challenge_ref_box = None
+        self._challenge_index = 0
+        self._challenge_started_at = 0.0
+        self._blink_closed_seen = False
+        self._challenge_steps = self._build_liveness_challenge()
+
+    def _build_liveness_challenge(self) -> list[str]:
+        patterns = [
+            ["left", "right", "closer"],
+            ["right", "left", "closer"],
+            ["closer", "away", "left"],
+        ]
+        steps = random.choice(patterns).copy()
+        uses_dlib = bool(
+            self.face_manager
+            and getattr(self.face_manager.embedding_extractor, "uses_dlib", False)
+        )
+        if uses_dlib:
+            steps.append("blink")
+        return steps
+
+    def _challenge_prompt(self) -> str:
+        if not self._challenge_steps:
+            return "Prueba de vida: espera…"
+        current = self._challenge_steps[min(self._challenge_index, len(self._challenge_steps) - 1)]
+        labels = {
+            "left": "Prueba de vida: mueve tu cabeza a la izquierda",
+            "right": "Prueba de vida: mueve tu cabeza a la derecha",
+            "closer": "Prueba de vida: acércate un poco",
+            "away": "Prueba de vida: aléjate un poco",
+            "blink": "Prueba de vida: parpadea una vez",
+        }
+        return labels.get(current, "Prueba de vida en progreso")
+
+    def _extract_face_gray(self, frame: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
+        try:
+            x, y, w, h = [int(v) for v in face_box[:4]]
+            if w <= 0 or h <= 0:
+                return None
+
+            pad = int(max(w, h) * 0.12)
+            x1 = max(0, x - pad)
+            y1 = max(0, y - pad)
+            x2 = min(frame.shape[1], x + w + pad)
+            y2 = min(frame.shape[0], y + h + pad)
+            if x2 <= x1 or y2 <= y1:
+                return None
+
+            roi = frame[y1:y2, x1:x2]
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            gray = cv2.resize(gray, (96, 96), interpolation=cv2.INTER_AREA)
+            return gray
+        except Exception:
+            return None
+
+    def _update_liveness(self, frame: np.ndarray, face_box: tuple) -> None:
+        gray = self._extract_face_gray(frame, face_box)
+        if gray is None:
+            return
+
+        x, y, w, h = [int(v) for v in face_box[:4]]
+        center = (x + (w * 0.5), y + (h * 0.5), max(1.0, float(w)), max(1.0, float(h)))
+
+        self._liveness_face_history.append(gray)
+        self._liveness_box_history.append(center)
+
+        if len(self._liveness_face_history) < 4:
+            return
+
+        motion_vals = []
+        hist = list(self._liveness_face_history)
+        for i in range(1, len(hist)):
+            diff = cv2.absdiff(hist[i], hist[i - 1])
+            motion_vals.append(float(np.mean(diff)))
+        self._liveness_motion_score = float(np.mean(motion_vals)) if motion_vals else 0.0
+
+        first = self._liveness_box_history[0]
+        last = self._liveness_box_history[-1]
+        norm = max(first[2], first[3], 1.0)
+        shift = np.sqrt((last[0] - first[0]) ** 2 + (last[1] - first[1]) ** 2) / norm
+        self._liveness_shift_score = float(shift)
+
+        texture = float(cv2.Laplacian(hist[-1], cv2.CV_64F).var())
+
+        movement_ok = (
+            self._liveness_motion_score >= self.LIVENESS_MIN_MOTION
+            or self._liveness_shift_score >= self.LIVENESS_MIN_BOX_SHIFT
+        )
+        texture_ok = texture >= 20.0
+
+        self._passive_liveness_ok = bool(movement_ok and texture_ok)
+        self._update_active_liveness(frame, face_box)
+        self._liveness_passed = self._passive_liveness_ok and self._active_liveness_ok
+
+    def _update_active_liveness(self, frame: np.ndarray, face_box: tuple) -> None:
+        if not self._challenge_steps:
+            self._active_liveness_ok = True
+            return
+
+        now = datetime.now().timestamp()
+        if self._challenge_started_at == 0.0:
+            self._challenge_started_at = now
+            self._challenge_ref_box = face_box
+            return
+
+        if now - self._challenge_started_at > self.LIVENESS_CHALLENGE_TIMEOUT:
+            self._challenge_steps = self._build_liveness_challenge()
+            self._challenge_index = 0
+            self._challenge_started_at = now
+            self._challenge_ref_box = face_box
+            self._blink_closed_seen = False
+            return
+
+        if self._challenge_ref_box is None:
+            self._challenge_ref_box = face_box
+            return
+
+        if self._challenge_index >= len(self._challenge_steps):
+            self._active_liveness_ok = True
+            return
+
+        ref_x, ref_y, ref_w, ref_h = [float(v) for v in self._challenge_ref_box[:4]]
+        x, y, w, h = [float(v) for v in face_box[:4]]
+        ref_cx = ref_x + (ref_w * 0.5)
+        ref_cy = ref_y + (ref_h * 0.5)
+        cx = x + (w * 0.5)
+        cy = y + (h * 0.5)
+        dx_norm = (cx - ref_cx) / max(1.0, ref_w)
+        area_ratio = ((w * h) / max(1.0, ref_w * ref_h)) - 1.0
+
+        target = self._challenge_steps[self._challenge_index]
+        passed = False
+        if target == "left":
+            passed = dx_norm <= -self.CHALLENGE_SHIFT_THRESHOLD
+        elif target == "right":
+            passed = dx_norm >= self.CHALLENGE_SHIFT_THRESHOLD
+        elif target == "closer":
+            passed = area_ratio >= self.CHALLENGE_SCALE_IN_THRESHOLD
+        elif target == "away":
+            passed = area_ratio <= self.CHALLENGE_SCALE_OUT_THRESHOLD
+        elif target == "blink":
+            passed = self._detect_blink(frame, face_box)
+
+        if passed:
+            self._challenge_index += 1
+            self._challenge_ref_box = face_box
+            if self._challenge_index >= len(self._challenge_steps):
+                self._active_liveness_ok = True
+
+    def _detect_blink(self, frame: np.ndarray, face_box: tuple) -> bool:
+        if not self.face_manager:
+            return False
+        if not getattr(self.face_manager.embedding_extractor, "uses_dlib", False):
+            return False
+
+        landmarks = self.face_manager.get_landmarks(frame, face_box)
+        if not landmarks or len(landmarks) < 68:
+            return False
+
+        def _ear(indices: list[int]) -> float:
+            pts = [np.array(landmarks[i], dtype=np.float32) for i in indices]
+            a = np.linalg.norm(pts[1] - pts[5])
+            b = np.linalg.norm(pts[2] - pts[4])
+            c = np.linalg.norm(pts[0] - pts[3])
+            if c <= 0.0:
+                return 0.0
+            return float((a + b) / (2.0 * c))
+
+        left_ear = _ear([36, 37, 38, 39, 40, 41])
+        right_ear = _ear([42, 43, 44, 45, 46, 47])
+        ear = (left_ear + right_ear) * 0.5
+
+        if ear < 0.20:
+            self._blink_closed_seen = True
+            return False
+        if self._blink_closed_seen and ear > 0.24:
+            self._blink_closed_seen = False
+            return True
+        return False
 
     def _recognize_current_face(self, frame: np.ndarray, faces: list) -> Optional[dict]:
         if not faces or not self.face_manager:

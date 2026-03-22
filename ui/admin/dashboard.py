@@ -15,7 +15,7 @@ Catálogos:
 
 import customtkinter as ctk
 from database.connection import fetch_one
-from ui.admin_app import PALETTE
+from ui.admin_app import PALETTE, get_icon
 from auth.session import can_create_users, get_current_role_label
 
 
@@ -141,17 +141,19 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
         ).pack(side="left", padx=20, pady=16)
 
-        # ── Botón alternar tema (🌙 / ☀️) ─────────────────────────────────────
+        # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
         _mode = getattr(self.controller, "_mode", "light")
-        theme_icon = "Noche" if _mode == "light" else "Dia"
+        icon_name = "moon" if _mode == "light" else "sun"
+        self._theme_icon = get_icon(icon_name, size=22, color=PALETTE["TEXT"])
         ctk.CTkButton(
             header,
-            text=theme_icon,
+            text="",
+            image=self._theme_icon,
             width=48, height=48,
-            font=ctk.CTkFont(size=24),
             fg_color="transparent",
             hover_color=PALETTE["BORDER"],
-            text_color=PALETTE["TEXT"],
+            border_width=1,
+            border_color=PALETTE["BORDER"],
             command=self.controller.toggle_theme,
         ).pack(side="right", padx=12, pady=12)
 

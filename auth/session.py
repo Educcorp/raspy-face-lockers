@@ -108,6 +108,13 @@ def get_current_role_label() -> str:
 	return "Usuario"
 
 
+def get_current_full_name() -> str:
+	"""Retorna el nombre completo del usuario en sesión."""
+	if not is_authenticated():
+		return ""
+	return (_session.full_name or "").strip()
+
+
 def is_superadmin() -> bool:
 	return get_current_role() == ROLE_SUPERADMIN
 

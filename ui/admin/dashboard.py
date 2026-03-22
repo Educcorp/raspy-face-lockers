@@ -16,7 +16,7 @@ Catálogos:
 import customtkinter as ctk
 from database.connection import fetch_one
 from ui.admin_app import PALETTE, get_icon
-from auth.session import can_create_users, get_current_role_label
+from auth.session import can_create_users, get_current_full_name, get_current_role_label
 
 
 # Catálogos con ícono, nombre, consulta SQL de conteo y pantalla destino
@@ -130,16 +130,39 @@ class DashboardScreen(ctk.CTkFrame):
     def _build_ui(self) -> None:
         # ── Header ────────────────────────────────────────────────────────────
         header = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=0,
-                              height=72)
+                              height=84)
         header.pack(fill="x")
         header.pack_propagate(False)
 
+        identity = ctk.CTkFrame(
+            header,
+            fg_color="transparent",
+            border_width=0,
+            corner_radius=0,
+        )
+        identity.pack(side="left", padx=20, pady=(9, 8))
+
         ctk.CTkLabel(
-            header, text=get_current_role_label(),
+            identity,
+            text=get_current_role_label(),
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
-        ).pack(side="left", padx=20, pady=16)
+            height=24,
+            anchor="w",
+        ).pack(anchor="w", pady=(0, 4))
+
+        full_name = get_current_full_name()
+        subtitle = f"Usuario: {full_name}" if full_name else "Usuario: Sesión activa"
+        ctk.CTkLabel(
+            identity,
+            text=subtitle,
+            font=ctk.CTkFont(size=12),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+            height=14,
+            anchor="w",
+        ).pack(anchor="w")
 
         # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
         _mode = getattr(self.controller, "_mode", "light")
@@ -155,7 +178,21 @@ class DashboardScreen(ctk.CTkFrame):
             border_width=1,
             border_color=PALETTE["BORDER"],
             command=self.controller.toggle_theme,
-        ).pack(side="right", padx=12, pady=12)
+        ).pack(side="right", padx=(6, 12), pady=12)
+
+        self._logout_icon = get_icon("logout", size=20, color=PALETTE["TEXT"])
+        ctk.CTkButton(
+            header,
+            text="",
+            image=self._logout_icon,
+            width=48,
+            height=48,
+            fg_color="transparent",
+            hover_color=PALETTE["BORDER"],
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            command=self._confirm_logout,
+        ).pack(side="right", padx=(0, 6), pady=12)
 
         # ── Botón destacado: Registrar Usuario ────────────────────────────────
         can_register = can_create_users()
@@ -241,6 +278,13 @@ class DashboardScreen(ctk.CTkFrame):
         from ui.admin.register_user import RegisterUserScreen
         self.controller.show_frame(RegisterUserScreen)
 
+    def _confirm_logout(self) -> None:
+        _LogoutConfirmDialog(
+            self,
+            message="Estás a punto de cerrar sesión. ¿Deseas continuar?",
+            on_confirm=self.controller.logout,
+        )
+
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def on_show(self, **_kwargs) -> None:
@@ -248,3 +292,113 @@ class DashboardScreen(ctk.CTkFrame):
         for idx, cat in enumerate(_CATALOGS):
             count = self._get_count(cat["sql"])
             self._cards[idx].set_count(count)
+
+
+class _LogoutConfirmDialog(ctk.CTkFrame):
+    """Confirmación superpuesta dentro del panel (sin abrir ventana externa)."""
+
+    def __init__(self, parent, message: str, on_confirm):
+        root = parent.winfo_toplevel()
+        super().__init__(
+            root,
+            width=404,
+            height=258,
+            fg_color=PALETTE["CARD"],
+            corner_radius=20,
+            border_width=2,
+            border_color=PALETTE["ACCENT"],
+        )
+        self.place(relx=0.5, rely=0.5, anchor="center")
+        self.lift()
+        self.pack_propagate(False)
+
+        # Borde interior suave para resaltar sin crear fondo cuadrado externo.
+        inner = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+            corner_radius=16,
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            width=388,
+            height=242,
+        )
+        inner.place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["ACCENT"],
+            corner_radius=8,
+            height=4,
+            width=90,
+        ).pack(pady=(10, 4))
+
+        ctk.CTkLabel(
+            self,
+            text="Cerrar sesión",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=PALETTE["ACCENT"],
+            fg_color="transparent",
+        ).pack(pady=(8, 8))
+
+        ctk.CTkLabel(
+            self,
+            text=message,
+            font=ctk.CTkFont(size=14),
+            text_color=PALETTE["TEXT"],
+            fg_color="transparent",
+            wraplength=360,
+            justify="center",
+        ).pack(pady=(0, 6))
+
+        ctk.CTkLabel(
+            self,
+            text="Si eliges No, continuarás con la sesión activa.",
+            font=ctk.CTkFont(size=12),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+            wraplength=360,
+            justify="center",
+        ).pack()
+
+        btn_row = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], border_width=0)
+        btn_row.pack(fill="x", padx=18, pady=(16, 14))
+        btn_row.grid_columnconfigure(0, weight=1)
+        btn_row.grid_columnconfigure(1, weight=0, minsize=14)
+        btn_row.grid_columnconfigure(2, weight=1)
+
+        ctk.CTkButton(
+            btn_row,
+            text="No",
+            height=48,
+            fg_color=PALETTE["BORDER"],
+            hover_color=PALETTE["MUTED"],
+            text_color=PALETTE["TEXT"],
+            border_width=0,
+            corner_radius=12,
+            command=self._close,
+        ).grid(row=0, column=0, sticky="nsew")
+
+        ctk.CTkFrame(
+            btn_row,
+            fg_color=PALETTE["CARD"],
+            width=14,
+            height=1,
+            border_width=0,
+            corner_radius=0,
+        ).grid(row=0, column=1)
+
+        ctk.CTkButton(
+            btn_row,
+            text="Sí",
+            height=48,
+            fg_color=PALETTE["DANGER"],
+            hover_color="#922b21",
+            text_color=PALETTE["WHITE"],
+            border_width=0,
+            corner_radius=12,
+            command=lambda: (on_confirm(), self._close()),
+        ).grid(row=0, column=2, sticky="nsew")
+
+    def _close(self) -> None:
+        if self.winfo_exists():
+            self.destroy()

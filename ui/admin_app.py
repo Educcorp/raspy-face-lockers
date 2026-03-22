@@ -28,8 +28,6 @@ from PIL import Image, ImageDraw, ImageFont
 from auth.session import (
     clear_session,
     get_current_role_label,
-    has_env_role_override,
-    initialize_session_from_env,
     is_authenticated,
 )
 
@@ -81,12 +79,14 @@ _FA_GLYPHS = {
     "moon": "\uf186",
     "user": "\uf007",
     "lock": "\uf023",
+    "logout": "\uf2f5",
 }
 _FA_ICON_SCALE = {
     "sun": 0.90,
     "moon": 0.90,
     "user": 0.78,
     "lock": 0.86,
+    "logout": 0.86,
 }
 _FA_ICON_Y_OFFSET = {
     "user": 1,
@@ -231,12 +231,7 @@ class AdminApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
         self._mode = "light"
-        self._bypass_login = has_env_role_override()
-
-        if self._bypass_login:
-            initialize_session_from_env()
-        else:
-            clear_session()
+        clear_session()
 
         self.title(self._window_title())
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
@@ -249,9 +244,8 @@ class AdminApp(ctk.CTk):
         self._frames: dict[type, ctk.CTkFrame] = {}
         self._build_frames()
 
-        from ui.admin.dashboard import DashboardScreen
         from ui.admin.login_screen import LoginScreen
-        self.show_frame(DashboardScreen if self._bypass_login else LoginScreen)
+        self.show_frame(LoginScreen)
 
     # ── Construcción / reconstrucción de pantallas ────────────────────────────
 
@@ -304,6 +298,14 @@ class AdminApp(ctk.CTk):
     def on_login_success(self) -> None:
         """Se invoca cuando LoginScreen autentica al usuario en BD."""
         self._rebuild_frames()
+
+    def logout(self) -> None:
+        """Cierra la sesión actual y regresa al login."""
+        from ui.admin.login_screen import LoginScreen
+
+        clear_session()
+        self.title(self._window_title())
+        self.show_frame(LoginScreen)
 
     # ── Navegación ────────────────────────────────────────────────────────────
 

@@ -8,6 +8,7 @@ Botón "+" → formulario para crear un nuevo locker.
 
 import customtkinter as ctk
 import tkinter as tk
+from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
 from auth.session import can_edit_catalogs
@@ -330,11 +331,25 @@ class LockerDetailOverlay(ctk.CTkFrame):
     def _save(self) -> None:
         if not self._can_edit:
             return
+        new_state = (self._estado_var.get() or "activo").strip().lower()
+        if new_state != "activo" and self._has_active_assignment():
+            messagebox.showwarning(
+                "Acción no permitida",
+                "No puedes deshabilitar un locker con asignación activa. Libéralo primero.",
+            )
+            return
         execute(
             "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
             (self._estado_var.get(), self.locker_id),
         )
         self._close()
+
+    def _has_active_assignment(self) -> bool:
+        row = fetch_one(
+            "SELECT COUNT(*) AS n FROM asignacion_locker WHERE idLocker=? AND estado='activo'",
+            (self.locker_id,),
+        )
+        return bool(row and (row.get("n") or 0) > 0)
 
     def _refresh_toggle_button(self) -> None:
         if not self.btn_toggle:
@@ -352,6 +367,12 @@ class LockerDetailOverlay(ctk.CTkFrame):
             return
         current_state = (self._estado_var.get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
+        if new_state != "activo" and self._has_active_assignment():
+            messagebox.showwarning(
+                "Acción no permitida",
+                "No puedes deshabilitar un locker con asignación activa. Libéralo primero.",
+            )
+            return
         self._estado_var.set(new_state)
         execute(
             "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",

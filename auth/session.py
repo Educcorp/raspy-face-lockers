@@ -96,6 +96,10 @@ def get_current_role() -> str:
 	return _session.role
 
 
+def get_current_user_id() -> int | None:
+	return _session.user_id
+
+
 def get_current_role_label() -> str:
 	if not is_authenticated():
 		return "No autenticado"

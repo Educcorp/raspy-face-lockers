@@ -12,12 +12,16 @@ Funcionalidades:
 import hashlib
 import customtkinter as ctk
 import tkinter as tk
+from tkinter import messagebox
 from tkinter import ttk
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
 from auth.session import (
     can_create_users,
     can_edit_catalogs,
+    get_current_user_id,
+    normalize_user_type_name,
+    ROLE_SUPERADMIN,
 )
 
 
@@ -453,11 +457,30 @@ class UserDetailOverlay(ctk.CTkFrame):
 
         current_state = (row.get("estado") or "activo").strip().lower()
         is_inactive = current_state == "inactivo"
+        target_role = normalize_user_type_name(row.get("tipo"))
+        is_target_superadmin = target_role == ROLE_SUPERADMIN
+        is_self = get_current_user_id() == self.user_id
         self.btn_delete.configure(
             text="Habilitar" if is_inactive else "Inhabilitar",
             fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
             hover_color="#1e8449" if is_inactive else "#922b21",
         )
+        if is_target_superadmin and not is_inactive:
+            self.btn_delete.configure(
+                text="Protegido",
+                state="disabled",
+                fg_color=PALETTE["BORDER"],
+                hover_color=PALETTE["BORDER"],
+            )
+        elif is_self and not is_inactive:
+            self.btn_delete.configure(
+                text="Tu cuenta",
+                state="disabled",
+                fg_color=PALETTE["BORDER"],
+                hover_color=PALETTE["BORDER"],
+            )
+        else:
+            self.btn_delete.configure(state="normal")
 
         # Verificar si tiene rostro
         face_count = fetch_one(
@@ -524,6 +547,16 @@ class UserDetailOverlay(ctk.CTkFrame):
     def _do_delete(self) -> None:
         if not self._can_edit:
             return
+
+        if get_current_user_id() == self.user_id:
+            messagebox.showwarning("Acción no permitida", "No puedes deshabilitar tu propia cuenta.")
+            return
+
+        target_role = normalize_user_type_name(self._user.get("tipo"))
+        if target_role == ROLE_SUPERADMIN:
+            messagebox.showwarning("Acción no permitida", "No se puede deshabilitar una cuenta Superadmin.")
+            return
+
         current_state = (self._vars["estado"].get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(

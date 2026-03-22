@@ -11,9 +11,10 @@ Cada pestaña ofrece lista + CRUD completo.
 
 import customtkinter as ctk
 import tkinter as tk
+from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
-from auth.session import can_edit_catalogs
+from auth.session import can_edit_catalogs, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
 
 
 # ── Widget genérico de fila de catálogo ──────────────────────────────────────
@@ -475,6 +476,21 @@ class TipoFormOverlay(_BaseFormOverlay):
         nombre = self.e_nombre.get().strip()
         if not nombre:
             return
+        current_name = (self._row.get("nombreTipoUsuario") if self._row else "") or ""
+        current_role = normalize_user_type_name(current_name)
+        if self._row and current_role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+            if nombre.lower() != current_name.lower():
+                messagebox.showwarning(
+                    "Acción no permitida",
+                    "No se puede renombrar un tipo de usuario crítico (Superadmin/Admin).",
+                )
+                return
+            if self._estado_var.get() != "activo":
+                messagebox.showwarning(
+                    "Acción no permitida",
+                    "No se puede deshabilitar un tipo de usuario crítico (Superadmin/Admin).",
+                )
+                return
         if self._row:
             execute(
                 "UPDATE tipo_usuarios SET nombreTipoUsuario=?, estado=?, "
@@ -491,6 +507,13 @@ class TipoFormOverlay(_BaseFormOverlay):
         self._close()
 
     def _toggle_status(self) -> None:
+        current_role = normalize_user_type_name(self._row.get("nombreTipoUsuario"))
+        if current_role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+            messagebox.showwarning(
+                "Acción no permitida",
+                "No se puede deshabilitar un tipo de usuario crítico (Superadmin/Admin).",
+            )
+            return
         current_state = (self._row.get("estado") or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(

@@ -52,10 +52,10 @@ _CATALOGS = [
         "target": "AreasCatalogScreen",
     },
     {
-        "icon":   "HST",
-        "label":  "Historial",
-        "sql":    "SELECT COUNT(*) AS n FROM historial_accesos",
-        "target": None,   # pendiente
+        "icon":   "ASG",
+        "label":  "Asignaciones",
+        "sql":    "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'",
+        "target": "LockerAssignmentScreen",
     },
 ]
 
@@ -225,11 +225,12 @@ class DashboardScreen(ctk.CTkFrame):
     def _navigate(self, target_name: str | None) -> None:
         if not target_name:
             return
-        from ui.admin import users_catalog, lockers_catalog, areas_catalog
+        from ui.admin import users_catalog, lockers_catalog, areas_catalog, locker_assignment
         mapping = {
             "UsersCatalogScreen":   users_catalog.UsersCatalogScreen,
             "LockersCatalogScreen": lockers_catalog.LockersCatalogScreen,
             "AreasCatalogScreen":   areas_catalog.AreasCatalogScreen,
+            "LockerAssignmentScreen": locker_assignment.LockerAssignmentScreen,
         }
         cls = mapping.get(target_name)
         if cls:

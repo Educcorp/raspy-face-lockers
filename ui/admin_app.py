@@ -116,6 +116,7 @@ class AdminApp(ctk.CTk):
         from ui.admin.users_catalog   import UsersCatalogScreen
         from ui.admin.lockers_catalog import LockersCatalogScreen
         from ui.admin.areas_catalog   import AreasCatalogScreen
+        from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user   import RegisterUserScreen
 
         for FrameClass in (
@@ -124,6 +125,7 @@ class AdminApp(ctk.CTk):
             UsersCatalogScreen,
             LockersCatalogScreen,
             AreasCatalogScreen,
+            LockerAssignmentScreen,
             RegisterUserScreen,
         ):
             frame = FrameClass(parent=self, controller=self)

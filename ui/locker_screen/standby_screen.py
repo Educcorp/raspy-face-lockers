@@ -8,6 +8,10 @@ navega a ScanningScreen vía controller.show_frame().
 """
 
 import customtkinter as ctk
+import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class StandbyScreen(ctk.CTkFrame):
@@ -29,6 +33,17 @@ class StandbyScreen(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTk, controller):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
+        self._monitor_thread: threading.Thread | None = None
+        self._monitor_running = False
+        self._transitioning = False
+
+        try:
+            from core.face_recognition import get_face_recognition_manager
+            self.face_manager = get_face_recognition_manager()
+        except Exception as e:
+            logger.error(f"No se pudo inicializar face manager en standby: {e}")
+            self.face_manager = None
+
         self._build_ui()
 
     # ── Construcción de widgets ───────────────────────────────────────────────
@@ -100,9 +115,75 @@ class StandbyScreen(ctk.CTkFrame):
 
     def on_show(self) -> None:
         """Llamado por LockerApp.show_frame() al traer esta pantalla al frente."""
+        self._transitioning = False
         self._animate_dots()
+        self._start_face_monitor()
+
+    def on_hide(self) -> None:
+        self._stop_face_monitor()
+
+    def _start_face_monitor(self) -> None:
+        if self._monitor_running or self.face_manager is None:
+            return
+
+        self._monitor_running = True
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread.start()
+
+    def _stop_face_monitor(self) -> None:
+        self._monitor_running = False
+        if self._monitor_thread:
+            self._monitor_thread.join(timeout=1.0)
+            self._monitor_thread = None
+
+    def _monitor_loop(self) -> None:
+        import time
+
+        if self.face_manager is None:
+            return
+
+        try:
+            if not self.face_manager.initialized:
+                self.face_manager.initialize()
+
+            stable_hits = 0
+            while self._monitor_running and not self._transitioning:
+                frame, faces = self.face_manager.detect_faces_in_frame()
+                if frame is None:
+                    time.sleep(0.15)
+                    continue
+
+                if faces:
+                    stable_hits += 1
+                else:
+                    stable_hits = 0
+
+                if stable_hits >= 3:
+                    self._transitioning = True
+                    self.after(0, self._go_scanning)
+                    break
+
+                time.sleep(0.12)
+        except Exception as e:
+            logger.warning(f"Monitor de rostro en standby falló: {e}")
+        finally:
+            # Si vamos a Scanning, preservamos la cámara para evitar
+            # carrera de liberar/reinicializar que deja libcamera en
+            # estado inconsistente (Configured vs Available).
+            if self._transitioning:
+                logger.info("Transición a escaneo: preservando cámara abierta")
+                return
+            self._release_face_manager()
+
+    def _release_face_manager(self) -> None:
+        try:
+            if self.face_manager and self.face_manager.initialized:
+                self.face_manager.release()
+        except Exception as e:
+            logger.debug(f"No se pudo liberar face_manager en standby: {e}")
 
     def _go_scanning(self) -> None:
+        self._transitioning = True
         from ui.locker_screen.scanning_screen import ScanningScreen
         self.controller.show_frame(ScanningScreen)
 

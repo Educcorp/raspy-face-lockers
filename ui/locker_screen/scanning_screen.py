@@ -17,6 +17,10 @@ import tkinter
 import logging
 from typing import Optional
 from datetime import datetime
+from datetime import timedelta
+
+from config import FACE_RECOGNITION_CONFIG
+from database.connection import fetch_all, execute
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +45,9 @@ class ScanningScreen(ctk.CTkFrame):
 
     MAX_ATTEMPTS    = 3
     DISPLAY_SECONDS = 8
+    RECOGNITION_INTERVAL_FRAMES = 6
+    STABLE_FACE_FRAMES = 8
+    RECOGNITION_COOLDOWN_SECONDS = 2.0
 
     # Dimensiones de la ventana
     WIN_W = 480
@@ -53,6 +60,10 @@ class ScanningScreen(ctk.CTkFrame):
         self._face_detected = False
         self._success_shown = False
         self._return_job = None
+        self._frame_counter = 0
+        self._stable_face_frames = 0
+        self._last_recognition_ts = 0.0
+        self._last_seen_face_box = None
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
@@ -202,7 +213,7 @@ class ScanningScreen(ctk.CTkFrame):
 
         self.lbl_success_title = ctk.CTkLabel(
             self.success_frame,
-            text="Escaneo exitoso",
+            text="¡Acceso concedido!",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
@@ -217,6 +228,15 @@ class ScanningScreen(ctk.CTkFrame):
             fg_color="transparent",
         )
         self.lbl_success_name.pack(pady=(0, 2))
+
+        self.lbl_success_matricula = ctk.CTkLabel(
+            self.success_frame,
+            text="Matrícula —",
+            font=ctk.CTkFont(size=15),
+            text_color="#E8F5E9",
+            fg_color="transparent",
+        )
+        self.lbl_success_matricula.pack(pady=(0, 2))
 
         self.lbl_success_locker = ctk.CTkLabel(
             self.success_frame,
@@ -258,7 +278,19 @@ class ScanningScreen(ctk.CTkFrame):
 
         if not self.face_manager.initialized:
             logger.warning("Intentando inicializar cámara...")
-            if not self.face_manager.initialize():
+            init_ok = False
+            for attempt in range(1, 4):
+                if self.face_manager.initialize():
+                    init_ok = True
+                    break
+                logger.warning(f"Inicialización de cámara falló (intento {attempt}/3)")
+                try:
+                    self.face_manager.release()
+                except Exception:
+                    pass
+                time.sleep(0.35 * attempt)
+
+            if not init_ok:
                 logger.error("✗ No se pudo inicializar cámara")
                 error_msg = "No se pudo acceder a la cámara. Verifica:\n1. Cámara conectada\n2. Permisos de acceso\n3. Configuración en raspi-config"
                 self.after(0, self._show_camera_error, error_msg)
@@ -279,6 +311,34 @@ class ScanningScreen(ctk.CTkFrame):
                 self._camera_frame = frame
                 self._detected_faces = faces
                 self._face_detected = len(faces) > 0
+                self._frame_counter += 1
+
+                if self._success_shown:
+                    time.sleep(0.066)
+                    continue
+
+                if faces:
+                    self._stable_face_frames += 1
+                    self._last_seen_face_box = faces[0].get("box")
+                else:
+                    self._stable_face_frames = 0
+                    self._last_seen_face_box = None
+
+                enough_frames = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
+                enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
+                cooldown_ok = (time.time() - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
+
+                if faces and enough_frames and enough_stability and cooldown_ok:
+                    self._last_recognition_ts = time.time()
+                    try:
+                        user_data = self._recognize_current_face(frame, faces)
+                        if user_data:
+                            self.after(0, self.on_face_match, user_data)
+                        else:
+                            self.after(0, self.on_face_no_match)
+                    except Exception as recognition_error:
+                        logger.error(f"Error durante autenticación facial: {recognition_error}")
+                        self.after(0, self.on_face_no_match)
 
                 try:
                     self._update_camera_display(frame, faces)
@@ -414,7 +474,7 @@ class ScanningScreen(ctk.CTkFrame):
                 if not self._success_shown:
                     if self._face_detected:
                         self.lbl_status.configure(
-                            text="Rostro detectado — analizando…",
+                            text="Rostro detectado — autenticando…",
                             text_color="#A5D6A7",
                         )
                     else:
@@ -432,6 +492,10 @@ class ScanningScreen(ctk.CTkFrame):
         self._attempts = 0
         self._success_shown = False
         self._user_data = None
+        self._frame_counter = 0
+        self._stable_face_frames = 0
+        self._last_recognition_ts = 0.0
+        self._last_seen_face_box = None
         self.lbl_status.configure(text="Iniciando cámara…", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.success_frame.place_forget()
@@ -461,11 +525,14 @@ class ScanningScreen(ctk.CTkFrame):
         self._success_shown = True
         self._user_data = user_data
 
-        self.lbl_status.configure(text="✓ Escaneo exitoso", text_color="#A5D6A7")
+        self.lbl_status.configure(text="✓ Acceso concedido", text_color="#A5D6A7")
         self.lbl_attempts.configure(text="")
 
         # Llenar datos en el overlay
         self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
+        self.lbl_success_matricula.configure(
+            text=f"Matrícula  {user_data.get('matricula', '—')}"
+        )
         self.lbl_success_locker.configure(
             text=f"Casillero  {user_data.get('locker_numero', '—')}"
         )
@@ -481,6 +548,9 @@ class ScanningScreen(ctk.CTkFrame):
 
     def on_face_no_match(self) -> None:
         """Llamado cuando no hay match."""
+        if self._success_shown:
+            return
+
         self._attempts += 1
         self.lbl_attempts.configure(
             text=f"Intentos: {self._attempts} / {self.MAX_ATTEMPTS}"
@@ -512,6 +582,150 @@ class ScanningScreen(ctk.CTkFrame):
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
+
+    def _recognize_current_face(self, frame: np.ndarray, faces: list) -> Optional[dict]:
+        if not faces or not self.face_manager:
+            return None
+
+        face_box = faces[0].get("box")
+        if not face_box:
+            return None
+
+        probe_embedding = self.face_manager.get_embedding(frame, face_box)
+        if probe_embedding is None:
+            logger.debug("No se pudo extraer embedding para autenticación")
+            return None
+
+        candidates = self._load_active_face_encodings()
+        if not candidates:
+            logger.warning("No hay encodings activos en BD para autenticar")
+            return None
+
+        best_candidate = None
+        best_distance = 999.0
+        for candidate in candidates:
+            stored_vec = candidate.get("vector_np")
+            if stored_vec is None:
+                continue
+            distance = self.face_manager.embedding_extractor.compare_embeddings(
+                probe_embedding.astype(np.float32, copy=False),
+                stored_vec,
+            )
+            if distance < best_distance:
+                best_distance = distance
+                best_candidate = candidate
+
+        if not best_candidate:
+            return None
+
+        threshold = self._threshold_for_model(best_candidate.get("modelo"))
+        logger.info(
+            "Auth facial: mejor candidato id=%s distancia=%.4f umbral=%.4f modelo=%s",
+            best_candidate.get("idUsuario"),
+            best_distance,
+            threshold,
+            best_candidate.get("modelo"),
+        )
+
+        if best_distance > threshold:
+            self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
+            return None
+
+        self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=True)
+        full_name = " ".join(
+            p for p in [
+                best_candidate.get("nombre"),
+                best_candidate.get("apPaterno"),
+                best_candidate.get("apMaterno"),
+            ] if p
+        ).strip()
+
+        return {
+            "nombre": full_name or "Usuario",
+            "matricula": best_candidate.get("matricula") or "—",
+            "locker_numero": best_candidate.get("idLocker") or "Sin asignar",
+            "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
+        }
+
+    def _threshold_for_model(self, model_name: Optional[str]) -> float:
+        default_threshold = float(FACE_RECOGNITION_CONFIG.get("distance_threshold", 0.6))
+        if (model_name or "").startswith("fallback"):
+            return 0.95
+        return default_threshold
+
+    def _load_active_face_encodings(self) -> list[dict]:
+        rows = fetch_all(
+            """
+            SELECT
+                e.idUsuario,
+                e.vector,
+                e.dimension,
+                e.vectorDtype,
+                e.modelo,
+                u.nombre,
+                u.apPaterno,
+                u.apMaterno,
+                u.matricula,
+                a.idLockerAsignado,
+                l.idLocker
+            FROM encoding e
+            JOIN usuarios u
+                ON u.idUsuario = e.idUsuario
+            LEFT JOIN asignacion_locker a
+                ON a.idUsuario = u.idUsuario AND a.estado = 'activo'
+            LEFT JOIN lockers l
+                ON l.idLocker = a.idLocker
+            WHERE e.estado = 'activo'
+              AND u.estado = 'activo'
+            """
+        )
+
+        parsed: list[dict] = []
+        for row in rows:
+            raw = row.get("vector")
+            dim = int(row.get("dimension") or 128)
+            dtype_name = (row.get("vectorDtype") or "float32").strip().lower()
+            dtype = np.float64 if dtype_name == "float64" else np.float32
+            if raw is None:
+                continue
+
+            vector_np = np.frombuffer(raw, dtype=dtype)
+            if vector_np.size != dim:
+                logger.warning(
+                    "Encoding inválido usuario=%s esperado=%s real=%s",
+                    row.get("idUsuario"),
+                    dim,
+                    vector_np.size,
+                )
+                continue
+
+            if dtype != np.float32:
+                vector_np = vector_np.astype(np.float32)
+
+            row["vector_np"] = vector_np
+            parsed.append(row)
+
+        return parsed
+
+    def _register_access_attempt(self, locker_assignment_id: Optional[int], permitted: bool) -> None:
+        try:
+            now = datetime.now()
+            expires_at = now + (timedelta(minutes=5) if permitted else timedelta(minutes=1))
+            execute(
+                """
+                INSERT INTO historial_accesos
+                    (idLockerAsignado, accesoPermitido, motivo, fechaExpiracion)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    locker_assignment_id,
+                    "si" if permitted else "no",
+                    "facial",
+                    expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
+                ),
+            )
+        except Exception as e:
+            logger.warning(f"No se pudo registrar historial de acceso: {e}")
 
     def _dev_simulate_success(self) -> None:
         """Solo para desarrollo: simula un acceso exitoso."""

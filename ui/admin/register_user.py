@@ -19,11 +19,12 @@ import threading
 import tkinter as tk
 from typing import Optional
 import logging
+import sqlite3
 
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
-from database.connection import execute, fetch_all, fetch_one
+from database.connection import db_session, fetch_all, fetch_one
 from ui.admin_app import PALETTE
 from auth.session import can_create_users, filter_assignable_user_types
 
@@ -427,6 +428,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._photo_ref = None
         self._captured_embedding: Optional[np.ndarray] = None
         self._face_mgr = None
+        self._embedding_mode = "dlib"
 
         # Auto-capture state
         self._stable_face_count = 0
@@ -531,6 +533,30 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 self._face_mgr = None
                 return
 
+            if not self._face_mgr.embedding_extractor.is_ready:
+                self.lbl_status.configure(
+                    text="✗ No hay extractor facial disponible",
+                    text_color=PALETTE["DANGER"],
+                )
+                self.lbl_progress.configure(
+                    text="Instala dlib/modelos para registrar rostros",
+                    text_color=PALETTE["DANGER"],
+                )
+                self._face_mgr.release()
+                self._face_mgr = None
+                return
+
+            self._embedding_mode = (
+                "dlib"
+                if getattr(self._face_mgr.embedding_extractor, "uses_dlib", False)
+                else "fallback"
+            )
+            if self._embedding_mode == "fallback":
+                self.lbl_progress.configure(
+                    text="Modo básico activo (sin modelos dlib): usa buena iluminación",
+                    text_color="#FFD54F",
+                )
+
             logger.info("✓ FaceRecognitionManager inicializado")
         except Exception as exc:
             logger.error(f"Error al inicializar cámara: {exc}", exc_info=True)
@@ -578,7 +604,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 self._detected_faces = faces
 
                 # Extraer landmarks para el primer rostro (para dibujar en canvas)
-                if faces and self._face_mgr.embedding_extractor.is_ready:
+                if faces:
                     box = faces[0].get("box")
                     if box:
                         lm = self._face_mgr.get_landmarks(frame, box)
@@ -724,6 +750,15 @@ class _Step4FaceCapture(ctk.CTkFrame):
     def _manual_capture(self) -> None:
         """Botón Capturar / Recapturar."""
         logger.info("=== Botón Capturar presionado ===")
+
+        if self._auto_captured:
+            self._auto_captured = False
+            self._captured_embedding = None
+            self._stable_face_count = 0
+            self.btn_save.configure(state="disabled")
+            self.btn_capture.configure(text="Capturar", fg_color=PALETTE["ACCENT"])
+            self.lbl_progress.configure(text="Recaptura iniciada")
+
         if self._current_frame is None or self._face_mgr is None:
             self.lbl_status.configure(text="(!) Cámara no lista",
                                       text_color=PALETTE["DANGER"])
@@ -764,45 +799,60 @@ class _Step4FaceCapture(ctk.CTkFrame):
                                       text_color=PALETTE["DANGER"])
             return
 
+        self.btn_save.configure(state="disabled")
         d = self.wizard._data
         logger.info(f"Guardando usuario: {d.get('nombre')} {d.get('apPaterno')}")
 
-        # Insertar usuario
+        vec = self._captured_embedding.astype(np.float32, copy=False)
+        vec_bytes = vec.tobytes()
         try:
-            user_id = execute("""
-                INSERT INTO usuarios
-                    (nombre, apPaterno, apMaterno, idTipoUsuario, idUnidadAcademica,
-                     emailInst, tel, matricula, pin, creadoPor)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            """, (
-                d["nombre"], d["apPaterno"], d.get("apMaterno"),
-                d["idTipoUsuario"], d["idUnidadAcademica"],
-                d["emailInst"], d.get("tel"),
-                d["matricula"], d["pin_hash"],
-            ))
-            logger.info(f"✓ Usuario insertado con ID={user_id}")
+            with db_session() as conn:
+                cur = conn.execute("""
+                    INSERT INTO usuarios
+                        (nombre, apPaterno, apMaterno, idTipoUsuario, idUnidadAcademica,
+                         emailInst, tel, matricula, pin, creadoPor)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, (
+                    d["nombre"], d["apPaterno"], d.get("apMaterno"),
+                    d["idTipoUsuario"], d["idUnidadAcademica"],
+                    d["emailInst"], d.get("tel"),
+                    d["matricula"], d["pin_hash"],
+                ))
+                user_id = cur.lastrowid
+
+                vec_hash = hashlib.sha256(vec_bytes + f"{user_id}".encode()).hexdigest()
+                conn.execute("""
+                    INSERT INTO encoding
+                        (idUsuario, estado, vector, dimension, hashVector,
+                         tipoParte, vectorDtype, modelo, modeloVersion)
+                    VALUES (?, 'activo', ?, ?, ?, 'frontal', 'float32', ?, ?)
+                """, (
+                    user_id,
+                    vec_bytes,
+                    int(len(vec)),
+                    vec_hash,
+                    "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8",
+                    "1.0",
+                ))
+
+            logger.info(f"✓ Usuario + encoding insertados con ID={user_id}")
+        except sqlite3.IntegrityError as exc:
+            logger.error(f"Error de integridad registrando usuario: {exc}")
+            self.btn_save.configure(state="normal")
+            self.lbl_status.configure(
+                text="Error: matrícula/correo ya existe o datos inválidos",
+                text_color=PALETTE["DANGER"],
+            )
+            self.lbl_progress.configure(text="Corrige datos y vuelve a intentar")
+            return
         except Exception as exc:
-            logger.error(f"Error insertando usuario: {exc}")
+            logger.error(f"Error insertando usuario/encoding: {exc}")
+            self.btn_save.configure(state="normal")
             self.lbl_status.configure(
                 text=f"Error al registrar: {exc}",
-                text_color=PALETTE["DANGER"])
+                text_color=PALETTE["DANGER"],
+            )
             return
-
-        # Insertar encoding facial
-        vec = self._captured_embedding
-        vec_bytes = vec.tobytes()
-        vec_hash = hashlib.sha256(vec_bytes).hexdigest()
-        try:
-            execute("""
-                INSERT INTO encoding
-                    (idUsuario, estado, vector, dimension, hashVector,
-                     tipoParte, vectorDtype, modelo, modeloVersion)
-                VALUES (?, 'activo', ?, ?, ?, 'frontal', 'float32',
-                        'dlib_resnet_v1', '1.0')
-            """, (user_id, vec_bytes, len(vec), vec_hash))
-            logger.info(f"✓ Encoding insertado para usuario {user_id}")
-        except Exception as exc:
-            logger.warning(f"Error insertando encoding (no bloquea registro): {exc}")
 
         self.stop_camera()
         self.wizard.next_step({"saved_user_id": user_id,

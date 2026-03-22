@@ -13,9 +13,7 @@ from database.connection import fetch_one
 ROLE_SUPERADMIN = "superadmin"
 ROLE_ADMIN = "admin"
 ROLE_USER = "usuario"
-
 ENV_ROLE = "SMART_LOCKER_ROLE"
-
 
 def normalize_role(name: str | None) -> str:
 	value = (name or "").strip().lower()
@@ -25,7 +23,7 @@ def normalize_role(name: str | None) -> str:
 		return ROLE_ADMIN
 	if value in {"usuario", "alumno", "docente", "user"}:
 		return ROLE_USER
-	return ROLE_SUPERADMIN
+	return ROLE_USER
 
 
 def normalize_user_type_name(name: str | None) -> str:
@@ -33,8 +31,19 @@ def normalize_user_type_name(name: str | None) -> str:
 	return normalize_role(name)
 
 
+def _get_env_role_override() -> str | None:
+	"""Retorna rol override válido desde entorno solo para admin/superadmin."""
+	raw = (os.getenv(ENV_ROLE) or "").strip()
+	if not raw:
+		return None
+	role = normalize_role(raw)
+	if role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+		return role
+	return None
+
+
 def has_env_role_override() -> bool:
-	return bool((os.getenv(ENV_ROLE) or "").strip())
+	return _get_env_role_override() is not None
 
 
 @dataclass
@@ -50,8 +59,12 @@ _session = SessionContext()
 
 
 def initialize_session_from_env() -> None:
-	"""Inicializa sesión en modo bypass usando SMART_LOCKER_ROLE."""
-	role = normalize_role(os.getenv(ENV_ROLE))
+	"""Inicializa sesión en modo bypass cuando ENV define admin/superadmin."""
+	role = _get_env_role_override()
+	if role is None:
+		clear_session()
+		return
+
 	_session.user_id = None
 	_session.role = role
 	_session.full_name = f"ENV {get_current_role_label()}"
@@ -84,6 +97,9 @@ def get_current_role() -> str:
 
 
 def get_current_role_label() -> str:
+	if not is_authenticated():
+		return "No autenticado"
+
 	role = get_current_role()
 	if role == ROLE_SUPERADMIN:
 		return "Superadmin"
@@ -170,6 +186,9 @@ def authenticate_admin_user(matricula: str, pin: str) -> dict | None:
 		return None
 
 	role = normalize_user_type_name(row.get("tipo"))
+	if role not in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+		return None
+
 	return {
 		"idUsuario": row.get("idUsuario"),
 		"matricula": str(row.get("matricula") or ""),

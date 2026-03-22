@@ -111,14 +111,6 @@ class LoginScreen(ctk.CTkFrame):
             command=self._login,
         ).pack(fill="x", padx=28, pady=(10, 4))
 
-        ctk.CTkLabel(
-            card,
-            text="Tip: también puedes iniciar con SMART_LOCKER_ROLE",
-            font=ctk.CTkFont(size=11),
-            text_color=PALETTE["MUTED"],
-            fg_color="transparent",
-        ).pack(pady=(10, 0))
-
         self.entry_matricula.bind("<Return>", lambda _e: self._login())
         self.entry_pin.bind("<Return>", lambda _e: self._login())
 

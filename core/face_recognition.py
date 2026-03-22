@@ -255,20 +255,66 @@ class FaceEmbeddingExtractor:
 
     def _fallback_landmarks(self, face_box: tuple) -> List[Tuple[int, int]]:
         x, y, w, h = [int(v) for v in face_box[:4]]
-        cx = x + (w // 2)
-        cy = y + (h // 2)
-        rx = max(1, int(w * 0.42))
-        ry = max(1, int(h * 0.48))
+        if w <= 0 or h <= 0:
+            return []
+
+        def p(rx: float, ry: float) -> Tuple[int, int]:
+            return (int(x + w * rx), int(y + h * ry))
+
+        # Plantilla 68 puntos (estilo dlib) para mantener forma facial humana
+        # cuando el sistema está en modo fallback sin modelos dlib.
+        jaw = [
+            (0.08, 0.32), (0.06, 0.40), (0.05, 0.48), (0.06, 0.57), (0.09, 0.65),
+            (0.14, 0.72), (0.20, 0.78), (0.28, 0.83), (0.38, 0.86), (0.50, 0.88),
+            (0.62, 0.86), (0.72, 0.83), (0.80, 0.78), (0.86, 0.72), (0.91, 0.65),
+            (0.94, 0.57), (0.95, 0.48),
+        ]
+
+        brow_left = [
+            (0.20, 0.28), (0.27, 0.24), (0.35, 0.22), (0.43, 0.24), (0.49, 0.28),
+        ]
+        brow_right = [
+            (0.51, 0.28), (0.57, 0.24), (0.65, 0.22), (0.73, 0.24), (0.80, 0.28),
+        ]
+
+        nose_bridge = [
+            (0.50, 0.32), (0.50, 0.40), (0.50, 0.48), (0.50, 0.56),
+        ]
+        nose_base = [
+            (0.42, 0.62), (0.46, 0.66), (0.50, 0.67), (0.54, 0.66), (0.58, 0.62),
+        ]
+
+        eye_left = [
+            (0.26, 0.36), (0.31, 0.33), (0.37, 0.33), (0.42, 0.36), (0.37, 0.39), (0.31, 0.39),
+        ]
+        eye_right = [
+            (0.58, 0.36), (0.63, 0.33), (0.69, 0.33), (0.74, 0.36), (0.69, 0.39), (0.63, 0.39),
+        ]
+
+        mouth_outer = [
+            (0.32, 0.73), (0.38, 0.70), (0.44, 0.69), (0.50, 0.70), (0.56, 0.69), (0.62, 0.70),
+            (0.68, 0.73), (0.62, 0.77), (0.56, 0.79), (0.50, 0.80), (0.44, 0.79), (0.38, 0.77),
+        ]
+        mouth_inner = [
+            (0.40, 0.73), (0.45, 0.72), (0.50, 0.73), (0.55, 0.72),
+            (0.60, 0.73), (0.55, 0.76), (0.50, 0.77), (0.45, 0.76),
+        ]
+
+        groups = [
+            jaw,
+            brow_left,
+            brow_right,
+            nose_bridge,
+            nose_base,
+            eye_left,
+            eye_right,
+            mouth_outer,
+            mouth_inner,
+        ]
+
         points: List[Tuple[int, int]] = []
-        for deg in range(0, 360, 20):
-            rad = np.deg2rad(deg)
-            px = int(cx + rx * np.cos(rad))
-            py = int(cy + ry * np.sin(rad))
-            points.append((px, py))
-        for ratio in (0.28, 0.5, 0.72):
-            py = int(y + h * ratio)
-            points.append((int(x + w * 0.28), py))
-            points.append((int(x + w * 0.72), py))
+        for group in groups:
+            points.extend([p(rx, ry) for (rx, ry) in group])
         return points
 
     def get_embedding(self, frame_bgr: np.ndarray,

@@ -12,7 +12,6 @@ El embedding dlib es más pesado (~200 ms) pero muy preciso.
 """
 
 import cv2
-import dlib
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
@@ -27,6 +26,13 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+try:
+    import dlib
+    _DLIB_AVAILABLE = True
+except ImportError:
+    dlib = None  # type: ignore
+    _DLIB_AVAILABLE = False
 
 
 # ── Helper: Importar picamera2 desde el sistema ─────────────────────────────
@@ -82,7 +88,7 @@ class FaceDetector:
     """
 
     def __init__(self):
-        self._hog_detector = dlib.get_frontal_face_detector()
+        self._hog_detector = dlib.get_frontal_face_detector() if _DLIB_AVAILABLE else None
         self._haar_cascade = None
         try:
             self._haar_cascade = cv2.CascadeClassifier(
@@ -92,7 +98,10 @@ class FaceDetector:
                 self._haar_cascade = None
         except Exception:
             pass
-        logger.info("✓ FaceDetector inicializado (dlib HOG + Haar fallback)")
+        if _DLIB_AVAILABLE:
+            logger.info("✓ FaceDetector inicializado (dlib HOG + Haar fallback)")
+        else:
+            logger.warning("⚠ dlib no disponible; FaceDetector usará solo Haar cascade")
 
     def detect(self, frame: np.ndarray) -> List[Dict]:
         """Detecta rostros en un frame BGR. Retorna lista de dicts con 'box'."""
@@ -103,6 +112,8 @@ class FaceDetector:
 
     def _detect_hog(self, frame: np.ndarray) -> List[Dict]:
         """Detector HOG de dlib – rápido y preciso para caras frontales."""
+        if self._hog_detector is None:
+            return []
         try:
             # dlib necesita RGB
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -161,20 +172,30 @@ class FaceEmbeddingExtractor:
     """
 
     def __init__(self):
-        self.shape_predictor: Optional[dlib.shape_predictor] = None
+        self.shape_predictor = None
         self.face_rec_model = None
         self._loaded = False
+        self._using_fallback = False
         self._load_models()
 
     def _load_models(self) -> None:
+        if not _DLIB_AVAILABLE:
+            self._using_fallback = True
+            logger.warning("⚠ dlib no disponible; usando embedding fallback (grayscale 16x8)")
+            return
+
         sp_path = Path(FACE_RECOGNITION_CONFIG["shape_predictor"])
         rec_path = Path(FACE_RECOGNITION_CONFIG["face_rec_model"])
 
         if not sp_path.exists():
             logger.error(f"shape_predictor no encontrado: {sp_path}")
+            self._using_fallback = True
+            logger.warning("⚠ Usando embedding fallback por falta de shape_predictor")
             return
         if not rec_path.exists():
             logger.error(f"face_rec_model no encontrado: {rec_path}")
+            self._using_fallback = True
+            logger.warning("⚠ Usando embedding fallback por falta de modelo de reconocimiento")
             return
 
         try:
@@ -184,10 +205,71 @@ class FaceEmbeddingExtractor:
             logger.info("✓ dlib shape_predictor + face_recognition_model cargados")
         except Exception as e:
             logger.error(f"Error cargando modelos dlib: {e}")
+            self._using_fallback = True
+            logger.warning("⚠ Usando embedding fallback por error cargando dlib")
+
+    @property
+    def uses_dlib(self) -> bool:
+        return self._loaded
 
     @property
     def is_ready(self) -> bool:
-        return self._loaded
+        return self._loaded or self._using_fallback
+
+    def _extract_face_roi(self, frame_bgr: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
+        try:
+            x, y, w, h = [int(v) for v in face_box[:4]]
+            img_h, img_w = frame_bgr.shape[:2]
+            if w <= 0 or h <= 0:
+                return None
+
+            pad = int(max(w, h) * 0.12)
+            x1 = max(0, x - pad)
+            y1 = max(0, y - pad)
+            x2 = min(img_w, x + w + pad)
+            y2 = min(img_h, y + h + pad)
+
+            if x2 <= x1 or y2 <= y1:
+                return None
+            return frame_bgr[y1:y2, x1:x2]
+        except Exception:
+            return None
+
+    def _fallback_embedding(self, frame_bgr: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
+        face_roi = self._extract_face_roi(frame_bgr, face_box)
+        if face_roi is None or face_roi.size == 0:
+            return None
+
+        try:
+            gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+            small = cv2.resize(gray, (16, 8), interpolation=cv2.INTER_AREA)
+            vec = small.astype(np.float32).reshape(-1)
+            vec -= float(np.mean(vec))
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            return vec.astype(np.float32)
+        except Exception as e:
+            logger.warning(f"Error generando embedding fallback: {e}")
+            return None
+
+    def _fallback_landmarks(self, face_box: tuple) -> List[Tuple[int, int]]:
+        x, y, w, h = [int(v) for v in face_box[:4]]
+        cx = x + (w // 2)
+        cy = y + (h // 2)
+        rx = max(1, int(w * 0.42))
+        ry = max(1, int(h * 0.48))
+        points: List[Tuple[int, int]] = []
+        for deg in range(0, 360, 20):
+            rad = np.deg2rad(deg)
+            px = int(cx + rx * np.cos(rad))
+            py = int(cy + ry * np.sin(rad))
+            points.append((px, py))
+        for ratio in (0.28, 0.5, 0.72):
+            py = int(y + h * ratio)
+            points.append((int(x + w * 0.28), py))
+            points.append((int(x + w * 0.72), py))
+        return points
 
     def get_embedding(self, frame_bgr: np.ndarray,
                       face_box: tuple) -> Optional[np.ndarray]:
@@ -201,6 +283,9 @@ class FaceEmbeddingExtractor:
         Returns:
             np.ndarray float32[128] normalizado, o None si falla.
         """
+        if self._using_fallback:
+            return self._fallback_embedding(frame_bgr, face_box)
+
         if not self._loaded:
             return None
 
@@ -249,6 +334,9 @@ class FaceEmbeddingExtractor:
         Returns:
             Lista de 68 tuplas (x, y), o None si falla.
         """
+        if self._using_fallback:
+            return self._fallback_landmarks(face_box)
+
         if not self._loaded:
             return None
 

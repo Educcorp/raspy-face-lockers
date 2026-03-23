@@ -127,6 +127,8 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=19, weight="bold"),
             text_color=self.TEXT_COLOR,
             fg_color="transparent",
+            bg_color="transparent",
+            corner_radius=0,
             height=40,
         )
         self.lbl_status.place(relx=0.5, y=100, anchor="center")
@@ -156,13 +158,13 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Diseño vertical centrado como la imagen de ejemplo
+        # Diseño horizontal más compacto
         self.success_frame = ctk.CTkFrame(
             self,
             fg_color="#5B8C5A",  # Verde del tema
             corner_radius=20,
-            width=400,
-            height=300,
+            width=440,
+            height=240,
             border_width=0,
         )
         # No se muestra aún — se coloca con .place() al detectar éxito
@@ -177,14 +179,14 @@ class ScanningScreen(ctk.CTkFrame):
             text_color="#FFFFFF",
             fg_color="transparent",
         )
-        self.lbl_success_title.pack(pady=(25, 15))
+        self.lbl_success_title.pack(pady=(15, 10))
 
         # Frame horizontal para LOCKER + número
         locker_frame = ctk.CTkFrame(
             self.success_frame,
             fg_color="transparent",
         )
-        locker_frame.pack(pady=(5, 15))
+        locker_frame.pack(pady=(5, 10))
 
         # "LOCKER" (izquierda)
         lbl_locker_title = ctk.CTkLabel(
@@ -234,7 +236,7 @@ class ScanningScreen(ctk.CTkFrame):
             text_color="#E8F5E9",
             fg_color="transparent",
         )
-        self.lbl_success_fecha.pack(pady=(0, 10))
+        self.lbl_success_fecha.pack(pady=(0, 8))
 
         # Countdown
         self.lbl_countdown = ctk.CTkLabel(
@@ -244,7 +246,7 @@ class ScanningScreen(ctk.CTkFrame):
             text_color="#C8E6C9",
             fg_color="transparent",
         )
-        self.lbl_countdown.pack(pady=(0, 15))
+        self.lbl_countdown.pack(pady=(0, 10))
 
     # ── Captura de video en background ────────────────────────────────────────
 
@@ -611,8 +613,8 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
-        # Mostrar overlay verde (centrado verticalmente)
-        self.success_frame.place(relx=0.5, rely=0.6, anchor="center")
+        # Mostrar overlay verde (posicionado más abajo)
+        self.success_frame.place(relx=0.5, rely=0.63, anchor="center")
         self.btn_back.place_forget()
 
         # Iniciar countdown

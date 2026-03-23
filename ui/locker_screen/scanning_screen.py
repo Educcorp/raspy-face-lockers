@@ -10,6 +10,7 @@ Un botón de flecha ← en la parte inferior permite volver al standby.
 
 import customtkinter as ctk
 import threading
+import os
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -148,105 +149,144 @@ class ScanningScreen(ctk.CTkFrame):
             self,
             text="←",
             font=ctk.CTkFont(size=40, weight="bold"),
-            fg_color=self.PRIMARY,  # Verde del tema
-            hover_color="#4A7A49",
+            fg_color="transparent",
+            bg_color="transparent",
+            hover_color="#FFFFFF22",
             text_color="#FFFFFF",
-            width=70, height=70,
-            corner_radius=12,  # Esquinas redondeadas pero cuadrado
+            border_width=3,
+            border_color="#FFFFFF",
+            width=72, height=72,
+            corner_radius=16,
             command=self._go_standby,
         )
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Diseño horizontal más compacto
         self.success_frame = ctk.CTkFrame(
             self,
             fg_color="#5B8C5A",  # Verde del tema
-            corner_radius=20,
-            width=440,
-            height=240,
+            bg_color="#5B8C5A",
+            corner_radius=0,
+            width=430,
+            height=250,
             border_width=0,
         )
         # No se muestra aún — se coloca con .place() al detectar éxito
 
-        # Todo el contenido centrado verticalmente con pack
+        # Layout principal horizontal: ícono (izquierda) + texto (derecha)
+        success_content = ctk.CTkFrame(self.success_frame, fg_color="#5B8C5A", bg_color="#5B8C5A", corner_radius=0)
+        success_content.pack(fill="both", expand=True, padx=(40, 16), pady=16)
+        success_content.grid_columnconfigure(0, weight=0)
+        success_content.grid_columnconfigure(1, weight=1)
+        success_content.grid_rowconfigure(0, weight=1)
 
-        # ✓ ROSTRO GENERADO
+        icon_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "assets", "icons", "icon_persona_blanco.png"
+        )
+        self._success_icon = None
+        try:
+            if os.path.exists(icon_path):
+                icon_img = Image.open(icon_path)
+                self._success_icon = ctk.CTkImage(
+                    light_image=icon_img,
+                    dark_image=icon_img,
+                    size=(118, 118),
+                )
+        except Exception as e:
+            logger.warning(f"No se pudo cargar icono de éxito: {e}")
+
+        self.lbl_success_icon = ctk.CTkLabel(
+            success_content,
+            text="",
+            image=self._success_icon,
+            fg_color="#5B8C5A",
+            bg_color="#5B8C5A",
+            width=120,
+            height=120,
+        )
+        self.lbl_success_icon.grid(row=0, column=0, sticky="nw", padx=(22, 12))
+
+        text_content = ctk.CTkFrame(success_content, fg_color="#5B8C5A", bg_color="#5B8C5A", corner_radius=0)
+        text_content.grid(row=0, column=1, sticky="nsew")
+
+        # Título de locker
         self.lbl_success_title = ctk.CTkLabel(
-            self.success_frame,
-            text="✓ ROSTRO GENERADO",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            text_content,
+            text="Locker numero",
+            font=ctk.CTkFont(size=30, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
+            bg_color="#5B8C5A",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_title.pack(pady=(15, 10))
+        self.lbl_success_title.pack(fill="x")
 
-        # Frame horizontal para LOCKER + número
-        locker_frame = ctk.CTkFrame(
-            self.success_frame,
-            fg_color="transparent",
-        )
-        locker_frame.pack(pady=(5, 10))
-
-        # "LOCKER" (izquierda)
-        lbl_locker_title = ctk.CTkLabel(
-            locker_frame,
-            text="LOCKER",
-            font=ctk.CTkFont(size=22, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-        )
-        lbl_locker_title.pack(side="left", padx=(0, 8))
-
-        # Número de locker (derecha)
+        # Número de locker
         self.lbl_success_locker = ctk.CTkLabel(
-            locker_frame,
+            text_content,
             text="00",
-            font=ctk.CTkFont(size=22, weight="bold"),
+            font=ctk.CTkFont(size=28, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
+            bg_color="#5B8C5A",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_locker.pack(side="left")
+        self.lbl_success_locker.pack(fill="x", pady=(0, 3))
 
         # Nombre del usuario
         self.lbl_success_name = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="—",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(size=15),
             text_color="#FFFFFF",
             fg_color="transparent",
+            bg_color="#5B8C5A",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_name.pack(pady=(0, 4))
+        self.lbl_success_name.pack(fill="x", pady=(0, 2))
 
         # Matrícula
         self.lbl_success_matricula = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="Matrícula —",
-            font=ctk.CTkFont(size=13),
-            text_color="#E8F5E9",
+            font=ctk.CTkFont(size=15),
+            text_color="#FFFFFF",
             fg_color="transparent",
+            bg_color="#5B8C5A",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_matricula.pack(pady=(0, 4))
+        self.lbl_success_matricula.pack(fill="x", pady=(0, 2))
 
         # Fecha
         self.lbl_success_fecha = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="—",
-            font=ctk.CTkFont(size=12),
-            text_color="#E8F5E9",
+            font=ctk.CTkFont(size=15),
+            text_color="#FFFFFF",
             fg_color="transparent",
+            bg_color="#5B8C5A",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_fecha.pack(pady=(0, 8))
+        self.lbl_success_fecha.pack(fill="x", pady=(0, 8))
 
         # Countdown
         self.lbl_countdown = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="",
-            font=ctk.CTkFont(size=11),
-            text_color="#C8E6C9",
+            font=ctk.CTkFont(size=12),
+            text_color="#E6F4E6",
             fg_color="transparent",
+            bg_color="#5B8C5A",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_countdown.pack(pady=(0, 10))
+        self.lbl_countdown.pack(fill="x")
 
     # ── Captura de video en background ────────────────────────────────────────
 

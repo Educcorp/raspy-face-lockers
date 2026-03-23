@@ -164,9 +164,8 @@ class ScanningScreen(ctk.CTkFrame):
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
         self.success_frame = ctk.CTkFrame(
             self,
-            fg_color="#5B8C5A",  # Verde del tema
-            bg_color="#5B8C5A",
-            corner_radius=0,
+            fg_color="#5B8C5A",
+            corner_radius=20,
             width=430,
             height=250,
             border_width=0,
@@ -174,7 +173,7 @@ class ScanningScreen(ctk.CTkFrame):
         # No se muestra aún — se coloca con .place() al detectar éxito
 
         # Layout principal horizontal: ícono (izquierda) + texto (derecha)
-        success_content = ctk.CTkFrame(self.success_frame, fg_color="#5B8C5A", bg_color="#5B8C5A", corner_radius=0)
+        success_content = ctk.CTkFrame(self.success_frame, fg_color="transparent", corner_radius=0)
         success_content.pack(fill="both", expand=True, padx=(40, 16), pady=16)
         success_content.grid_columnconfigure(0, weight=0)
         success_content.grid_columnconfigure(1, weight=1)
@@ -200,14 +199,13 @@ class ScanningScreen(ctk.CTkFrame):
             success_content,
             text="",
             image=self._success_icon,
-            fg_color="#5B8C5A",
-            bg_color="#5B8C5A",
+            fg_color="transparent",
             width=120,
             height=120,
         )
         self.lbl_success_icon.grid(row=0, column=0, sticky="nw", padx=(22, 12))
 
-        text_content = ctk.CTkFrame(success_content, fg_color="#5B8C5A", bg_color="#5B8C5A", corner_radius=0)
+        text_content = ctk.CTkFrame(success_content, fg_color="transparent", corner_radius=0)
         text_content.grid(row=0, column=1, sticky="nsew")
 
         # Título de locker
@@ -217,7 +215,6 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=30, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
-            bg_color="#5B8C5A",
             anchor="w",
             justify="left",
         )
@@ -230,7 +227,6 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=28, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
-            bg_color="#5B8C5A",
             anchor="w",
             justify="left",
         )
@@ -243,7 +239,6 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=15),
             text_color="#FFFFFF",
             fg_color="transparent",
-            bg_color="#5B8C5A",
             anchor="w",
             justify="left",
         )
@@ -256,7 +251,6 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=15),
             text_color="#FFFFFF",
             fg_color="transparent",
-            bg_color="#5B8C5A",
             anchor="w",
             justify="left",
         )
@@ -269,7 +263,6 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=15),
             text_color="#FFFFFF",
             fg_color="transparent",
-            bg_color="#5B8C5A",
             anchor="w",
             justify="left",
         )
@@ -282,7 +275,6 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=12),
             text_color="#E6F4E6",
             fg_color="transparent",
-            bg_color="#5B8C5A",
             anchor="w",
             justify="left",
         )
@@ -654,7 +646,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
         # Mostrar overlay verde (posicionado más abajo)
-        self.success_frame.place(relx=0.5, rely=0.63, anchor="center")
+        self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
         self.btn_back.place_forget()
 
         # Iniciar countdown

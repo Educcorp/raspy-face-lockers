@@ -67,10 +67,11 @@ class StandbyScreen(ctk.CTkFrame):
         try:
             if os.path.exists(logo_path):
                 logo_img = Image.open(logo_path)
+                # Relación 1:1 para evitar deformación
                 self._logo_image = ctk.CTkImage(
                     light_image=logo_img,
                     dark_image=logo_img,
-                    size=(320, 110),
+                    size=(280, 280),
                 )
         except Exception as e:
             logger.warning(f"No se pudo cargar logo SmartLocker: {e}")

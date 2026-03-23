@@ -156,76 +156,75 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Diseño semi-transparente y redondeado con mejor jerarquía visual
+        # Diseño vertical centrado como la imagen de ejemplo
         self.success_frame = ctk.CTkFrame(
             self,
-            fg_color="#5B8C5A",  # Verde semi-transparente (se verá más suave con el canvas)
-            corner_radius=24,
+            fg_color="#5B8C5A",  # Verde del tema
+            corner_radius=20,
             width=400,
-            height=320,
-            border_width=2,
-            border_color="#A5D6A7",
+            height=300,
+            border_width=0,
         )
         # No se muestra aún — se coloca con .place() al detectar éxito
 
-        # Contenido del overlay de éxito con mejor jerarquía
+        # Todo el contenido centrado verticalmente con pack
 
-        # Icono de éxito más pequeño
-        self.lbl_success_icon = ctk.CTkLabel(
-            self.success_frame,
-            text="✓",
-            font=ctk.CTkFont(size=40, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-        )
-        self.lbl_success_icon.pack(pady=(20, 5))
-
-        # Título de éxito
+        # ✓ ROSTRO GENERADO
         self.lbl_success_title = ctk.CTkLabel(
             self.success_frame,
-            text="¡Rostro escaneado!",
+            text="✓ ROSTRO GENERADO",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
         )
-        self.lbl_success_title.pack(pady=(0, 15))
+        self.lbl_success_title.pack(pady=(25, 5))
 
-        # LOCKER ASIGNADO - El más destacado
-        self.lbl_success_locker = ctk.CTkLabel(
+        # "LOCKER NUMERO:"
+        lbl_locker_title = ctk.CTkLabel(
             self.success_frame,
-            text="LOCKER  00",
-            font=ctk.CTkFont(size=48, weight="bold"),
+            text="LOCKER NUMERO:",
+            font=ctk.CTkFont(size=14),
             text_color="#FFFFFF",
             fg_color="transparent",
         )
-        self.lbl_success_locker.pack(pady=(5, 15))
+        lbl_locker_title.pack(pady=(10, 2))
 
-        # Nombre del usuario - tamaño medio
+        # Número de locker (lo más destacado)
+        self.lbl_success_locker = ctk.CTkLabel(
+            self.success_frame,
+            text="00",
+            font=ctk.CTkFont(size=56, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+        )
+        self.lbl_success_locker.pack(pady=(0, 12))
+
+        # Nombre del usuario
         self.lbl_success_name = ctk.CTkLabel(
             self.success_frame,
             text="—",
-            font=ctk.CTkFont(size=16, weight="normal"),
-            text_color="#E8F5E9",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color="#FFFFFF",
             fg_color="transparent",
         )
-        self.lbl_success_name.pack(pady=(0, 3))
+        self.lbl_success_name.pack(pady=(0, 4))
 
-        # Matrícula - tamaño pequeño
+        # Matrícula
         self.lbl_success_matricula = ctk.CTkLabel(
             self.success_frame,
             text="Matrícula —",
             font=ctk.CTkFont(size=13),
-            text_color="#C8E6C9",
+            text_color="#E8F5E9",
             fg_color="transparent",
         )
-        self.lbl_success_matricula.pack(pady=(0, 3))
+        self.lbl_success_matricula.pack(pady=(0, 4))
 
-        # Fecha - tamaño pequeño
+        # Fecha
         self.lbl_success_fecha = ctk.CTkLabel(
             self.success_frame,
             text="—",
             font=ctk.CTkFont(size=12),
-            text_color="#C8E6C9",
+            text_color="#E8F5E9",
             fg_color="transparent",
         )
         self.lbl_success_fecha.pack(pady=(0, 10))
@@ -234,11 +233,11 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_countdown = ctk.CTkLabel(
             self.success_frame,
             text="",
-            font=ctk.CTkFont(size=12),
-            text_color="#A5D6A7",
+            font=ctk.CTkFont(size=11),
+            text_color="#C8E6C9",
             fg_color="transparent",
         )
-        self.lbl_countdown.pack(pady=(5, 15))
+        self.lbl_countdown.pack(pady=(0, 15))
 
     # ── Captura de video en background ────────────────────────────────────────
 
@@ -594,10 +593,10 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_status.configure(text="✓ ACCESO CONCEDIDO", text_color="#A5D6A7")
         self.lbl_attempts.configure(text="")
 
-        # Llenar datos en el overlay con jerarquía visual mejorada
+        # Llenar datos en el overlay con el nuevo diseño
         locker_num = user_data.get("locker_numero", "—")
         self.lbl_success_locker.configure(
-            text=f"LOCKER  {locker_num}"
+            text=str(locker_num)  # Solo el número
         )
         self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
         self.lbl_success_matricula.configure(
@@ -605,8 +604,8 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
-        # Mostrar overlay verde
-        self.success_frame.place(relx=0.5, rely=0.55, anchor="center")
+        # Mostrar overlay verde (centrado verticalmente)
+        self.success_frame.place(relx=0.5, rely=0.6, anchor="center")
         self.btn_back.place_forget()
 
         # Iniciar countdown

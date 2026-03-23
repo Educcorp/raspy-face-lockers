@@ -190,7 +190,7 @@ class ScanningScreen(ctk.CTkFrame):
         lbl_locker_title = ctk.CTkLabel(
             locker_frame,
             text="LOCKER",
-            font=ctk.CTkFont(size=56, weight="bold"),
+            font=ctk.CTkFont(size=22, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
         )
@@ -200,7 +200,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_locker = ctk.CTkLabel(
             locker_frame,
             text="00",
-            font=ctk.CTkFont(size=56, weight="bold"),
+            font=ctk.CTkFont(size=22, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
         )

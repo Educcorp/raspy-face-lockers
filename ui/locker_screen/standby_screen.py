@@ -112,7 +112,7 @@ class StandbyScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=19, weight="bold"),
             fg_color="transparent",
             bg_color="transparent",
-            hover_color="#FFFFFF22",
+            hover_color="#CCCCCC",
             text_color="#FFFFFF",
             border_width=2,
             border_color="#FFFFFF",

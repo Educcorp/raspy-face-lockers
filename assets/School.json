@@ -13,7 +13,7 @@
     },
     "CTkFrame": {
         "corner_radius": 10,
-        "border_width": 1,
+        "border_width": 0,
         "fg_color": [
             "#FFFFFF",
             "#FFFFFF"
@@ -23,12 +23,12 @@
             "#F0EAE3"
         ],
         "border_color": [
-            "#D6CFC7",
-            "#D6CFC7"
+            "transparent",
+            "transparent"
         ]
     },
     "CTkButton": {
-        "corner_radius": 8,
+        "corner_radius": 16,
         "border_width": 0,
         "fg_color": [
             "#5B8C5A",

@@ -151,7 +151,7 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=40, weight="bold"),
             fg_color="transparent",
             bg_color="transparent",
-            hover_color="#FFFFFF22",
+            hover_color="#CCCCCC",
             text_color="#FFFFFF",
             border_width=3,
             border_color="#FFFFFF",
@@ -162,8 +162,19 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        self.success_frame = ctk.CTkFrame(
+        # Contenedor con fondo oscuro para overlay modal
+        self.overlay_bg = ctk.CTkFrame(
             self,
+            fg_color="#2A2A2E",  # Gris oscuro semi-transparente visualmente
+            corner_radius=0,
+            width=480,
+            height=800,
+            border_width=0,
+        )
+
+        # Frame principal del overlay con configuración explícita
+        self.success_frame = ctk.CTkFrame(
+            self.overlay_bg,
             fg_color="#5B8C5A",
             corner_radius=20,
             width=430,
@@ -605,7 +616,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._reset_liveness_state()
         self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
-        self.success_frame.place_forget()
+        self.overlay_bg.place_forget()
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
         if not self._camera_running:
@@ -645,7 +656,9 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
-        # Mostrar overlay verde (posicionado más abajo)
+        # Mostrar overlay de fondo completo
+        self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
+        # Centrar el cuadro verde dentro del overlay
         self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
         self.btn_back.place_forget()
 

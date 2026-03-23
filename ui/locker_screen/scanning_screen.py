@@ -372,12 +372,14 @@ class ScanningScreen(ctk.CTkFrame):
             # Convertir a PIL
             pil_image = Image.fromarray(frame_resized, mode="RGB")
 
-            # Solo dibujar cuadro si hay rostro detectado
+            # Dibujar guía de escaneo con esquinas en L
+            draw = ImageDraw.Draw(pil_image)
+
+            # Determinar coordenadas del cuadro (dinámicas si hay rostro, fijas si no)
             if len(faces) > 0:
                 face_box = faces[0].get("box")
                 if face_box:
                     # Calcular factor de escala para las coordenadas de la cara
-                    # Las coordenadas vienen del frame original, necesitamos mapearlas al frame redimensionado
                     scale_x = self.WIN_W / new_w
                     scale_y = self.WIN_H / new_h
 
@@ -398,29 +400,55 @@ class ScanningScreen(ctk.CTkFrame):
                     face_h = int(face_h * scale_y)
 
                     # Agregar padding al cuadro para que sea más amplio
-                    padding = int(max(face_w, face_h) * 0.2)
+                    padding = int(max(face_w, face_h) * 0.3)
                     x1 = max(0, x - padding)
                     y1 = max(0, y - padding)
                     x2 = min(self.WIN_W, x + face_w + padding)
                     y2 = min(self.WIN_H, y + face_h + padding)
+                else:
+                    # Si no hay box, usar coordenadas fijas
+                    cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+                    box_width = 280
+                    box_height = 360
+                    x1 = cx - (box_width // 2)
+                    y1 = cy - (box_height // 2)
+                    x2 = cx + (box_width // 2)
+                    y2 = cy + (box_height // 2)
+            else:
+                # Sin rostro: guía fija centrada
+                cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+                box_width = 280
+                box_height = 360
+                x1 = cx - (box_width // 2)
+                y1 = cy - (box_height // 2)
+                x2 = cx + (box_width // 2)
+                y2 = cy + (box_height // 2)
 
-                    # Dibujar cuadro dinámico
-                    draw = ImageDraw.Draw(pil_image)
+            # Color del cuadro: verde si rostro detectado correctamente, rojo si no
+            if self._liveness_passed:
+                box_color = (90, 180, 90)  # Verde
+            else:
+                box_color = (200, 80, 80)  # Rojo
 
-                    # Color del cuadro: verde si rostro detectado correctamente, rojo si no
-                    if self._liveness_passed:
-                        box_color = (90, 180, 90)  # Verde
-                    else:
-                        box_color = (200, 80, 80)  # Rojo
+            # Dibujar solo las esquinas en forma de L
+            corner_length = 40  # Longitud de cada línea de la esquina
+            line_width = 5
 
-                    # Dibujar rectángulo redondeado
-                    corner_radius = 20
-                    draw.rounded_rectangle(
-                        [(x1, y1), (x2, y2)],
-                        radius=corner_radius,
-                        outline=box_color,
-                        width=4
-                    )
+            # Esquina superior izquierda
+            draw.line([(x1, y1), (x1 + corner_length, y1)], fill=box_color, width=line_width)  # Horizontal
+            draw.line([(x1, y1), (x1, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
+
+            # Esquina superior derecha
+            draw.line([(x2 - corner_length, y1), (x2, y1)], fill=box_color, width=line_width)  # Horizontal
+            draw.line([(x2, y1), (x2, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
+
+            # Esquina inferior izquierda
+            draw.line([(x1, y2 - corner_length), (x1, y2)], fill=box_color, width=line_width)  # Vertical
+            draw.line([(x1, y2), (x1 + corner_length, y2)], fill=box_color, width=line_width)  # Horizontal
+
+            # Esquina inferior derecha
+            draw.line([(x2, y2 - corner_length), (x2, y2)], fill=box_color, width=line_width)  # Vertical
+            draw.line([(x2 - corner_length, y2), (x2, y2)], fill=box_color, width=line_width)  # Horizontal
 
             # Convertir a RGB para PhotoImage
             pil_rgb = pil_image.convert("RGB")
@@ -496,7 +524,7 @@ class ScanningScreen(ctk.CTkFrame):
                 self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
                 self.canvas.image = self._photo_image
 
-                # Actualizar texto del status según detección
+                # Actualizar texto del status según detección (label siempre visible)
                 if not self._success_shown:
                     if self._face_detected:
                         if self._liveness_passed:

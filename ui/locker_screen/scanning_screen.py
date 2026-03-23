@@ -145,11 +145,11 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back = ctk.CTkButton(
             self,
             text="←",
-            font=ctk.CTkFont(size=32, weight="bold"),
+            font=ctk.CTkFont(size=40, weight="bold"),
             fg_color=self.PRIMARY,  # Verde del tema
             hover_color="#4A7A49",
             text_color="#FFFFFF",
-            width=64, height=64,
+            width=70, height=70,
             corner_radius=12,  # Esquinas redondeadas pero cuadrado
             command=self._go_standby,
         )
@@ -177,27 +177,34 @@ class ScanningScreen(ctk.CTkFrame):
             text_color="#FFFFFF",
             fg_color="transparent",
         )
-        self.lbl_success_title.pack(pady=(25, 5))
+        self.lbl_success_title.pack(pady=(25, 15))
 
-        # "LOCKER NUMERO:"
-        lbl_locker_title = ctk.CTkLabel(
+        # Frame horizontal para LOCKER + número
+        locker_frame = ctk.CTkFrame(
             self.success_frame,
-            text="LOCKER NUMERO:",
-            font=ctk.CTkFont(size=14),
+            fg_color="transparent",
+        )
+        locker_frame.pack(pady=(5, 15))
+
+        # "LOCKER" (izquierda)
+        lbl_locker_title = ctk.CTkLabel(
+            locker_frame,
+            text="LOCKER",
+            font=ctk.CTkFont(size=56, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
         )
-        lbl_locker_title.pack(pady=(10, 2))
+        lbl_locker_title.pack(side="left", padx=(0, 8))
 
-        # Número de locker (lo más destacado)
+        # Número de locker (derecha)
         self.lbl_success_locker = ctk.CTkLabel(
-            self.success_frame,
+            locker_frame,
             text="00",
             font=ctk.CTkFont(size=56, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
         )
-        self.lbl_success_locker.pack(pady=(0, 12))
+        self.lbl_success_locker.pack(side="left")
 
         # Nombre del usuario
         self.lbl_success_name = ctk.CTkLabel(

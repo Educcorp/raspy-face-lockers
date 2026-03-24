@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import tkinter
 import logging
+import tempfile
 from typing import Optional
 from datetime import datetime
 from datetime import timedelta
@@ -59,9 +60,18 @@ class ScanningScreen(ctk.CTkFrame):
     CHALLENGE_SCALE_IN_THRESHOLD = 0.18
     CHALLENGE_SCALE_OUT_THRESHOLD = -0.15
 
-    # Dimensiones de la ventana
+    # Dimensiones de referencia (Raspberry Pi). En escritorio se usan
+    # las dimensiones reales del canvas en cada frame (ver _canvas_size()).
     WIN_W = 480
     WIN_H = 800
+
+    def _canvas_size(self):
+        """Retorna (ancho, alto) actual del canvas; cae a WIN_W x WIN_H si aún no dibujado."""
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        if w <= 1 or h <= 1:
+            return self.WIN_W, self.WIN_H
+        return w, h
 
     def __init__(self, parent: ctk.CTk, controller) -> None:
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
@@ -111,17 +121,18 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Construcción de UI ────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        # Canvas que ocupa TODA la ventana para dibujar cámara + overlays
+        # Canvas que ocupa TODA la ventana; sin dimensiones fijas para que
+        # se adapte automáticamente al redimensionar la ventana.
         self.canvas = tkinter.Canvas(
             self,
-            width=self.WIN_W,
-            height=self.WIN_H,
+            width=1,
+            height=1,
             bg="#1A1A2E",
             highlightthickness=0,
         )
         self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
 
-        # ── Status label en la parte superior ─────────────────────────────────
+        # ── Status label en la parte superior (posición relativa) ─────────────
         self.lbl_status = ctk.CTkLabel(
             self,
             text="POSICIONA TU ROSTRO",
@@ -132,7 +143,7 @@ class ScanningScreen(ctk.CTkFrame):
             corner_radius=0,
             height=40,
         )
-        self.lbl_status.place(relx=0.5, y=100, anchor="center")
+        self.lbl_status.place(relx=0.5, rely=0.12, anchor="center")
 
         # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
@@ -142,7 +153,7 @@ class ScanningScreen(ctk.CTkFrame):
             text_color=self.MUTED,
             fg_color="transparent",
         )
-        self.lbl_attempts.place(relx=0.5, y=72, anchor="n")
+        self.lbl_attempts.place(relx=0.5, rely=0.08, anchor="n")
 
         # ── Botón de retroceso (flecha) en la parte inferior ─────────────────
         self.btn_back = ctk.CTkButton(
@@ -159,26 +170,22 @@ class ScanningScreen(ctk.CTkFrame):
             corner_radius=16,
             command=self._go_standby,
         )
-        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_back.place(relx=0.17, rely=0.94, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Contenedor con fondo oscuro para overlay modal
+        # Contenedor con fondo oscuro para overlay modal (relwidth/relheight al mostrarse)
         self.overlay_bg = ctk.CTkFrame(
             self,
-            fg_color="#2A2A2E",  # Gris oscuro semi-transparente visualmente
+            fg_color="#2A2A2E",
             corner_radius=0,
-            width=480,
-            height=800,
             border_width=0,
         )
 
-        # Frame principal del overlay con configuración explícita
+        # Frame principal del overlay — se posiciona con coordenadas relativas
         self.success_frame = ctk.CTkFrame(
             self.overlay_bg,
             fg_color="#5B8C5A",
             corner_radius=20,
-            width=430,
-            height=250,
             border_width=0,
         )
         # No se muestra aún — se coloca con .place() al detectar éxito
@@ -394,118 +401,91 @@ class ScanningScreen(ctk.CTkFrame):
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
         """Dibuja el frame de cámara a pantalla completa con cuadro dinámico siguiendo el rostro."""
         try:
-            # Picamera2 "RGB888" retorna BGR en memoria — convertir a RGB para PIL
+            canvas_w, canvas_h = self._canvas_size()
+
+            # Convertir BGR → RGB para PIL
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Redimensionar con crop al centro para llenar pantalla completa
+            # Crop con centro para llenar el canvas sin deformar
             h, w = frame_rgb.shape[:2]
-            target_aspect = self.WIN_W / self.WIN_H  # 480/800 = 0.6
+            target_aspect = canvas_w / canvas_h
             frame_aspect = w / h
 
             if frame_aspect > target_aspect:
-                # Frame es más ancho - crop horizontal
                 new_h = h
                 new_w = int(h * target_aspect)
                 x_offset = (w - new_w) // 2
                 y_offset = 0
-                frame_cropped = frame_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
+                frame_cropped = frame_rgb[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
             else:
-                # Frame es más alto - crop vertical
                 new_w = w
                 new_h = int(w / target_aspect)
                 x_offset = 0
                 y_offset = (h - new_h) // 2
-                frame_cropped = frame_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
+                frame_cropped = frame_rgb[y_offset:y_offset + new_h, x_offset:x_offset + new_w]
 
-            # Redimensionar al tamaño exacto de la pantalla
-            frame_resized = cv2.resize(frame_cropped, (self.WIN_W, self.WIN_H), interpolation=cv2.INTER_LINEAR)
+            # Redimensionar al tamaño actual del canvas
+            frame_resized = cv2.resize(frame_cropped, (canvas_w, canvas_h), interpolation=cv2.INTER_LINEAR)
 
-            # Convertir a PIL
             pil_image = Image.fromarray(frame_resized, mode="RGB")
-
-            # Dibujar guía de escaneo con esquinas en L
             draw = ImageDraw.Draw(pil_image)
 
-            # Determinar coordenadas del cuadro (dinámicas si hay rostro, fijas si no)
+            # Escalar el cuadro guía al tamaño real del canvas
+            scale_x = canvas_w / new_w
+            scale_y = canvas_h / new_h
+
             if len(faces) > 0:
                 face_box = faces[0].get("box")
                 if face_box:
-                    # Calcular factor de escala para las coordenadas de la cara
-                    scale_x = self.WIN_W / new_w
-                    scale_y = self.WIN_H / new_h
-
                     x, y, face_w, face_h = face_box
 
-                    # Ajustar coordenadas por el crop
                     if frame_aspect > target_aspect:
-                        # Crop horizontal
                         x = x - x_offset
                     else:
-                        # Crop vertical
                         y = y - y_offset
 
-                    # Escalar al tamaño de pantalla
                     x = int(x * scale_x)
                     y = int(y * scale_y)
                     face_w = int(face_w * scale_x)
                     face_h = int(face_h * scale_y)
 
-                    # Agregar padding al cuadro para que sea más amplio
                     padding = int(max(face_w, face_h) * 0.3)
                     x1 = max(0, x - padding)
                     y1 = max(0, y - padding)
-                    x2 = min(self.WIN_W, x + face_w + padding)
-                    y2 = min(self.WIN_H, y + face_h + padding)
+                    x2 = min(canvas_w, x + face_w + padding)
+                    y2 = min(canvas_h, y + face_h + padding)
                 else:
-                    # Si no hay box, usar coordenadas fijas
-                    cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
-                    box_width = 280
-                    box_height = 360
-                    x1 = cx - (box_width // 2)
-                    y1 = cy - (box_height // 2)
-                    x2 = cx + (box_width // 2)
-                    y2 = cy + (box_height // 2)
+                    cx, cy = canvas_w // 2, canvas_h // 2 - int(canvas_h * 0.05)
+                    box_w = int(canvas_w * 0.58)
+                    box_h = int(canvas_h * 0.45)
+                    x1, y1 = cx - box_w // 2, cy - box_h // 2
+                    x2, y2 = cx + box_w // 2, cy + box_h // 2
             else:
-                # Sin rostro: guía fija centrada
-                cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
-                box_width = 280
-                box_height = 360
-                x1 = cx - (box_width // 2)
-                y1 = cy - (box_height // 2)
-                x2 = cx + (box_width // 2)
-                y2 = cy + (box_height // 2)
+                cx, cy = canvas_w // 2, canvas_h // 2 - int(canvas_h * 0.05)
+                box_w = int(canvas_w * 0.58)
+                box_h = int(canvas_h * 0.45)
+                x1, y1 = cx - box_w // 2, cy - box_h // 2
+                x2, y2 = cx + box_w // 2, cy + box_h // 2
 
-            # Color del cuadro: verde si rostro detectado correctamente, rojo si no
-            if self._liveness_passed:
-                box_color = (90, 180, 90)  # Verde
-            else:
-                box_color = (200, 80, 80)  # Rojo
+            box_color = (90, 180, 90) if self._liveness_passed else (200, 80, 80)
 
-            # Dibujar solo las esquinas en forma de L
-            corner_length = 40  # Longitud de cada línea de la esquina
-            line_width = 5
+            # Longitud de esquinas proporcional al canvas
+            corner_length = max(20, int(canvas_w * 0.08))
+            line_width = max(3, int(canvas_w * 0.01))
 
-            # Esquina superior izquierda
-            draw.line([(x1, y1), (x1 + corner_length, y1)], fill=box_color, width=line_width)  # Horizontal
-            draw.line([(x1, y1), (x1, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
+            draw.line([(x1, y1), (x1 + corner_length, y1)], fill=box_color, width=line_width)
+            draw.line([(x1, y1), (x1, y1 + corner_length)], fill=box_color, width=line_width)
+            draw.line([(x2 - corner_length, y1), (x2, y1)], fill=box_color, width=line_width)
+            draw.line([(x2, y1), (x2, y1 + corner_length)], fill=box_color, width=line_width)
+            draw.line([(x1, y2 - corner_length), (x1, y2)], fill=box_color, width=line_width)
+            draw.line([(x1, y2), (x1 + corner_length, y2)], fill=box_color, width=line_width)
+            draw.line([(x2, y2 - corner_length), (x2, y2)], fill=box_color, width=line_width)
+            draw.line([(x2 - corner_length, y2), (x2, y2)], fill=box_color, width=line_width)
 
-            # Esquina superior derecha
-            draw.line([(x2 - corner_length, y1), (x2, y1)], fill=box_color, width=line_width)  # Horizontal
-            draw.line([(x2, y1), (x2, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
-
-            # Esquina inferior izquierda
-            draw.line([(x1, y2 - corner_length), (x1, y2)], fill=box_color, width=line_width)  # Vertical
-            draw.line([(x1, y2), (x1 + corner_length, y2)], fill=box_color, width=line_width)  # Horizontal
-
-            # Esquina inferior derecha
-            draw.line([(x2, y2 - corner_length), (x2, y2)], fill=box_color, width=line_width)  # Vertical
-            draw.line([(x2 - corner_length, y2), (x2, y2)], fill=box_color, width=line_width)  # Horizontal
-
-            # Convertir a RGB para PhotoImage
             pil_rgb = pil_image.convert("RGB")
 
-            import tempfile
-            ppm_path = "/tmp/locker_scan.ppm"
+            # Ruta temporal compatible con Windows y Linux
+            ppm_path = os.path.join(tempfile.gettempdir(), "locker_scan.ppm")
             try:
                 pil_rgb.save(ppm_path, "PPM")
                 new_photo = tkinter.PhotoImage(file=ppm_path)
@@ -520,51 +500,35 @@ class ScanningScreen(ctk.CTkFrame):
     def _show_camera_error(self, error_msg: str) -> None:
         """Muestra un mensaje de error cuando la cámara no está disponible."""
         logger.error(f"Camera Error: {error_msg}")
-        
-        # Mostrar error en el canvas
+
+        cw, ch = self._canvas_size()
+
         self.canvas.delete("all")
-        self.canvas.create_rectangle(
-            0, 0, self.WIN_W, self.WIN_H,
-            fill=self.BG_COLOR,
-            outline=self.BG_COLOR
-        )
-        
-        # Título de error
+        self.canvas.create_rectangle(0, 0, cw, ch, fill=self.BG_COLOR, outline=self.BG_COLOR)
         self.canvas.create_text(
-            self.WIN_W // 2, 150,
-            text="✗ Error de Cámara",
-            font=("Arial", 24, "bold"),
+            cw // 2, int(ch * 0.20),
+            text="Error de Camara",
+            font=("Arial", max(16, cw // 20), "bold"),
             fill="#FF6B6B",
-            justify="center"
+            justify="center",
         )
-        
-        # Mensaje de error detallado
         self.canvas.create_text(
-            self.WIN_W // 2, 300,
+            cw // 2, int(ch * 0.40),
             text=error_msg,
-            font=("Arial", 14),
+            font=("Arial", max(10, cw // 32)),
             fill="#FFFFFF",
             justify="center",
-            width=360
+            width=int(cw * 0.80),
         )
-        
-        # Instrucción
         self.canvas.create_text(
-            self.WIN_W // 2, 550,
-            text="Presiona ← para volver al inicio",
-            font=("Arial", 12),
+            cw // 2, int(ch * 0.70),
+            text="Presiona <- para volver al inicio",
+            font=("Arial", max(9, cw // 38)),
             fill="#CCCCCC",
-            justify="center"
+            justify="center",
         )
-        
-        # Actualizar status label
-        self.lbl_status.configure(
-            text="✗ Cámara no disponible",
-            text_color="#FF6B6B"
-        )
-        
-        # Asegurarse de que los botones estén visibles
-        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.lbl_status.configure(text="Camara no disponible", text_color="#FF6B6B")
+        self.btn_back.place(relx=0.17, rely=0.94, anchor="center")
 
 
     def _set_camera_image(self) -> None:
@@ -617,7 +581,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.overlay_bg.place_forget()
-        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_back.place(relx=0.17, rely=0.94, anchor="center")
 
         if not self._camera_running:
             self._camera_running = True
@@ -656,10 +620,10 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
-        # Mostrar overlay de fondo completo
+        # Mostrar overlay de fondo completo (relativo para escalar con la ventana)
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
-        # Centrar el cuadro verde dentro del overlay
-        self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
+        # Cuadro verde centrado con ancho relativo al overlay
+        self.success_frame.place(relx=0.5, rely=0.60, anchor="center", relwidth=0.90)
         self.btn_back.place_forget()
 
         # Iniciar countdown

@@ -23,12 +23,17 @@ ctk.set_default_color_theme(_THEME)
 
 class LockerApp(ctk.CTk):
     """
-    Ventana raíz del locker físico. Resolución fija 800×480 px.
+    Ventana raíz del locker físico.
+
+    En Raspberry Pi se usa 480x800 fijo (pantalla física).
+    En Windows/escritorio la ventana es redimensionable y se centra
+    con un tamaño inicial proporcional a la pantalla disponible.
 
     Kiosk mode (sin barra de título) se activa descomentando
     overrideredirect(True) — solo en la Raspberry Pi física.
     """
 
+    # Resolución de referencia para Raspberry Pi
     WIDTH  = 480
     HEIGHT = 800
 
@@ -37,8 +42,23 @@ class LockerApp(ctk.CTk):
 
         # ── Ventana ───────────────────────────────────────────────────────────
         self.title("Smart Locker")
-        self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
-        self.resizable(False, False)
+
+        # En escritorio (Windows/Linux desktop) calcular tamaño óptimo
+        import platform
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+
+        # Usar el 40% del alto de pantalla manteniendo proporción 480:800 (3:5)
+        win_h = int(screen_h * 0.80)
+        win_w = int(win_h * (self.WIDTH / self.HEIGHT))
+
+        # Centrar en pantalla
+        pos_x = (screen_w - win_w) // 2
+        pos_y = (screen_h - win_h) // 2
+
+        self.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.resizable(True, True)
+        self.minsize(320, 480)
         # self.overrideredirect(True)   # ← activar en RPi (kiosk sin decoración)
 
         self.grid_rowconfigure(0, weight=1)

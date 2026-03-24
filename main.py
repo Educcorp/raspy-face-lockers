@@ -10,18 +10,25 @@ import argparse
 import sys
 import os
 import logging
+import io
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Garantiza que exista el directorio de logs antes de crear FileHandler.
 os.makedirs('logs', exist_ok=True)
 
+# En Windows la consola usa cp1252 por defecto y no puede mostrar emojis Unicode.
+# Forzar UTF-8 en stdout para evitar UnicodeEncodeError.
+if sys.platform == "win32" and hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
     handlers=[
-        logging.FileHandler('logs/locker_system.log', mode='a'),
+        logging.FileHandler('logs/locker_system.log', mode='a', encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )

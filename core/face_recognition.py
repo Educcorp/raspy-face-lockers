@@ -414,102 +414,125 @@ class FaceEmbeddingExtractor:
 # ── Camera Manager ─────────────────────────────────────────────────────────
 
 class CameraManager:
-    """Gestor de cámara usando picamera2 directamente."""
+    """
+    Gestor de cámara con soporte dual:
+      - picamera2  → Raspberry Pi (backend primario)
+      - cv2.VideoCapture → Windows / Linux desktop (fallback automático)
+    """
 
     def __init__(self):
         self.cam = None
         self.initialized = False
+        self._using_opencv = False
         self._lock = threading.Lock()
         self.face_detector = FaceDetector()
         self.embedding_extractor = FaceEmbeddingExtractor()
 
     def initialize(self) -> bool:
-        """Inicializa la cámara con picamera2."""
+        """Inicializa la cámara intentando picamera2 primero y cv2 como fallback."""
         with self._lock:
             if self.initialized:
-                logger.debug("Cámara ya inicializada")
+                logger.debug("Camara ya inicializada")
                 return True
 
+            self._release_internal()
+
+            # ── Intento 1: picamera2 (Raspberry Pi) ──────────────────────────
+            picamera2_module = _import_picamera2_from_system()
+            if picamera2_module is not None:
+                try:
+                    logger.info("Inicializando camara con picamera2...")
+                    Picamera2 = picamera2_module.Picamera2
+                    self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
+                    config = self.cam.create_preview_configuration(
+                        main={
+                            "format": "RGB888",
+                            "size": (
+                                CAMERA_CONFIG.get("width", 640),
+                                CAMERA_CONFIG.get("height", 480),
+                            )
+                        }
+                    )
+                    self.cam.configure(config)
+                    self.cam.start()
+                    time.sleep(0.5)
+                    self._using_opencv = False
+                    self.initialized = True
+                    logger.info("Camara inicializada correctamente (picamera2)")
+                    return True
+                except Exception as e:
+                    logger.warning(f"picamera2 fallo al inicializar: {e}. Intentando con OpenCV...")
+                    self._release_internal()
+
+            # ── Intento 2: cv2.VideoCapture (Windows / Linux desktop) ─────────
             try:
-                logger.info("Inicializando cámara...")
-                
-                # Si la cámara estaba inicializada antes, limpiar estado
-                if self.cam is not None:
-                    try:
-                        logger.debug("Limpiando cámara anterior...")
-                        self.cam.stop()
-                        time.sleep(0.1)
-                    except Exception as e:
-                        logger.debug(f"Error limpiando cámara anterior: {e}")
-                    self.cam = None
-                
-                # Importar picamera2
-                picamera2_module = _import_picamera2_from_system()
-                if picamera2_module is None:
-                    raise ImportError("Could not import picamera2")
-                
-                Picamera2 = picamera2_module.Picamera2
-                logger.debug("Creando instancia de Picamera2...")
+                logger.info("Inicializando camara con cv2.VideoCapture (modo escritorio)...")
+                cam_index = CAMERA_CONFIG.get("camera_index", 0)
+                cap = cv2.VideoCapture(cam_index)
 
-                self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
-                logger.debug(f"✓ Picamera2 creado (índice {CAMERA_CONFIG.get('camera_index', 0)})")
+                if not cap.isOpened():
+                    # Intentar índice 0 como último recurso
+                    cap = cv2.VideoCapture(0)
 
-                # Configuración
-                logger.debug("Configurando cámara...")
-                config = self.cam.create_preview_configuration(
-                    main={
-                        "format": "RGB888",
-                        "size": (
-                            CAMERA_CONFIG.get("width", 640),
-                            CAMERA_CONFIG.get("height", 480),
-                        )
-                    }
-                )
-                self.cam.configure(config)
-                logger.debug("✓ Configuración de cámara aplicada")
+                if not cap.isOpened():
+                    logger.error("No se pudo abrir ninguna camara con cv2.VideoCapture")
+                    self.initialized = False
+                    return False
 
-                # Iniciar captura
-                logger.debug("Iniciando captura...")
-                self.cam.start()
-                logger.debug("✓ Captura iniciada")
-                
-                # Esperar a que el buffer de picamera2 se establezca
-                time.sleep(0.5)
-                
-                logger.info("✓ Cámara inicializada correctamente")
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_CONFIG.get("width", 640))
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_CONFIG.get("height", 480))
+
+                # Verificar que efectivamente entrega frames
+                ret, test_frame = cap.read()
+                if not ret or test_frame is None:
+                    logger.error("cv2.VideoCapture se abrio pero no entrega frames")
+                    cap.release()
+                    self.initialized = False
+                    return False
+
+                self.cam = cap
+                self._using_opencv = True
                 self.initialized = True
+                logger.info("Camara inicializada correctamente (cv2.VideoCapture - modo escritorio)")
                 return True
-
-            except ImportError as e:
-                logger.error(f"✗ Picamera2 no disponible: {e}")
-                logger.error("Instala: sudo apt install python3-picamera2")
-                self.initialized = False
-                return False
-
-            except PermissionError as e:
-                logger.error(f"✗ Permisos denegados: {e}")
-                logger.error("Ejecuta con sudo o agrega permisos a /dev/video*")
-                self.initialized = False
-                return False
 
             except Exception as e:
-                logger.error(f"✗ Error inicializando cámara: {e}")
+                logger.error(f"Error inicializando camara con OpenCV: {e}")
                 import traceback
                 logger.debug(traceback.format_exc())
                 self.initialized = False
                 self.cam = None
                 return False
 
+    def _release_internal(self) -> None:
+        """Libera el recurso de cámara actual sin tocar el singleton global."""
+        if self.cam is not None:
+            try:
+                if self._using_opencv:
+                    self.cam.release()
+                else:
+                    self.cam.stop()
+            except Exception as e:
+                logger.debug(f"Error liberando camara interna: {e}")
+            self.cam = None
+        self.initialized = False
+
     def get_frame(self) -> Optional[np.ndarray]:
-        """Captura un frame de la cámara. Retorna el array sin conversión."""
+        """Captura un frame BGR desde el backend activo."""
         if not self.initialized or self.cam is None:
             return None
 
         try:
-            # Picamera2 retorna el frame directamente
-            # Sin conversiones de canales - usar tal cual para evitar confusión
-            frame_array = self.cam.capture_array()
-            return frame_array
+            if self._using_opencv:
+                ret, frame = self.cam.read()
+                if not ret or frame is None:
+                    logger.warning("cv2.VideoCapture no pudo leer frame")
+                    return None
+                return frame
+            else:
+                # picamera2 entrega RGB888; convertir a BGR para que OpenCV lo procese igual
+                frame_rgb = self.cam.capture_array()
+                return cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
 
         except Exception as e:
             logger.warning(f"Error capturando frame: {e}")
@@ -522,34 +545,15 @@ class CameraManager:
         return self.face_detector.detect(frame)
 
     def release(self) -> None:
-        """Libera la cámara completa y resetea el estado."""
+        """Libera la cámara completa y resetea el singleton global."""
         with self._lock:
-            logger.info("Liberando cámara...")
-            
-            try:
-                if self.cam is not None:
-                    try:
-                        self.cam.stop()
-                        logger.debug("✓ Cámara detenida")
-                    except Exception as e:
-                        logger.debug(f"Error deteniendo cámara: {e}")
-                    
-                    try:
-                        del self.cam
-                        logger.debug("✓ Instancia de cámara eliminada")
-                    except Exception as e:
-                        logger.debug(f"Error eliminando instancia: {e}")
-            except Exception as e:
-                logger.debug(f"Error en release: {e}")
-            finally:
-                self.initialized = False
-                self.cam = None
-                logger.info("✓ Cámara completamente liberada")
-        
-        # CRÍTICO: Reset global singleton después de liberar
+            logger.info("Liberando camara...")
+            self._release_internal()
+            logger.info("Camara completamente liberada")
+
         global _camera_manager
         _camera_manager = None
-        logger.info("✓ Singleton global resetado")
+        logger.info("Singleton global resetado")
 
 
 # ── Singleton Global ──────────────────────────────────────────────────────

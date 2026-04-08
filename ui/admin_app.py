@@ -39,31 +39,31 @@ ctk.set_default_color_theme(_THEME)
 
 # ── Paletas ───────────────────────────────────────────────────────────────────
 LIGHT_PALETTE = {
-    "BG":          "#F5F0EB",
-    "CARD":        "#EDE8E2",
-    "ACCENT":      "#5B8C5A",
-    "ACCENT_HOVER":"#4A7A49",
-    "DANGER":      "#c0392b",
-    "WARN":        "#d4a034",
-    "TEXT":        "#3D3D3D",
-    "MUTED":       "#8C8279",
-    "BORDER":      "#CCC5BC",
+    "BG":          "#F4F1EC",
+    "CARD":        "#E9E4DE",
+    "ACCENT":      "#6E7F63",
+    "ACCENT_HOVER":"#5F7155",
+    "DANGER":      "#AE655C",
+    "WARN":        "#B99662",
+    "TEXT":        "#3F3E3B",
+    "MUTED":       "#8B847C",
+    "BORDER":      "#D2CBC3",
     "WHITE":       "#ffffff",
-    "SUCCESS":     "#5B8C5A",
+    "SUCCESS":     "#6E7F63",
 }
 
 DARK_PALETTE = {
-    "BG":          "#0c112f",
-    "CARD":        "#151d3b",
-    "ACCENT":      "#33a8a3",
-    "ACCENT_HOVER":"#268f8a",
-    "DANGER":      "#c0392b",
-    "WARN":        "#d4a034",
-    "TEXT":        "#c7cfd5",
-    "MUTED":       "#6b7a8a",
-    "BORDER":      "#1e2d4a",
+    "BG":          "#111726",
+    "CARD":        "#1A2233",
+    "ACCENT":      "#5E8F8B",
+    "ACCENT_HOVER":"#4F7D79",
+    "DANGER":      "#A86761",
+    "WARN":        "#B29463",
+    "TEXT":        "#C4CCD3",
+    "MUTED":       "#72808F",
+    "BORDER":      "#253046",
     "WHITE":       "#ffffff",
-    "SUCCESS":     "#27ae60",
+    "SUCCESS":     "#5E8F8B",
 }
 
 # ── Paleta activa (mutable – todas las pantallas la referencian) ──────────────

@@ -23,85 +23,123 @@ class LoginScreen(ctk.CTkFrame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        header = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=0, height=72)
-        header.pack(fill="x")
-        header.pack_propagate(False)
+        ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["CARD"],
+            width=300,
+            height=300,
+            corner_radius=150,
+            border_width=0,
+        ).place(relx=0.02, rely=0.12, anchor="w")
+
+        ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["BORDER"],
+            width=210,
+            height=210,
+            corner_radius=105,
+            border_width=0,
+        ).place(relx=0.98, rely=0.92, anchor="e")
+
+        top = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=0, height=92)
+        top.pack(fill="x")
+        top.pack_propagate(False)
+
+        top_inner = ctk.CTkFrame(top, fg_color="transparent")
+        top_inner.pack(fill="both", expand=True, padx=18, pady=(10, 10))
 
         ctk.CTkLabel(
-            header,
-            text="Iniciar sesión",
-            font=ctk.CTkFont(size=24, weight="bold"),
+            top_inner,
+            text="Smart Locker",
+            font=ctk.CTkFont(size=22, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
-        ).pack(side="left", padx=20, pady=16)
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            top_inner,
+            text="Panel administrativo",
+            font=ctk.CTkFont(size=12),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+        ).pack(anchor="w")
 
         mode = getattr(self.controller, "_mode", "light")
         theme_icon = "moon" if mode == "light" else "sun"
         self._theme_icon = get_icon(theme_icon, size=22, color=PALETTE["TEXT"])
         ctk.CTkButton(
-            header,
+            top,
             text="",
             image=self._theme_icon,
-            width=48,
-            height=48,
-            fg_color="transparent",
+            width=44,
+            height=44,
+            fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,
             border_color=PALETTE["BORDER"],
+            corner_radius=12,
             command=self.controller.toggle_theme,
-        ).pack(side="right", padx=12, pady=12)
+        ).place(relx=0.94, rely=0.5, anchor="e")
 
         card = ctk.CTkFrame(
             self,
             fg_color=PALETTE["CARD"],
-            corner_radius=18,
+            corner_radius=24,
             border_width=1,
             border_color=PALETTE["BORDER"],
             width=430,
-            height=520,
+            height=548,
         )
-        card.place(relx=0.5, rely=0.58, anchor="center")
+        card.place(relx=0.5, rely=0.57, anchor="center")
         card.pack_propagate(False)
 
-        ctk.CTkLabel(
+        ctk.CTkFrame(
             card,
-            text="Smart Locker",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            text_color=PALETTE["ACCENT"],
-            fg_color="transparent",
-        ).pack(pady=(28, 2))
+            fg_color=PALETTE["ACCENT"],
+            corner_radius=4,
+            height=5,
+            width=86,
+        ).pack(pady=(18, 14))
 
         ctk.CTkLabel(
             card,
-            text="Iniciar sesión administrativa",
+            text="Acceso administrativo",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+        ).pack()
+
+        ctk.CTkLabel(
+            card,
+            text="Ingresa para gestionar usuarios, catálogos y asignaciones.",
             font=ctk.CTkFont(size=15, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
-        ).pack(pady=(0, 18))
+            wraplength=340,
+            justify="center",
+        ).pack(pady=(8, 18))
 
-        ctk.CTkLabel(
+        form = ctk.CTkFrame(
             card,
-            text="Acceso",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=PALETTE["TEXT"],
-            fg_color="transparent",
-        ).pack(anchor="w", padx=28)
+            fg_color=PALETTE["BG"],
+            corner_radius=18,
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+        )
+        form.pack(fill="x", padx=24, pady=(0, 14))
 
-        fields = ctk.CTkFrame(card, fg_color=PALETTE["BG"], corner_radius=14, border_width=1, border_color=PALETTE["BORDER"])
-        fields.pack(fill="x", padx=28, pady=(8, 14))
+        input_font = ctk.CTkFont(size=16, weight="normal")
 
         ctk.CTkLabel(
-            fields,
+            form,
             text="Matrícula",
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
         ).pack(anchor="w", padx=14, pady=(12, 0))
 
-        input_font = ctk.CTkFont(size=16, weight="normal")
-
         self._user_icon = get_icon("user", size=17, color=PALETTE["TEXT"])
-        matricula_row = self._build_icon_input(fields, self._user_icon, pady=(4, 8))
+        matricula_row = self._build_icon_input(form, self._user_icon, pady=(4, 8))
 
         self.entry_matricula = ctk.CTkEntry(
             matricula_row,
@@ -112,21 +150,21 @@ class LoginScreen(ctk.CTkFrame):
             border_width=0,
             text_color=PALETTE["TEXT"],
             placeholder_text_color=PALETTE["MUTED"],
-            placeholder_text="Ej. A01234567",
+            placeholder_text="Ej. 20260001",
             height=38,
         )
         self.entry_matricula.grid(row=0, column=2, sticky="nsew", padx=(8, 8), pady=3)
 
         ctk.CTkLabel(
-            fields,
+            form,
             text="PIN",
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=14)
+        ).pack(anchor="w", padx=14, pady=(4, 0))
 
         self._lock_icon = get_icon("lock", size=18, color=PALETTE["TEXT"])
-        pin_row = self._build_icon_input(fields, self._lock_icon, pady=(4, 12))
+        pin_row = self._build_icon_input(form, self._lock_icon, pady=(4, 12))
 
         self.entry_pin = ctk.CTkEntry(
             pin_row,
@@ -159,10 +197,20 @@ class LoginScreen(ctk.CTkFrame):
             fg_color=PALETTE["ACCENT"],
             hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
-            height=56,
-            corner_radius=14,
+            height=58,
+            corner_radius=16,
             command=self._login,
-        ).pack(fill="x", padx=28, pady=(4, 6))
+        ).pack(fill="x", padx=24, pady=(4, 8))
+
+        ctk.CTkLabel(
+            card,
+            text="La sesión se valida en la base de datos local.",
+            font=ctk.CTkFont(size=11),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+            wraplength=320,
+            justify="center",
+        ).pack(pady=(0, 4))
 
         self.entry_matricula.bind("<Return>", lambda _e: self._login())
         self.entry_pin.bind("<Return>", lambda _e: self._login())
@@ -177,10 +225,10 @@ class LoginScreen(ctk.CTkFrame):
         row = ctk.CTkFrame(
             parent,
             fg_color=PALETTE["CARD"],
-            corner_radius=10,
+            corner_radius=12,
             border_width=1,
             border_color=PALETTE["BORDER"],
-            height=48,
+            height=50,
         )
         row.pack(fill="x", padx=10, pady=pady)
         row.pack_propagate(False)

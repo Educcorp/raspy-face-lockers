@@ -75,38 +75,64 @@ class _CatalogCard(ctk.CTkFrame):
             **kwargs,
         )
         self._on_click = on_click
+        self._default_fg = PALETTE["CARD"]
+        self._hover_fg = PALETTE["BG"]
 
-        # ── contenido ─────────────────────────────────────────────────────────
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure((0, 1, 2), weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=1)
+
+        body = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+            border_width=0,
+            corner_radius=0,
+        )
+        body.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(0, weight=0)
+        body.grid_rowconfigure(1, weight=1)
+        body.grid_rowconfigure(2, weight=0)
 
         ctk.CTkLabel(
-            self, text=icon,
-            font=ctk.CTkFont(size=34),
+            body,
+            text=label,
+            font=ctk.CTkFont(size=18, weight="bold"),
             fg_color="transparent",
             text_color=PALETTE["ACCENT"],
-        ).grid(row=0, column=0, pady=(14, 0))
+            justify="left",
+            anchor="w",
+            wraplength=140,
+        ).grid(row=0, column=0, sticky="ew", pady=(0, 10))
 
         self.lbl_count = ctk.CTkLabel(
-            self, text=str(count),
-            font=ctk.CTkFont(size=28, weight="bold"),
+            body, text=str(count),
+            font=ctk.CTkFont(size=30, weight="bold"),
             fg_color="transparent",
             text_color=PALETTE["TEXT"],
         )
-        self.lbl_count.grid(row=1, column=0)
+        self.lbl_count.grid(row=1, column=0, sticky="w", pady=(6, 0))
 
         ctk.CTkLabel(
-            self, text=label,
-            font=ctk.CTkFont(size=13),
+            body,
+            text="Registros activos",
+            font=ctk.CTkFont(size=11),
             fg_color="transparent",
             text_color=PALETTE["MUTED"],
-            wraplength=100,
-        ).grid(row=2, column=0, pady=(0, 12))
+        ).grid(row=2, column=0, sticky="w", pady=(2, 0))
 
         # Binding táctil en todos los widgets hijo
         self.bind("<Button-1>", self._clicked)
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
         for child in self.winfo_children():
             child.bind("<Button-1>", self._clicked)
+            child.bind("<Enter>", self._on_enter)
+            child.bind("<Leave>", self._on_leave)
+            for grandchild in child.winfo_children():
+                grandchild.bind("<Button-1>", self._clicked)
+                grandchild.bind("<Enter>", self._on_enter)
+                grandchild.bind("<Leave>", self._on_leave)
 
     def _clicked(self, _event=None):
         if self._on_click:
@@ -114,6 +140,12 @@ class _CatalogCard(ctk.CTkFrame):
 
     def set_count(self, n: int):
         self.lbl_count.configure(text=str(n))
+
+    def _on_enter(self, _event=None):
+        self.configure(fg_color=self._hover_fg)
+
+    def _on_leave(self, _event=None):
+        self.configure(fg_color=self._default_fg)
 
 
 class DashboardScreen(ctk.CTkFrame):
@@ -128,9 +160,27 @@ class DashboardScreen(ctk.CTkFrame):
     # ── Construcción ──────────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
+        ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["CARD"],
+            width=240,
+            height=240,
+            corner_radius=120,
+            border_width=0,
+        ).place(relx=0.98, rely=0.08, anchor="ne")
+
+        ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["BG"],
+            width=170,
+            height=170,
+            corner_radius=85,
+            border_width=0,
+        ).place(relx=0.02, rely=0.98, anchor="sw")
+
         # ── Header ────────────────────────────────────────────────────────────
         header = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=0,
-                              height=84)
+                              height=92)
         header.pack(fill="x")
         header.pack_propagate(False)
 
@@ -140,12 +190,12 @@ class DashboardScreen(ctk.CTkFrame):
             border_width=0,
             corner_radius=0,
         )
-        identity.pack(side="left", padx=20, pady=(9, 8))
+        identity.pack(side="left", padx=18, pady=(10, 8))
 
         ctk.CTkLabel(
             identity,
             text=get_current_role_label(),
-            font=ctk.CTkFont(size=22, weight="bold"),
+            font=ctk.CTkFont(size=24, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
             height=24,
@@ -164,6 +214,14 @@ class DashboardScreen(ctk.CTkFrame):
             anchor="w",
         ).pack(anchor="w")
 
+        ctk.CTkFrame(
+            identity,
+            fg_color=PALETTE["ACCENT"],
+            corner_radius=4,
+            height=4,
+            width=56,
+        ).pack(anchor="w", pady=(8, 0))
+
         # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
         _mode = getattr(self.controller, "_mode", "light")
         icon_name = "moon" if _mode == "light" else "sun"
@@ -172,11 +230,12 @@ class DashboardScreen(ctk.CTkFrame):
             header,
             text="",
             image=self._theme_icon,
-            width=48, height=48,
-            fg_color="transparent",
+            width=46, height=46,
+            fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,
             border_color=PALETTE["BORDER"],
+            corner_radius=12,
             command=self.controller.toggle_theme,
         ).pack(side="right", padx=(6, 12), pady=12)
 
@@ -185,12 +244,13 @@ class DashboardScreen(ctk.CTkFrame):
             header,
             text="",
             image=self._logout_icon,
-            width=48,
-            height=48,
-            fg_color="transparent",
+            width=46,
+            height=46,
+            fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,
             border_color=PALETTE["BORDER"],
+            corner_radius=12,
             command=self._confirm_logout,
         ).pack(side="right", padx=(0, 6), pady=12)
 
@@ -203,19 +263,19 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color=PALETTE["ACCENT"] if can_register else PALETTE["BORDER"],
             hover_color=PALETTE.get("ACCENT_HOVER", PALETTE["ACCENT"]) if can_register else PALETTE["BORDER"],
             text_color=PALETTE["WHITE"],
-            height=58,
-            corner_radius=14,
+            height=60,
+            corner_radius=18,
             command=self._go_register if can_register else None,
         )
-        reg_btn.pack(fill="x", padx=18, pady=(18, 10))
+        reg_btn.pack(fill="x", padx=18, pady=(16, 10))
 
         # ── Sección catálogos ─────────────────────────────────────────────────
         ctk.CTkLabel(
             self, text="Catálogos",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=22, pady=(4, 6))
+        ).pack(anchor="w", padx=22, pady=(2, 6))
 
         # Grid 2×3 de tarjetas
         grid_frame = ctk.CTkFrame(self, fg_color="transparent")

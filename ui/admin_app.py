@@ -80,6 +80,8 @@ _FA_GLYPHS = {
     "user": "\uf007",
     "lock": "\uf023",
     "logout": "\uf2f5",
+    "eye": "\uf06e",
+    "eye-off": "\uf070",
 }
 _FA_ICON_SCALE = {
     "sun": 0.90,
@@ -87,6 +89,8 @@ _FA_ICON_SCALE = {
     "user": 0.78,
     "lock": 0.86,
     "logout": 0.86,
+    "eye": 0.84,
+    "eye-off": 0.84,
 }
 _FA_ICON_Y_OFFSET = {
     "user": 1,

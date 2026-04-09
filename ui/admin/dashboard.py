@@ -24,36 +24,42 @@ _CATALOGS = [
     {
         "icon":   "USR",
         "label":  "Usuarios",
+        "hint":   "Gestión de cuentas",
         "sql":    "SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'",
         "target": "UsersCatalogScreen",
     },
     {
         "icon":   "LCK",
         "label":  "Lockers",
+        "hint":   "Inventario físico",
         "sql":    "SELECT COUNT(*) AS n FROM lockers",
         "target": "LockersCatalogScreen",
     },
     {
         "icon":   "ZNA",
         "label":  "Áreas / Zonas",
+        "hint":   "Ubicación por zona",
         "sql":    "SELECT COUNT(*) AS n FROM area_lockers",
         "target": "AreasCatalogScreen",
     },
     {
         "icon":   "UND",
         "label":  "Unidades Acad.",
+        "hint":   "Facultades y escuelas",
         "sql":    "SELECT COUNT(*) AS n FROM unidad_academica WHERE estado='activo'",
         "target": "AreasCatalogScreen",   # misma pantalla, tab diferente
     },
     {
         "icon":   "TIP",
         "label":  "Tipos Usuario",
+        "hint":   "Roles del sistema",
         "sql":    "SELECT COUNT(*) AS n FROM tipo_usuarios WHERE estado='activo'",
         "target": "AreasCatalogScreen",
     },
     {
         "icon":   "ASG",
         "label":  "Asignaciones",
+        "hint":   "Lockers en uso",
         "sql":    "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'",
         "target": "LockerAssignmentScreen",
     },
@@ -63,7 +69,7 @@ _CATALOGS = [
 class _CatalogCard(ctk.CTkFrame):
     """Tarjeta táctil individual del dashboard."""
 
-    def __init__(self, parent, icon: str, label: str, count: int,
+    def __init__(self, parent, label: str, hint: str, count: int,
                  on_click, **kwargs):
         super().__init__(
             parent,
@@ -97,21 +103,32 @@ class _CatalogCard(ctk.CTkFrame):
         ctk.CTkLabel(
             body,
             text=label,
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=ctk.CTkFont(size=17, weight="bold"),
             fg_color="transparent",
             text_color=PALETTE["ACCENT"],
             justify="left",
             anchor="w",
-            wraplength=140,
-        ).grid(row=0, column=0, sticky="ew", pady=(0, 10))
+            wraplength=150,
+        ).grid(row=0, column=0, sticky="ew")
+
+        ctk.CTkLabel(
+            body,
+            text=hint,
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent",
+            text_color=PALETTE["MUTED"],
+            justify="left",
+            anchor="w",
+            wraplength=150,
+        ).grid(row=1, column=0, sticky="nw", pady=(5, 0))
 
         self.lbl_count = ctk.CTkLabel(
             body, text=str(count),
-            font=ctk.CTkFont(size=30, weight="bold"),
+            font=ctk.CTkFont(size=28, weight="bold"),
             fg_color="transparent",
             text_color=PALETTE["TEXT"],
         )
-        self.lbl_count.grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.lbl_count.grid(row=2, column=0, sticky="w", pady=(8, 0))
 
         ctk.CTkLabel(
             body,
@@ -119,7 +136,7 @@ class _CatalogCard(ctk.CTkFrame):
             font=ctk.CTkFont(size=11),
             fg_color="transparent",
             text_color=PALETTE["MUTED"],
-        ).grid(row=2, column=0, sticky="w", pady=(2, 0))
+        ).grid(row=3, column=0, sticky="w", pady=(1, 0))
 
         # Binding táctil en todos los widgets hijo
         self.bind("<Button-1>", self._clicked)
@@ -163,9 +180,9 @@ class DashboardScreen(ctk.CTkFrame):
         ctk.CTkFrame(
             self,
             fg_color=PALETTE["CARD"],
-            width=240,
-            height=240,
-            corner_radius=120,
+            width=250,
+            height=250,
+            corner_radius=125,
             border_width=0,
         ).place(relx=0.98, rely=0.08, anchor="ne")
 
@@ -180,7 +197,7 @@ class DashboardScreen(ctk.CTkFrame):
 
         # ── Header ────────────────────────────────────────────────────────────
         header = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=0,
-                              height=92)
+                  height=90)
         header.pack(fill="x")
         header.pack_propagate(False)
 
@@ -190,17 +207,17 @@ class DashboardScreen(ctk.CTkFrame):
             border_width=0,
             corner_radius=0,
         )
-        identity.pack(side="left", padx=18, pady=(10, 8))
+        identity.pack(side="left", padx=18, pady=(8, 6))
 
         ctk.CTkLabel(
             identity,
             text=get_current_role_label(),
-            font=ctk.CTkFont(size=24, weight="bold"),
+            font=ctk.CTkFont(size=26, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
             height=24,
             anchor="w",
-        ).pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(0, 2))
 
         full_name = get_current_full_name()
         subtitle = f"Usuario: {full_name}" if full_name else "Usuario: Sesión activa"
@@ -220,7 +237,7 @@ class DashboardScreen(ctk.CTkFrame):
             corner_radius=4,
             height=4,
             width=56,
-        ).pack(anchor="w", pady=(8, 0))
+        ).pack(anchor="w", pady=(6, 0))
 
         # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
         _mode = getattr(self.controller, "_mode", "light")
@@ -237,7 +254,7 @@ class DashboardScreen(ctk.CTkFrame):
             border_color=PALETTE["BORDER"],
             corner_radius=12,
             command=self.controller.toggle_theme,
-        ).pack(side="right", padx=(6, 12), pady=12)
+        ).pack(side="right", padx=(6, 12), pady=10)
 
         self._logout_icon = get_icon("logout", size=20, color=PALETTE["TEXT"])
         ctk.CTkButton(
@@ -252,7 +269,76 @@ class DashboardScreen(ctk.CTkFrame):
             border_color=PALETTE["BORDER"],
             corner_radius=12,
             command=self._confirm_logout,
-        ).pack(side="right", padx=(0, 6), pady=12)
+        ).pack(side="right", padx=(0, 6), pady=10)
+
+        # ── Resumen operativo ───────────────────────────────────────────────
+        summary = ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["CARD"],
+            corner_radius=16,
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            height=86,
+        )
+        summary.pack(fill="x", padx=18, pady=(8, 8))
+        summary.pack_propagate(False)
+
+        summary.grid_columnconfigure(0, weight=1)
+        summary.grid_columnconfigure(1, weight=1)
+        summary.grid_rowconfigure(0, weight=1)
+
+        total_catalogs = len(_CATALOGS)
+        total_records = sum(self._get_count(cat["sql"]) for cat in _CATALOGS)
+
+        left_metric = ctk.CTkFrame(
+            summary,
+            fg_color=PALETTE["BG"],
+            corner_radius=10,
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            height=62,
+        )
+        left_metric.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
+        left_metric.pack_propagate(False)
+        ctk.CTkLabel(
+            left_metric,
+            text=str(total_catalogs),
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=PALETTE["TEXT"],
+            fg_color="transparent",
+        ).pack(anchor="w", padx=10, pady=(5, 0))
+        ctk.CTkLabel(
+            left_metric,
+            text="Módulos disponibles",
+            font=ctk.CTkFont(size=11),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+        ).pack(anchor="w", padx=10, pady=(0, 6))
+
+        right_metric = ctk.CTkFrame(
+            summary,
+            fg_color=PALETTE["BG"],
+            corner_radius=10,
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            height=62,
+        )
+        right_metric.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
+        right_metric.pack_propagate(False)
+        ctk.CTkLabel(
+            right_metric,
+            text=str(total_records),
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color=PALETTE["ACCENT"],
+            fg_color="transparent",
+        ).pack(anchor="w", padx=10, pady=(5, 0))
+        ctk.CTkLabel(
+            right_metric,
+            text="Registros activos totales",
+            font=ctk.CTkFont(size=11),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+        ).pack(anchor="w", padx=10, pady=(0, 6))
 
         # ── Botón destacado: Registrar Usuario ────────────────────────────────
         can_register = can_create_users()
@@ -267,7 +353,7 @@ class DashboardScreen(ctk.CTkFrame):
             corner_radius=18,
             command=self._go_register if can_register else None,
         )
-        reg_btn.pack(fill="x", padx=18, pady=(16, 10))
+        reg_btn.pack(fill="x", padx=18, pady=(0, 8))
 
         # ── Sección catálogos ─────────────────────────────────────────────────
         ctk.CTkLabel(
@@ -275,11 +361,11 @@ class DashboardScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=22, pady=(2, 6))
+        ).pack(anchor="w", padx=22, pady=(0, 4))
 
         # Grid 2×3 de tarjetas
         grid_frame = ctk.CTkFrame(self, fg_color="transparent")
-        grid_frame.pack(fill="both", expand=True, padx=14)
+        grid_frame.pack(fill="both", expand=True, padx=14, pady=(0, 2))
 
         for col in range(2):
             grid_frame.grid_columnconfigure(col, weight=1, uniform="col")
@@ -296,21 +382,15 @@ class DashboardScreen(ctk.CTkFrame):
 
             card = _CatalogCard(
                 grid_frame,
-                icon=cat["icon"],
                 label=cat["label"],
+                hint=cat["hint"],
                 count=count,
                 on_click=make_callback(),
             )
             card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             self._cards.append(card)
 
-        # ── Footer / versión ──────────────────────────────────────────────────
-        ctk.CTkLabel(
-            self, text=f"Smart Locker v1.0  ·  {get_current_role_label()}",
-            font=ctk.CTkFont(size=11),
-            text_color=PALETTE["MUTED"],
-            fg_color="transparent",
-        ).pack(pady=(6, 12))
+      
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

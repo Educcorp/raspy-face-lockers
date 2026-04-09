@@ -16,6 +16,7 @@ class LoginScreen(ctk.CTkFrame):
 
         self._matricula_var = tk.StringVar()
         self._pin_var = tk.StringVar()
+        self._show_pin_var = tk.BooleanVar(value=False)
 
         self._build_ui()
 
@@ -26,42 +27,70 @@ class LoginScreen(ctk.CTkFrame):
         ctk.CTkFrame(
             self,
             fg_color=PALETTE["CARD"],
-            width=300,
-            height=300,
-            corner_radius=150,
+            width=340,
+            height=340,
+            corner_radius=170,
             border_width=0,
-        ).place(relx=0.02, rely=0.12, anchor="w")
+        ).place(relx=-0.03, rely=0.03, anchor="nw")
 
         ctk.CTkFrame(
             self,
             fg_color=PALETTE["BORDER"],
-            width=210,
-            height=210,
-            corner_radius=105,
+            width=190,
+            height=190,
+            corner_radius=95,
             border_width=0,
-        ).place(relx=0.98, rely=0.92, anchor="e")
+        ).place(relx=0.98, rely=0.33, anchor="ne")
 
-        top = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=0, height=92)
+        ctk.CTkFrame(
+            self,
+            fg_color=PALETTE["CARD"],
+            width=220,
+            height=220,
+            corner_radius=110,
+            border_width=0,
+        ).place(relx=1.0, rely=1.0, anchor="se")
+
+        top = ctk.CTkFrame(self, fg_color=PALETTE["BG"], corner_radius=0, height=184)
         top.pack(fill="x")
         top.pack_propagate(False)
 
-        top_inner = ctk.CTkFrame(top, fg_color="transparent")
-        top_inner.pack(fill="both", expand=True, padx=18, pady=(10, 10))
+        hero = ctk.CTkFrame(
+            top,
+            fg_color=PALETTE["CARD"],
+            corner_radius=14,
+            border_width=0,
+        )
+        hero.pack(fill="both", expand=True, padx=16, pady=(12, 8))
+
+        top_inner = ctk.CTkFrame(top, fg_color="transparent", border_width=0, corner_radius=0)
+        top_inner.place(in_=hero, relx=0.0, rely=0.0, relwidth=1.0, relheight=1.0)
+        top_inner.pack_propagate(False)
 
         ctk.CTkLabel(
             top_inner,
             text="Smart Locker",
-            font=ctk.CTkFont(size=22, weight="bold"),
+            font=ctk.CTkFont(size=28, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
-        ).pack(anchor="w")
+        ).pack(anchor="w", pady=(16, 0))
 
         ctk.CTkLabel(
             top_inner,
-            text="Panel administrativo",
+            text="Acceso administrativo",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=PALETTE["TEXT"],
+            fg_color="transparent",
+        ).pack(anchor="w", pady=(2, 4))
+
+        ctk.CTkLabel(
+            top_inner,
+            text="Inicia sesión como Administrador o Superadmin para gestionar el sistema.",
             font=ctk.CTkFont(size=12),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
+            justify="left",
+            wraplength=300,
         ).pack(anchor="w")
 
         mode = getattr(self.controller, "_mode", "light")
@@ -79,18 +108,18 @@ class LoginScreen(ctk.CTkFrame):
             border_color=PALETTE["BORDER"],
             corner_radius=12,
             command=self.controller.toggle_theme,
-        ).place(relx=0.94, rely=0.5, anchor="e")
+        ).place(in_=hero, relx=0.965, rely=0.20, anchor="e")
 
         card = ctk.CTkFrame(
             self,
             fg_color=PALETTE["CARD"],
-            corner_radius=24,
+            corner_radius=26,
             border_width=1,
             border_color=PALETTE["BORDER"],
-            width=430,
-            height=548,
+            width=434,
+            height=540,
         )
-        card.place(relx=0.5, rely=0.57, anchor="center")
+        card.place(relx=0.5, rely=0.61, anchor="center")
         card.pack_propagate(False)
 
         ctk.CTkFrame(
@@ -103,7 +132,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             card,
-            text="Acceso administrativo",
+            text="Hola!!",
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -111,7 +140,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             card,
-            text="Ingresa para gestionar usuarios, catálogos y asignaciones.",
+            text="Ingresa para administrar usuarios, catálogos y asignaciones.",
             font=ctk.CTkFont(size=15, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
@@ -122,7 +151,7 @@ class LoginScreen(ctk.CTkFrame):
         form = ctk.CTkFrame(
             card,
             fg_color=PALETTE["BG"],
-            corner_radius=18,
+            corner_radius=16,
             border_width=1,
             border_color=PALETTE["BORDER"],
         )
@@ -181,6 +210,21 @@ class LoginScreen(ctk.CTkFrame):
         )
         self.entry_pin.grid(row=0, column=2, sticky="nsew", padx=(8, 8), pady=3)
 
+        self._eye_closed_icon = get_icon("eye-off", size=16, color=PALETTE["TEXT"])
+        self._eye_open_icon = get_icon("eye", size=16, color=PALETTE["TEXT"])
+        self._pin_toggle = ctk.CTkButton(
+            pin_row,
+            text="",
+            image=self._eye_closed_icon,
+            width=38,
+            height=32,
+            fg_color=PALETTE["BG"],
+            hover_color=PALETTE["BORDER"],
+            corner_radius=10,
+            command=self._toggle_pin_visibility,
+        )
+        self._pin_toggle.grid(row=0, column=3, padx=(0, 8), pady=6)
+
         self.lbl_error = ctk.CTkLabel(
             card,
             text="",
@@ -197,14 +241,14 @@ class LoginScreen(ctk.CTkFrame):
             fg_color=PALETTE["ACCENT"],
             hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
-            height=58,
+            height=56,
             corner_radius=16,
             command=self._login,
         ).pack(fill="x", padx=24, pady=(4, 8))
 
         ctk.CTkLabel(
             card,
-            text="La sesión se valida en la base de datos local.",
+            text="Solo cuentas con rol Administrador o Superadmin pueden ingresar.",
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -252,6 +296,12 @@ class LoginScreen(ctk.CTkFrame):
 
         return row
 
+    def _toggle_pin_visibility(self) -> None:
+        visible = not self._show_pin_var.get()
+        self._show_pin_var.set(visible)
+        self.entry_pin.configure(show="" if visible else "*")
+        self._pin_toggle.configure(image=self._eye_open_icon if visible else self._eye_closed_icon)
+
     def _login(self) -> None:
         matricula = self._matricula_var.get().strip()
         pin = self._pin_var.get().strip()
@@ -267,5 +317,8 @@ class LoginScreen(ctk.CTkFrame):
 
         set_current_user(user)
         self._pin_var.set("")
+        self._show_pin_var.set(False)
+        self.entry_pin.configure(show="*")
+        self._pin_toggle.configure(image=self._eye_closed_icon)
         self.lbl_error.configure(text="")
         self.controller.on_login_success()

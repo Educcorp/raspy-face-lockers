@@ -48,8 +48,15 @@ FACE_RECOGNITION_CONFIG = {
 
 # ── GPIO / Hardware ────────────────────────────────────────────────────────
 GPIO_CONFIG = {
+    "mode": "BCM",
+    "relay_active_low": True,
+    "locker_open_seconds": 3.0,
+    "pin_locker_m1": 17,
+    "pin_locker_m2": 27,
+    "pin_locker_m3": 22,
+    "pin_locker_m4": 23,
     "pin_light_sensor": 17,  # BCM
-    "pin_motor_relay": 27,
+    "pin_motor_relay": 17,
     "pin_button_test": 22,
     "debounce_ms": 50,
 }

@@ -23,6 +23,8 @@ from collections import deque
 import random
 
 from config import FACE_RECOGNITION_CONFIG
+from config import GPIO_CONFIG
+from core.gpio_controller import get_locker_gpio_controller
 from database.connection import fetch_all, execute
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,8 @@ class ScanningScreen(ctk.CTkFrame):
         except Exception as e:
             logger.error(f"Error importando FaceRecognitionManager: {e}")
             self.face_manager = None
+
+        self.gpio_controller = get_locker_gpio_controller()
 
         self._build_ui()
         self._reset_liveness_state()
@@ -627,6 +631,10 @@ class ScanningScreen(ctk.CTkFrame):
         self._camera_running = False
         if self._camera_thread:
             self._camera_thread.join(timeout=2.0)
+        try:
+            self.gpio_controller.cleanup()
+        except Exception as e:
+            logger.warning(f"No se pudo limpiar GPIO al salir de scanning: {e}")
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None
@@ -916,6 +924,12 @@ class ScanningScreen(ctk.CTkFrame):
         if best_distance > threshold:
             self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
             return None
+
+        # Abrir relay del locker despues de validar identidad y antes del registro en historial.
+        open_seconds = float(GPIO_CONFIG.get("locker_open_seconds", 3.0))
+        relay_ok = self.gpio_controller.open_locker(seconds=open_seconds)
+        if not relay_ok:
+            logger.warning("Reconocimiento exitoso, pero no se pudo activar el relay del locker")
 
         self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=True)
         full_name = " ".join(

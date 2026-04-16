@@ -48,16 +48,16 @@ class ScanningScreen(ctk.CTkFrame):
 
     MAX_ATTEMPTS    = 3
     DISPLAY_SECONDS = 8
-    RECOGNITION_INTERVAL_FRAMES = 6
-    STABLE_FACE_FRAMES = 8
-    RECOGNITION_COOLDOWN_SECONDS = 2.0
-    LIVENESS_HISTORY_FRAMES = 10
-    LIVENESS_MIN_MOTION = 2.4
-    LIVENESS_MIN_BOX_SHIFT = 0.03
-    LIVENESS_CHALLENGE_TIMEOUT = 9.0
-    CHALLENGE_SHIFT_THRESHOLD = 0.16
-    CHALLENGE_SCALE_IN_THRESHOLD = 0.18
-    CHALLENGE_SCALE_OUT_THRESHOLD = -0.15
+    RECOGNITION_INTERVAL_FRAMES = 3  # Mejorado: de 6 a 3 para reconocimiento más rápido
+    STABLE_FACE_FRAMES = 3  # Mejorado: de 8 a 3 - detección inmediata
+    RECOGNITION_COOLDOWN_SECONDS = 0.8  # Mejorado: de 2.0 a 0.8 - velocidad iPhone
+    LIVENESS_HISTORY_FRAMES = 4  # Mejorado: de 10 a 4 - micromovimientos más rápidos
+    LIVENESS_MIN_MOTION = 0.8  # Mejorado: de 2.4 a 0.8 - detecta movimientos mínimos naturales
+    LIVENESS_MIN_BOX_SHIFT = 0.008  # Mejorado: de 0.03 a 0.008 - ultra sensible a micromovimientos
+    LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
+    CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
+    CHALLENGE_SCALE_IN_THRESHOLD = 0.18  # No usado en modo pasivo
+    CHALLENGE_SCALE_OUT_THRESHOLD = -0.15  # No usado en modo pasivo
 
     # Dimensiones de la ventana
     WIN_W = 480
@@ -584,14 +584,9 @@ class ScanningScreen(ctk.CTkFrame):
                                 text_color="#A5D6A7",
                             )
                         else:
-                            challenge_text = self._challenge_prompt()
-                            # Extraer solo la acción del desafío
-                            if ":" in challenge_text:
-                                action = challenge_text.split(":")[1].strip().upper()
-                            else:
-                                action = "VALIDANDO..."
+                            # OPTIMIZADO: Mensaje simple sin confundir al usuario
                             self.lbl_status.configure(
-                                text=action,
+                                text="DETECTANDO...",
                                 text_color="#FFD54F",
                             )
                     else:
@@ -718,32 +713,13 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_steps = self._build_liveness_challenge()
 
     def _build_liveness_challenge(self) -> list[str]:
-        patterns = [
-            ["left", "right", "closer"],
-            ["right", "left", "closer"],
-            ["closer", "away", "left"],
-        ]
-        steps = random.choice(patterns).copy()
-        uses_dlib = bool(
-            self.face_manager
-            and getattr(self.face_manager.embedding_extractor, "uses_dlib", False)
-        )
-        if uses_dlib:
-            steps.append("blink")
-        return steps
+        # OPTIMIZADO: Sin challenges activos - solo detección pasiva de micromovimientos
+        # Esto hace el desbloqueo tan rápido como iPhone Face ID
+        return []
 
     def _challenge_prompt(self) -> str:
-        if not self._challenge_steps:
-            return "Prueba de vida: espera…"
-        current = self._challenge_steps[min(self._challenge_index, len(self._challenge_steps) - 1)]
-        labels = {
-            "left": "Prueba de vida: mueve tu cabeza a la izquierda",
-            "right": "Prueba de vida: mueve tu cabeza a la derecha",
-            "closer": "Prueba de vida: acércate un poco",
-            "away": "Prueba de vida: aléjate un poco",
-            "blink": "Prueba de vida: parpadea una vez",
-        }
-        return labels.get(current, "Prueba de vida en progreso")
+        # OPTIMIZADO: Mensaje simple sin instrucciones mareantes
+        return "Prueba de vida: detectando..."
 
     def _extract_face_gray(self, frame: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
         try:
@@ -777,7 +753,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._liveness_face_history.append(gray)
         self._liveness_box_history.append(center)
 
-        if len(self._liveness_face_history) < 4:
+        # OPTIMIZADO: Solo 2 frames mínimos para detección ultra-rápida (iPhone-style)
+        if len(self._liveness_face_history) < 2:
             return
 
         motion_vals = []
@@ -795,11 +772,12 @@ class ScanningScreen(ctk.CTkFrame):
 
         texture = float(cv2.Laplacian(hist[-1], cv2.CV_64F).var())
 
+        # OPTIMIZADO: Thresholds más permisivos para desbloqueo rápido tipo iPhone
         movement_ok = (
             self._liveness_motion_score >= self.LIVENESS_MIN_MOTION
             or self._liveness_shift_score >= self.LIVENESS_MIN_BOX_SHIFT
         )
-        texture_ok = texture >= 20.0
+        texture_ok = texture >= 8.0  # Mejorado: de 20.0 a 8.0 - más tolerante con iluminación
 
         self._passive_liveness_ok = bool(movement_ok and texture_ok)
         self._update_active_liveness(frame, face_box)

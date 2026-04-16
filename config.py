@@ -29,7 +29,7 @@ CAMERA_CONFIG = {
 # ── OpenCV DNN / Face Detection ────────────────────────────────────────────
 FACE_DETECTION_CONFIG = {
     "model_type": "opencv_dnn",  # opencv_dnn | mediapipe | dlib
-    "confidence_threshold": 0.3,  # Bajado de 0.5 para más sensibilidad
+    "confidence_threshold": 0.25,  # OPTIMIZADO: de 0.3 a 0.25 para más sensibilidad
     "nms_threshold": 0.4,
     # Modelos DNN
     "prototxt": str(MODELS_DIR / "deploy.prototxt"),
@@ -40,7 +40,7 @@ FACE_DETECTION_CONFIG = {
 FACE_RECOGNITION_CONFIG = {
     "model_type": "dlib",
     "embedding_size": 128,
-    "distance_threshold": 0.6,  # para considerarse el mismo rostro
+    "distance_threshold": 0.65,  # OPTIMIZADO: de 0.6 a 0.65 - más tolerante (iPhone-style)
     # dlib models
     "shape_predictor": str(MODELS_DIR / "shape_predictor_68_face_landmarks.dat"),
     "face_rec_model": str(MODELS_DIR / "dlib_face_recognition_resnet_model_v1.dat"),

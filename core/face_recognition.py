@@ -35,6 +35,43 @@ except ImportError:
     _DLIB_AVAILABLE = False
 
 
+# ── Helper: Corrección de iluminación mejorada ──────────────────────────────
+
+def enhance_illumination(frame_bgr: np.ndarray) -> np.ndarray:
+    """
+    Mejora la iluminación del frame usando CLAHE y corrección gamma.
+    Esto permite funcionar bien con contrastes difíciles (luz de fondo, cara oscura).
+    Similar al preprocesamiento de Face ID de iPhone.
+
+    Args:
+        frame_bgr: Frame en formato BGR
+
+    Returns:
+        Frame mejorado en BGR
+    """
+    try:
+        # Convertir a LAB para trabajar solo con el canal de luminancia
+        lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+
+        # Aplicar CLAHE (Contrast Limited Adaptive Histogram Equalization)
+        # Esto mejora el contraste local sin amplificar demasiado el ruido
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l)
+
+        # Recombinar canales
+        lab_enhanced = cv2.merge([l_enhanced, a, b])
+
+        # Convertir de vuelta a BGR
+        enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+
+        return enhanced
+
+    except Exception as e:
+        logger.debug(f"Error en enhance_illumination: {e}")
+        return frame_bgr  # Retornar frame original si falla
+
+
 # ── Helper: Importar picamera2 desde el sistema ─────────────────────────────
 
 def _import_picamera2_from_system():
@@ -115,8 +152,11 @@ class FaceDetector:
         if self._hog_detector is None:
             return []
         try:
+            # OPTIMIZADO: Mejorar iluminación antes de detección
+            enhanced = enhance_illumination(frame)
+
             # dlib necesita RGB
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
             # Reducir resolución para velocidad en Pi
             h, w = rgb.shape[:2]
             scale = 1.0
@@ -146,7 +186,9 @@ class FaceDetector:
     def _detect_haar(self, frame: np.ndarray) -> List[Dict]:
         """Fallback Haar cascade."""
         try:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # OPTIMIZADO: Mejorar iluminación antes de detección
+            enhanced = enhance_illumination(frame)
+            gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
             rects = self._haar_cascade.detectMultiScale(
                 gray, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60)
             )
@@ -236,7 +278,9 @@ class FaceEmbeddingExtractor:
             return None
 
     def _fallback_embedding(self, frame_bgr: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
-        face_roi = self._extract_face_roi(frame_bgr, face_box)
+        # OPTIMIZADO: Mejorar iluminación antes de extraer embedding fallback
+        enhanced = enhance_illumination(frame_bgr)
+        face_roi = self._extract_face_roi(enhanced, face_box)
         if face_roi is None or face_roi.size == 0:
             return None
 
@@ -336,8 +380,11 @@ class FaceEmbeddingExtractor:
             return None
 
         try:
+            # OPTIMIZADO: Mejorar iluminación antes de extraer embedding
+            enhanced = enhance_illumination(frame_bgr)
+
             x, y, w, h = [int(v) for v in face_box[:4]]
-            img_h, img_w = frame_bgr.shape[:2]
+            img_h, img_w = enhanced.shape[:2]
 
             # Expandir un poco el box para dar contexto al shape_predictor
             pad = int(max(w, h) * 0.15)
@@ -347,7 +394,7 @@ class FaceEmbeddingExtractor:
             y2 = min(img_h, y + h + pad)
 
             # dlib necesita RGB
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            frame_rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
 
             # Construir dlib rectangle
             rect = dlib.rectangle(x1, y1, x2, y2)
@@ -387,15 +434,18 @@ class FaceEmbeddingExtractor:
             return None
 
         try:
+            # OPTIMIZADO: Mejorar iluminación antes de extraer landmarks
+            enhanced = enhance_illumination(frame_bgr)
+
             x, y, w, h = [int(v) for v in face_box[:4]]
-            img_h, img_w = frame_bgr.shape[:2]
+            img_h, img_w = enhanced.shape[:2]
             pad = int(max(w, h) * 0.15)
             x1 = max(0, x - pad)
             y1 = max(0, y - pad)
             x2 = min(img_w, x + w + pad)
             y2 = min(img_h, y + h + pad)
 
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            frame_rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
             rect = dlib.rectangle(x1, y1, x2, y2)
             shape = self.shape_predictor(frame_rgb, rect)
 

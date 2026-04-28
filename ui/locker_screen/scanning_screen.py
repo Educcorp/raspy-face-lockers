@@ -10,6 +10,7 @@ Un botón de flecha ← en la parte inferior permite volver al standby.
 
 import customtkinter as ctk
 import threading
+import os
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -22,6 +23,8 @@ from collections import deque
 import random
 
 from config import FACE_RECOGNITION_CONFIG
+from config import GPIO_CONFIG
+from core.gpio_controller import get_locker_gpio_controller
 from database.connection import fetch_all, execute
 
 logger = logging.getLogger(__name__)
@@ -47,16 +50,16 @@ class ScanningScreen(ctk.CTkFrame):
 
     MAX_ATTEMPTS    = 3
     DISPLAY_SECONDS = 8
-    RECOGNITION_INTERVAL_FRAMES = 6
-    STABLE_FACE_FRAMES = 8
-    RECOGNITION_COOLDOWN_SECONDS = 2.0
-    LIVENESS_HISTORY_FRAMES = 10
-    LIVENESS_MIN_MOTION = 2.4
-    LIVENESS_MIN_BOX_SHIFT = 0.03
-    LIVENESS_CHALLENGE_TIMEOUT = 9.0
-    CHALLENGE_SHIFT_THRESHOLD = 0.16
-    CHALLENGE_SCALE_IN_THRESHOLD = 0.18
-    CHALLENGE_SCALE_OUT_THRESHOLD = -0.15
+    RECOGNITION_INTERVAL_FRAMES = 3  # Mejorado: de 6 a 3 para reconocimiento más rápido
+    STABLE_FACE_FRAMES = 3  # Mejorado: de 8 a 3 - detección inmediata
+    RECOGNITION_COOLDOWN_SECONDS = 0.8  # Mejorado: de 2.0 a 0.8 - velocidad iPhone
+    LIVENESS_HISTORY_FRAMES = 4  # Mejorado: de 10 a 4 - micromovimientos más rápidos
+    LIVENESS_MIN_MOTION = 0.8  # Mejorado: de 2.4 a 0.8 - detecta movimientos mínimos naturales
+    LIVENESS_MIN_BOX_SHIFT = 0.008  # Mejorado: de 0.03 a 0.008 - ultra sensible a micromovimientos
+    LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
+    CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
+    CHALLENGE_SCALE_IN_THRESHOLD = 0.18  # No usado en modo pasivo
+    CHALLENGE_SCALE_OUT_THRESHOLD = -0.15  # No usado en modo pasivo
 
     # Dimensiones de la ventana
     WIN_W = 480
@@ -104,50 +107,10 @@ class ScanningScreen(ctk.CTkFrame):
             logger.error(f"Error importando FaceRecognitionManager: {e}")
             self.face_manager = None
 
-        # Pre-generar la máscara de silueta
-        self._silhouette_mask = self._create_silhouette_mask()
+        self.gpio_controller = get_locker_gpio_controller()
 
         self._build_ui()
         self._reset_liveness_state()
-
-    # ── Crear silueta de persona ──────────────────────────────────────────────
-
-    def _create_silhouette_mask(self) -> Image.Image:
-        """Crea una máscara PNG con la silueta de cabeza/hombros recortada."""
-        mask = Image.new("RGBA", (self.WIN_W, self.WIN_H), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(mask)
-
-        # Fondo semitransparente oscuro
-        draw.rectangle([(0, 0), (self.WIN_W, self.WIN_H)], fill=(0, 0, 0, 100))
-
-        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 60
-
-        # Recortar zona de la cabeza (elipse)
-        head_rx, head_ry = 95, 120
-        head_box = [cx - head_rx, cy - head_ry - 30, cx + head_rx, cy + head_ry - 30]
-        draw.ellipse(head_box, fill=(0, 0, 0, 0))
-
-        # Recortar zona cuello + hombros (elipse ancha)
-        body_cy = cy + head_ry + 20
-        body_rx, body_ry = 160, 100
-        body_box = [cx - body_rx, body_cy - 10, cx + body_rx, body_cy + body_ry + 40]
-        draw.ellipse(body_box, fill=(0, 0, 0, 0))
-
-        return mask
-
-    def _draw_silhouette_outline(self, draw: ImageDraw.Draw, color_rgba: tuple) -> None:
-        """Dibuja el contorno de la silueta (cabeza + hombros) con el color dado."""
-        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 60
-        color_rgb = color_rgba[:3]
-
-        head_rx, head_ry = 95, 120
-        head_box = [cx - head_rx, cy - head_ry - 30, cx + head_rx, cy + head_ry - 30]
-        draw.ellipse(head_box, outline=color_rgb, width=3)
-
-        body_cy = cy + head_ry + 20
-        body_rx, body_ry = 160, 100
-        body_box = [cx - body_rx, body_cy - 10, cx + body_rx, body_cy + body_ry + 40]
-        draw.ellipse(body_box, outline=color_rgb, width=3)
 
     # ── Construcción de UI ────────────────────────────────────────────────────
 
@@ -165,15 +128,15 @@ class ScanningScreen(ctk.CTkFrame):
         # ── Status label en la parte superior ─────────────────────────────────
         self.lbl_status = ctk.CTkLabel(
             self,
-            text="Posiciona tu rostro en la silueta",
-            font=ctk.CTkFont(size=17, weight="bold"),
+            text="POSICIONA TU ROSTRO",
+            font=ctk.CTkFont(size=19, weight="bold"),
             text_color=self.TEXT_COLOR,
-            fg_color="#2A2A3E",
-            corner_radius=16,
-            height=36,
-            width=360,
+            fg_color="transparent",
+            bg_color="transparent",
+            corner_radius=0,
+            height=40,
         )
-        self.lbl_status.place(relx=0.5, y=30, anchor="n")
+        self.lbl_status.place(relx=0.5, y=100, anchor="center")
 
         # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
@@ -189,103 +152,148 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back = ctk.CTkButton(
             self,
             text="←",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            fg_color="#3A3A50",
-            hover_color="#4A4A60",
+            font=ctk.CTkFont(size=40, weight="bold"),
+            fg_color="transparent",
+            bg_color="transparent",
+            hover_color="#CCCCCC",
             text_color="#FFFFFF",
-            width=56, height=56,
-            corner_radius=28,
+            border_width=3,
+            border_color="#FFFFFF",
+            width=72, height=72,
+            corner_radius=16,
             command=self._go_standby,
         )
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
-        # ── Botón DEV simular éxito (solo desarrollo) ────────────────────
-        self.btn_dev = ctk.CTkButton(
-            self,
-            text="✓ Simular",
-            font=ctk.CTkFont(size=14),
-            fg_color="#2A3A2A",
-            hover_color="#3A4A3A",
-            text_color="#A5D6A7",
-            width=100, height=40,
-            corner_radius=20,
-            command=self._dev_simulate_success,
-        )
-        self.btn_dev.place(x=400, rely=0.94, anchor="center")
-
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        self.success_frame = ctk.CTkFrame(
+        # Contenedor con fondo oscuro para overlay modal
+        self.overlay_bg = ctk.CTkFrame(
             self,
-            fg_color=self.SUCCESS,
+            fg_color="#2A2A2E",  # Gris oscuro semi-transparente visualmente
+            corner_radius=0,
+            width=480,
+            height=800,
+            border_width=0,
+        )
+
+        # Frame principal del overlay con configuración explícita
+        self.success_frame = ctk.CTkFrame(
+            self.overlay_bg,
+            fg_color="#5B8C5A",
             corner_radius=20,
-            width=420,
-            height=260,
+            width=430,
+            height=250,
+            border_width=0,
         )
         # No se muestra aún — se coloca con .place() al detectar éxito
 
-        # Contenido del overlay de éxito
+        # Layout principal horizontal: ícono (izquierda) + texto (derecha)
+        success_content = ctk.CTkFrame(self.success_frame, fg_color="transparent", corner_radius=0)
+        success_content.pack(fill="both", expand=True, padx=(40, 16), pady=16)
+        success_content.grid_columnconfigure(0, weight=0)
+        success_content.grid_columnconfigure(1, weight=1)
+        success_content.grid_rowconfigure(0, weight=1)
+
+        icon_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "assets", "icons", "icon_persona_blanco.png"
+        )
+        self._success_icon = None
+        try:
+            if os.path.exists(icon_path):
+                icon_img = Image.open(icon_path)
+                self._success_icon = ctk.CTkImage(
+                    light_image=icon_img,
+                    dark_image=icon_img,
+                    size=(118, 118),
+                )
+        except Exception as e:
+            logger.warning(f"No se pudo cargar icono de éxito: {e}")
+
         self.lbl_success_icon = ctk.CTkLabel(
-            self.success_frame,
-            text="✓",
-            font=ctk.CTkFont(size=52, weight="bold"),
-            text_color="#FFFFFF",
+            success_content,
+            text="",
+            image=self._success_icon,
             fg_color="transparent",
+            width=120,
+            height=120,
         )
-        self.lbl_success_icon.pack(pady=(15, 2))
+        self.lbl_success_icon.grid(row=0, column=0, sticky="nw", padx=(22, 12))
 
+        text_content = ctk.CTkFrame(success_content, fg_color="transparent", corner_radius=0)
+        text_content.grid(row=0, column=1, sticky="nsew")
+
+        # Título de locker
         self.lbl_success_title = ctk.CTkLabel(
-            self.success_frame,
-            text="¡Acceso concedido!",
-            font=ctk.CTkFont(size=20, weight="bold"),
+            text_content,
+            text="Locker numero",
+            font=ctk.CTkFont(size=30, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_title.pack(pady=(0, 4))
+        self.lbl_success_title.pack(fill="x")
 
+        # Número de locker
+        self.lbl_success_locker = ctk.CTkLabel(
+            text_content,
+            text="00",
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            anchor="w",
+            justify="left",
+        )
+        self.lbl_success_locker.pack(fill="x", pady=(0, 3))
+
+        # Nombre del usuario
         self.lbl_success_name = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="—",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=ctk.CTkFont(size=15),
             text_color="#FFFFFF",
             fg_color="transparent",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_name.pack(pady=(0, 2))
+        self.lbl_success_name.pack(fill="x", pady=(0, 2))
 
+        # Matrícula
         self.lbl_success_matricula = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="Matrícula —",
             font=ctk.CTkFont(size=15),
-            text_color="#E8F5E9",
+            text_color="#FFFFFF",
             fg_color="transparent",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_matricula.pack(pady=(0, 2))
+        self.lbl_success_matricula.pack(fill="x", pady=(0, 2))
 
-        self.lbl_success_locker = ctk.CTkLabel(
-            self.success_frame,
-            text="Casillero —",
-            font=ctk.CTkFont(size=16),
-            text_color="#E8F5E9",
-            fg_color="transparent",
-        )
-        self.lbl_success_locker.pack(pady=(0, 2))
-
+        # Fecha
         self.lbl_success_fecha = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="—",
-            font=ctk.CTkFont(size=14),
-            text_color="#C8E6C9",
+            font=ctk.CTkFont(size=15),
+            text_color="#FFFFFF",
             fg_color="transparent",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_success_fecha.pack(pady=(0, 2))
+        self.lbl_success_fecha.pack(fill="x", pady=(0, 8))
 
+        # Countdown
         self.lbl_countdown = ctk.CTkLabel(
-            self.success_frame,
+            text_content,
             text="",
-            font=ctk.CTkFont(size=13),
-            text_color="#A5D6A7",
+            font=ctk.CTkFont(size=12),
+            text_color="#E6F4E6",
             fg_color="transparent",
+            anchor="w",
+            justify="left",
         )
-        self.lbl_countdown.pack(pady=(2, 8))
+        self.lbl_countdown.pack(fill="x")
 
     # ── Captura de video en background ────────────────────────────────────────
 
@@ -388,38 +396,114 @@ class ScanningScreen(ctk.CTkFrame):
             logger.info(f"Camera loop finalizado. Total: {frame_count}")
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
-        """Dibuja el frame de cámara a pantalla completa con silueta superpuesta."""
+        """Dibuja el frame de cámara a pantalla completa con cuadro dinámico siguiendo el rostro."""
         try:
             # Picamera2 "RGB888" retorna BGR en memoria — convertir a RGB para PIL
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Redimensionar manteniendo aspect ratio (no estirar)
+
+            # Redimensionar con crop al centro para llenar pantalla completa
             h, w = frame_rgb.shape[:2]
-            scale = min(self.WIN_W / w, self.WIN_H / h)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            
-            # Redimensionar
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-            
-            # Crear canvas con fondo negro y centrar la imagen
-            canvas = np.zeros((self.WIN_H, self.WIN_W, 3), dtype=np.uint8)
-            y_offset = (self.WIN_H - new_h) // 2
-            x_offset = (self.WIN_W - new_w) // 2
-            canvas[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = frame_resized
-            
-            # Convertir a PIL directamente (sin conversión de canales)
-            pil_image = Image.fromarray(canvas, mode="RGB").convert("RGBA")
+            target_aspect = self.WIN_W / self.WIN_H  # 480/800 = 0.6
+            frame_aspect = w / h
 
-            # Superponer la máscara de silueta semitransparente
-            pil_image = Image.alpha_composite(pil_image, self._silhouette_mask)
-
-            # Dibujar contorno de silueta: rojo si no hay rostro, verde si sí
-            draw = ImageDraw.Draw(pil_image)
-            if len(faces) > 0:
-                self._draw_silhouette_outline(draw, self.SILHOUETTE_FACE_OK)
+            if frame_aspect > target_aspect:
+                # Frame es más ancho - crop horizontal
+                new_h = h
+                new_w = int(h * target_aspect)
+                x_offset = (w - new_w) // 2
+                y_offset = 0
+                frame_cropped = frame_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
             else:
-                self._draw_silhouette_outline(draw, self.SILHOUETTE_NO_FACE)
+                # Frame es más alto - crop vertical
+                new_w = w
+                new_h = int(w / target_aspect)
+                x_offset = 0
+                y_offset = (h - new_h) // 2
+                frame_cropped = frame_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
+
+            # Redimensionar al tamaño exacto de la pantalla
+            frame_resized = cv2.resize(frame_cropped, (self.WIN_W, self.WIN_H), interpolation=cv2.INTER_LINEAR)
+
+            # Convertir a PIL
+            pil_image = Image.fromarray(frame_resized, mode="RGB")
+
+            # Dibujar guía de escaneo con esquinas en L
+            draw = ImageDraw.Draw(pil_image)
+
+            # Determinar coordenadas del cuadro (dinámicas si hay rostro, fijas si no)
+            if len(faces) > 0:
+                face_box = faces[0].get("box")
+                if face_box:
+                    # Calcular factor de escala para las coordenadas de la cara
+                    scale_x = self.WIN_W / new_w
+                    scale_y = self.WIN_H / new_h
+
+                    x, y, face_w, face_h = face_box
+
+                    # Ajustar coordenadas por el crop
+                    if frame_aspect > target_aspect:
+                        # Crop horizontal
+                        x = x - x_offset
+                    else:
+                        # Crop vertical
+                        y = y - y_offset
+
+                    # Escalar al tamaño de pantalla
+                    x = int(x * scale_x)
+                    y = int(y * scale_y)
+                    face_w = int(face_w * scale_x)
+                    face_h = int(face_h * scale_y)
+
+                    # Agregar padding al cuadro para que sea más amplio
+                    padding = int(max(face_w, face_h) * 0.3)
+                    x1 = max(0, x - padding)
+                    y1 = max(0, y - padding)
+                    x2 = min(self.WIN_W, x + face_w + padding)
+                    y2 = min(self.WIN_H, y + face_h + padding)
+                else:
+                    # Si no hay box, usar coordenadas fijas
+                    cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+                    box_width = 280
+                    box_height = 360
+                    x1 = cx - (box_width // 2)
+                    y1 = cy - (box_height // 2)
+                    x2 = cx + (box_width // 2)
+                    y2 = cy + (box_height // 2)
+            else:
+                # Sin rostro: guía fija centrada
+                cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+                box_width = 280
+                box_height = 360
+                x1 = cx - (box_width // 2)
+                y1 = cy - (box_height // 2)
+                x2 = cx + (box_width // 2)
+                y2 = cy + (box_height // 2)
+
+            # Color del cuadro: verde si rostro detectado correctamente, rojo si no
+            if self._liveness_passed:
+                box_color = (90, 180, 90)  # Verde
+            else:
+                box_color = (200, 80, 80)  # Rojo
+
+            # Dibujar solo las esquinas en forma de L
+            corner_length = 40  # Longitud de cada línea de la esquina
+            line_width = 5
+
+            # Esquina superior izquierda
+            draw.line([(x1, y1), (x1 + corner_length, y1)], fill=box_color, width=line_width)  # Horizontal
+            draw.line([(x1, y1), (x1, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
+
+            # Esquina superior derecha
+            draw.line([(x2 - corner_length, y1), (x2, y1)], fill=box_color, width=line_width)  # Horizontal
+            draw.line([(x2, y1), (x2, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
+
+            # Esquina inferior izquierda
+            draw.line([(x1, y2 - corner_length), (x1, y2)], fill=box_color, width=line_width)  # Vertical
+            draw.line([(x1, y2), (x1 + corner_length, y2)], fill=box_color, width=line_width)  # Horizontal
+
+            # Esquina inferior derecha
+            draw.line([(x2, y2 - corner_length), (x2, y2)], fill=box_color, width=line_width)  # Vertical
+            draw.line([(x2 - corner_length, y2), (x2, y2)], fill=box_color, width=line_width)  # Horizontal
 
             # Convertir a RGB para PhotoImage
             pil_rgb = pil_image.convert("RGB")
@@ -485,7 +569,6 @@ class ScanningScreen(ctk.CTkFrame):
         
         # Asegurarse de que los botones estén visibles
         self.btn_back.place(x=80, rely=0.94, anchor="center")
-        self.btn_dev.place_forget()  # Ocultar botón de simulación en caso de error
 
 
     def _set_camera_image(self) -> None:
@@ -496,22 +579,23 @@ class ScanningScreen(ctk.CTkFrame):
                 self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
                 self.canvas.image = self._photo_image
 
-                # Actualizar texto del status según detección
+                # Actualizar texto del status según detección (label siempre visible)
                 if not self._success_shown:
                     if self._face_detected:
                         if self._liveness_passed:
                             self.lbl_status.configure(
-                                text="Rostro vivo detectado — autenticando…",
+                                text="✓ ROSTRO DETECTADO",
                                 text_color="#A5D6A7",
                             )
                         else:
+                            # OPTIMIZADO: Mensaje simple sin confundir al usuario
                             self.lbl_status.configure(
-                                text=self._challenge_prompt(),
+                                text="DETECTANDO...",
                                 text_color="#FFD54F",
                             )
                     else:
                         self.lbl_status.configure(
-                            text="Posiciona tu rostro en la silueta",
+                            text="POSICIONA TU ROSTRO",
                             text_color="#FFFFFF",
                         )
         except Exception as e:
@@ -529,18 +613,17 @@ class ScanningScreen(ctk.CTkFrame):
         self._last_recognition_ts = 0.0
         self._last_seen_face_box = None
         self._reset_liveness_state()
-        self.lbl_status.configure(text="Iniciando cámara…", text_color="#FFFFFF")
+        self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
-        self.success_frame.place_forget()
+        self.overlay_bg.place_forget()
         self.btn_back.place(x=80, rely=0.94, anchor="center")
-        self.btn_dev.place(x=400, rely=0.94, anchor="center")
 
         if not self._camera_running:
             self._camera_running = True
             self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self._camera_thread.start()
             self.after(1000, lambda: self.lbl_status.configure(
-                text="Posiciona tu rostro en la silueta", text_color="#FFFFFF"
+                text="POSICIONA TU ROSTRO", text_color="#FFFFFF"
             ))
 
     def on_hide(self) -> None:
@@ -548,6 +631,10 @@ class ScanningScreen(ctk.CTkFrame):
         self._camera_running = False
         if self._camera_thread:
             self._camera_thread.join(timeout=2.0)
+        try:
+            self.gpio_controller.cleanup()
+        except Exception as e:
+            logger.warning(f"No se pudo limpiar GPIO al salir de scanning: {e}")
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None
@@ -558,23 +645,25 @@ class ScanningScreen(ctk.CTkFrame):
         self._success_shown = True
         self._user_data = user_data
 
-        self.lbl_status.configure(text="✓ Acceso concedido", text_color="#A5D6A7")
+        self.lbl_status.configure(text="✓ ACCESO CONCEDIDO", text_color="#A5D6A7")
         self.lbl_attempts.configure(text="")
 
-        # Llenar datos en el overlay
+        # Llenar datos en el overlay con el nuevo diseño
+        locker_num = user_data.get("locker_numero", "—")
+        self.lbl_success_locker.configure(
+            text=str(locker_num)  # Solo el número
+        )
         self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
         self.lbl_success_matricula.configure(
             text=f"Matrícula  {user_data.get('matricula', '—')}"
         )
-        self.lbl_success_locker.configure(
-            text=f"Casillero  {user_data.get('locker_numero', '—')}"
-        )
         self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
 
-        # Mostrar overlay verde
-        self.success_frame.place(relx=0.5, rely=0.75, anchor="center")
+        # Mostrar overlay de fondo completo
+        self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
+        # Centrar el cuadro verde dentro del overlay
+        self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
         self.btn_back.place_forget()
-        self.btn_dev.place_forget()
 
         # Iniciar countdown
         self._start_countdown(self.DISPLAY_SECONDS)
@@ -632,32 +721,13 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_steps = self._build_liveness_challenge()
 
     def _build_liveness_challenge(self) -> list[str]:
-        patterns = [
-            ["left", "right", "closer"],
-            ["right", "left", "closer"],
-            ["closer", "away", "left"],
-        ]
-        steps = random.choice(patterns).copy()
-        uses_dlib = bool(
-            self.face_manager
-            and getattr(self.face_manager.embedding_extractor, "uses_dlib", False)
-        )
-        if uses_dlib:
-            steps.append("blink")
-        return steps
+        # OPTIMIZADO: Sin challenges activos - solo detección pasiva de micromovimientos
+        # Esto hace el desbloqueo tan rápido como iPhone Face ID
+        return []
 
     def _challenge_prompt(self) -> str:
-        if not self._challenge_steps:
-            return "Prueba de vida: espera…"
-        current = self._challenge_steps[min(self._challenge_index, len(self._challenge_steps) - 1)]
-        labels = {
-            "left": "Prueba de vida: mueve tu cabeza a la izquierda",
-            "right": "Prueba de vida: mueve tu cabeza a la derecha",
-            "closer": "Prueba de vida: acércate un poco",
-            "away": "Prueba de vida: aléjate un poco",
-            "blink": "Prueba de vida: parpadea una vez",
-        }
-        return labels.get(current, "Prueba de vida en progreso")
+        # OPTIMIZADO: Mensaje simple sin instrucciones mareantes
+        return "Prueba de vida: detectando..."
 
     def _extract_face_gray(self, frame: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
         try:
@@ -691,7 +761,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._liveness_face_history.append(gray)
         self._liveness_box_history.append(center)
 
-        if len(self._liveness_face_history) < 4:
+        # OPTIMIZADO: Solo 2 frames mínimos para detección ultra-rápida (iPhone-style)
+        if len(self._liveness_face_history) < 2:
             return
 
         motion_vals = []
@@ -709,11 +780,12 @@ class ScanningScreen(ctk.CTkFrame):
 
         texture = float(cv2.Laplacian(hist[-1], cv2.CV_64F).var())
 
+        # OPTIMIZADO: Thresholds más permisivos para desbloqueo rápido tipo iPhone
         movement_ok = (
             self._liveness_motion_score >= self.LIVENESS_MIN_MOTION
             or self._liveness_shift_score >= self.LIVENESS_MIN_BOX_SHIFT
         )
-        texture_ok = texture >= 20.0
+        texture_ok = texture >= 8.0  # Mejorado: de 20.0 a 8.0 - más tolerante con iluminación
 
         self._passive_liveness_ok = bool(movement_ok and texture_ok)
         self._update_active_liveness(frame, face_box)
@@ -853,6 +925,16 @@ class ScanningScreen(ctk.CTkFrame):
             self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
             return None
 
+        # Abrir el relay del locker asignado al usuario antes de registrar en historial.
+        locker_id = best_candidate.get("idLocker")
+        open_seconds = float(GPIO_CONFIG.get("locker_open_seconds", 3.0))
+        relay_ok = self.gpio_controller.open_locker_by_id(locker_id, seconds=open_seconds)
+        if not relay_ok:
+            logger.warning(
+                "Reconocimiento exitoso, pero no se pudo activar el relay del locker %s",
+                locker_id,
+            )
+
         self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=True)
         full_name = " ".join(
             p for p in [
@@ -948,12 +1030,3 @@ class ScanningScreen(ctk.CTkFrame):
             )
         except Exception as e:
             logger.warning(f"No se pudo registrar historial de acceso: {e}")
-
-    def _dev_simulate_success(self) -> None:
-        """Solo para desarrollo: simula un acceso exitoso."""
-        dummy_user = {
-            "nombre":        "Juan Pérez López",
-            "locker_numero": 3,
-            "fecha":         datetime.now().strftime("%d/%m/%Y  %H:%M"),
-        }
-        self.on_face_match(dummy_user)

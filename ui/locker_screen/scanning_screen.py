@@ -925,11 +925,15 @@ class ScanningScreen(ctk.CTkFrame):
             self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
             return None
 
-        # Abrir relay del locker despues de validar identidad y antes del registro en historial.
+        # Abrir el relay del locker asignado al usuario antes de registrar en historial.
+        locker_id = best_candidate.get("idLocker")
         open_seconds = float(GPIO_CONFIG.get("locker_open_seconds", 3.0))
-        relay_ok = self.gpio_controller.open_locker(seconds=open_seconds)
+        relay_ok = self.gpio_controller.open_locker_by_id(locker_id, seconds=open_seconds)
         if not relay_ok:
-            logger.warning("Reconocimiento exitoso, pero no se pudo activar el relay del locker")
+            logger.warning(
+                "Reconocimiento exitoso, pero no se pudo activar el relay del locker %s",
+                locker_id,
+            )
 
         self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=True)
         full_name = " ".join(

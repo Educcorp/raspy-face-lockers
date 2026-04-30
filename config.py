@@ -40,7 +40,7 @@ FACE_DETECTION_CONFIG = {
 FACE_RECOGNITION_CONFIG = {
     "model_type": "dlib",
     "embedding_size": 128,
-    "distance_threshold": 0.65,  # OPTIMIZADO: de 0.6 a 0.65 - más tolerante (iPhone-style)
+    "distance_threshold": 0.50,  # dlib resnet: 0.5 reduce falsos positivos (0.65 era demasiado permisivo)
     # dlib models
     "shape_predictor": str(MODELS_DIR / "shape_predictor_68_face_landmarks.dat"),
     "face_rec_model": str(MODELS_DIR / "dlib_face_recognition_resnet_model_v1.dat"),

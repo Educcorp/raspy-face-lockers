@@ -645,14 +645,19 @@ class ScanningScreen(ctk.CTkFrame):
         self._success_shown = True
         self._user_data = user_data
 
-        self.lbl_status.configure(text="✓ ACCESO CONCEDIDO", text_color="#A5D6A7")
-        self.lbl_attempts.configure(text="")
+        locker_num = user_data.get("locker_numero")
+        tiene_locker = locker_num and locker_num != "Sin asignar"
 
-        # Llenar datos en el overlay con el nuevo diseño
-        locker_num = user_data.get("locker_numero", "—")
-        self.lbl_success_locker.configure(
-            text=str(locker_num)  # Solo el número
-        )
+        if tiene_locker:
+            self.lbl_status.configure(text="✓ ACCESO CONCEDIDO", text_color="#A5D6A7")
+            self.lbl_success_title.configure(text="Locker numero")
+            self.lbl_success_locker.configure(text=str(locker_num))
+        else:
+            self.lbl_status.configure(text="✓ IDENTIDAD VERIFICADA", text_color="#A5D6A7")
+            self.lbl_success_title.configure(text="Sin casillero")
+            self.lbl_success_locker.configure(text="asignado")
+
+        self.lbl_attempts.configure(text="")
         self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
         self.lbl_success_matricula.configure(
             text=f"Matrícula  {user_data.get('matricula', '—')}"
@@ -890,6 +895,12 @@ class ScanningScreen(ctk.CTkFrame):
             logger.debug("No se pudo extraer embedding para autenticación")
             return None
 
+        # Determinar el tipo de modelo del probe para comparar solo contra
+        # encodings del mismo tipo. Dlib y fallback viven en espacios vectoriales
+        # distintos — mezclarlos produce distancias sin sentido y falsos positivos.
+        probe_uses_dlib = getattr(self.face_manager.embedding_extractor, "uses_dlib", False)
+        probe_model_prefix = "dlib" if probe_uses_dlib else "fallback"
+
         candidates = self._load_active_face_encodings()
         if not candidates:
             logger.warning("No hay encodings activos en BD para autenticar")
@@ -897,7 +908,13 @@ class ScanningScreen(ctk.CTkFrame):
 
         best_candidate = None
         best_distance = 999.0
+        second_best_distance = 999.0
         for candidate in candidates:
+            # Solo comparar encodings compatibles con el modelo del probe
+            candidate_model = (candidate.get("modelo") or "")
+            if not candidate_model.startswith(probe_model_prefix):
+                continue
+
             stored_vec = candidate.get("vector_np")
             if stored_vec is None:
                 continue
@@ -906,18 +923,25 @@ class ScanningScreen(ctk.CTkFrame):
                 stored_vec,
             )
             if distance < best_distance:
+                second_best_distance = best_distance
                 best_distance = distance
                 best_candidate = candidate
+            elif distance < second_best_distance:
+                second_best_distance = distance
 
         if not best_candidate:
+            logger.warning(
+                "No hay candidatos compatibles con modelo '%s' en BD", probe_model_prefix
+            )
             return None
 
         threshold = self._threshold_for_model(best_candidate.get("modelo"))
         logger.info(
-            "Auth facial: mejor candidato id=%s distancia=%.4f umbral=%.4f modelo=%s",
+            "Auth facial: mejor candidato id=%s dist=%.4f umbral=%.4f 2do=%.4f modelo=%s",
             best_candidate.get("idUsuario"),
             best_distance,
             threshold,
+            second_best_distance,
             best_candidate.get("modelo"),
         )
 

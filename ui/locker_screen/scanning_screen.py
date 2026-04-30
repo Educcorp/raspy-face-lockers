@@ -50,12 +50,13 @@ class ScanningScreen(ctk.CTkFrame):
 
     MAX_ATTEMPTS    = 3
     DISPLAY_SECONDS = 8
-    RECOGNITION_INTERVAL_FRAMES = 3  # Mejorado: de 6 a 3 para reconocimiento más rápido
-    STABLE_FACE_FRAMES = 3  # Mejorado: de 8 a 3 - detección inmediata
-    RECOGNITION_COOLDOWN_SECONDS = 0.8  # Mejorado: de 2.0 a 0.8 - velocidad iPhone
-    LIVENESS_HISTORY_FRAMES = 4  # Mejorado: de 10 a 4 - micromovimientos más rápidos
-    LIVENESS_MIN_MOTION = 0.8  # Mejorado: de 2.4 a 0.8 - detecta movimientos mínimos naturales
-    LIVENESS_MIN_BOX_SHIFT = 0.008  # Mejorado: de 0.03 a 0.008 - ultra sensible a micromovimientos
+    RECOGNITION_INTERVAL_FRAMES = 5   # intentos de reconocimiento cada 5 frames (~0.33s)
+    STABLE_FACE_FRAMES = 12           # rostro estable ~0.8s antes de intentar reconocimiento
+    RECOGNITION_COOLDOWN_SECONDS = 3.0  # mínimo 3s entre intentos de reconocimiento
+    LIVENESS_HISTORY_FRAMES = 12      # 12 frames de historial de movimiento (~0.8s)
+    LIVENESS_MIN_MOTION = 1.5         # requiere movimiento natural real (no ruido)
+    LIVENESS_MIN_BOX_SHIFT = 0.015    # desplazamiento mínimo visible del rostro
+    MIN_SCAN_SECONDS = 3.5            # tiempo mínimo de escaneo antes de intentar identificar
     LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
     CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
     CHALLENGE_SCALE_IN_THRESHOLD = 0.18  # No usado en modo pasivo
@@ -76,6 +77,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._stable_face_frames = 0
         self._last_recognition_ts = 0.0
         self._last_seen_face_box = None
+        self._face_first_seen_ts: float = 0.0   # cuando el rostro apareció por primera vez
+        self._scan_progress_pct: int = 0         # 0-100, para barra de progreso en UI
         self._liveness_passed = False
         self._passive_liveness_ok = False
         self._active_liveness_ok = False
@@ -347,7 +350,12 @@ class ScanningScreen(ctk.CTkFrame):
                     time.sleep(0.066)
                     continue
 
+                now = time.time()
+
                 if faces:
+                    if self._stable_face_frames == 0:
+                        # Primera vez que aparece el rostro en esta sesión
+                        self._face_first_seen_ts = now
                     self._stable_face_frames += 1
                     self._last_seen_face_box = faces[0].get("box")
                     if self._last_seen_face_box:
@@ -355,15 +363,26 @@ class ScanningScreen(ctk.CTkFrame):
                 else:
                     self._stable_face_frames = 0
                     self._last_seen_face_box = None
+                    self._face_first_seen_ts = 0.0
+                    self._scan_progress_pct = 0
                     self._reset_liveness_state()
+
+                # Calcular cuánto tiempo lleva el rostro visible y actualizar progreso
+                if self._face_first_seen_ts > 0:
+                    scan_elapsed = now - self._face_first_seen_ts
+                    self._scan_progress_pct = min(100, int(scan_elapsed / self.MIN_SCAN_SECONDS * 100))
+                else:
+                    scan_elapsed = 0.0
+                    self._scan_progress_pct = 0
 
                 enough_frames = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
                 enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
-                cooldown_ok = (time.time() - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
+                cooldown_ok = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
                 liveness_ok = self._liveness_passed
+                scan_time_ok = scan_elapsed >= self.MIN_SCAN_SECONDS
 
-                if faces and enough_frames and enough_stability and cooldown_ok and liveness_ok:
-                    self._last_recognition_ts = time.time()
+                if faces and enough_frames and enough_stability and cooldown_ok and liveness_ok and scan_time_ok:
+                    self._last_recognition_ts = now
                     try:
                         user_data = self._recognize_current_face(frame, faces)
                         if user_data:
@@ -579,18 +598,24 @@ class ScanningScreen(ctk.CTkFrame):
                 self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
                 self.canvas.image = self._photo_image
 
-                # Actualizar texto del status según detección (label siempre visible)
+                # Actualizar texto del status con progreso de escaneo
                 if not self._success_shown:
                     if self._face_detected:
                         if self._liveness_passed:
-                            self.lbl_status.configure(
-                                text="✓ ROSTRO DETECTADO",
-                                text_color="#A5D6A7",
-                            )
+                            pct = self._scan_progress_pct
+                            if pct >= 100:
+                                self.lbl_status.configure(
+                                    text="IDENTIFICANDO...",
+                                    text_color="#A5D6A7",
+                                )
+                            else:
+                                self.lbl_status.configure(
+                                    text=f"ESCANEANDO  {pct}%",
+                                    text_color="#FFD54F",
+                                )
                         else:
-                            # OPTIMIZADO: Mensaje simple sin confundir al usuario
                             self.lbl_status.configure(
-                                text="DETECTANDO...",
+                                text="MUEVE LIGERAMENTE TU ROSTRO",
                                 text_color="#FFD54F",
                             )
                     else:
@@ -612,6 +637,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._stable_face_frames = 0
         self._last_recognition_ts = 0.0
         self._last_seen_face_box = None
+        self._face_first_seen_ts = 0.0
+        self._scan_progress_pct = 0
         self._reset_liveness_state()
         self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")

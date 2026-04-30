@@ -401,20 +401,26 @@ class _Step3PIN(ctk.CTkFrame):
 
 class _Step4FaceCapture(ctk.CTkFrame):
     """
-    Paso de captura facial. Muestra la cámara en tiempo real
-    con la silueta guía. Detecta el rostro automáticamente, muestra
-    landmarks y captura el embedding de 128 dim (dlib) sin necesidad
-    de presionar "Capturar" manualmente.
+    Paso de captura facial guiada con 3 poses: frontal, derecha, izquierda.
 
-    Flujo automático:
-      1. Se muestra el feed de cámara con silueta guía
-      2. Al detectar un rostro estable por ~1.5 s → captura automática
-      3. Se muestra confirmación + se habilita "Registrar"
-      4. "Registrar" inserta usuario + encoding en la DB
+    Flujo:
+      1. Instrucción de pose + silueta guía en pantalla
+      2. Al detectar rostro estable → captura automática del embedding
+      3. Avanza automáticamente a la siguiente pose
+      4. Tras capturar las 3 poses → habilita "Registrar"
+      5. Guarda 3 encodings por usuario (mejora reconocimiento multi-ángulo)
     """
 
-    STABLE_FRAMES_NEEDED = 12   # ~1.5 s a 8 fps de detección
-    CAPTURE_COOLDOWN = 3.0      # segundos antes de re-intentar auto-captura
+    STABLE_FRAMES_NEEDED = 15
+    CAPTURE_COOLDOWN = 2.0
+    CANVAS_H = 540
+
+    # Poses guiadas en orden
+    CAPTURE_POSES = [
+        {"tipoParte": "frontal",   "instruccion": "Mira directo a la cámara",           "icono": "●"},
+        {"tipoParte": "derecha",   "instruccion": "Gira tu cabeza hacia tu DERECHA  →",  "icono": "→"},
+        {"tipoParte": "izquierda", "instruccion": "Gira tu cabeza hacia tu IZQUIERDA  ←", "icono": "←"},
+    ]
 
     def __init__(self, parent, wizard: RegisterUserScreen):
         super().__init__(parent, fg_color="#1A1A2E", corner_radius=0)
@@ -424,16 +430,18 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._camera_thread: Optional[threading.Thread] = None
         self._current_frame: Optional[np.ndarray] = None
         self._detected_faces: list = []
-        self._current_landmarks: list = []  # 68 puntos (x,y)
+        self._current_landmarks: list = []
         self._photo_ref = None
-        self._captured_embedding: Optional[np.ndarray] = None
         self._face_mgr = None
         self._embedding_mode = "dlib"
 
-        # Auto-capture state
-        self._stable_face_count = 0
-        self._auto_captured = False
-        self._last_capture_time = 0.0
+        # Estado multi-pose
+        self._current_pose_idx: int = 0
+        self._captured_poses: list[dict] = []   # [{"tipoParte": str, "embedding": ndarray}]
+        self._stable_face_count: int = 0
+        self._pose_captured: bool = False       # pose actual ya capturada
+        self._advance_pending: bool = False     # esperando auto-avance a siguiente pose
+        self._last_capture_time: float = 0.0
 
         self._silhouette_mask = self._make_silhouette()
         self._build()
@@ -445,74 +453,122 @@ class _Step4FaceCapture(ctk.CTkFrame):
                        back_cmd=self.wizard.prev_step,
                        bg="#1A1A2E", text_color=PALETTE["WHITE"])
 
-        # Canvas para el feed de la cámara
+        # ── Indicadores de progreso de poses ─────────────────────────────────
+        prog_row = ctk.CTkFrame(self, fg_color="#0E0E1E", height=56, corner_radius=0)
+        prog_row.pack(fill="x")
+        prog_row.pack_propagate(False)
+
+        inner = ctk.CTkFrame(prog_row, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center")
+
+        self._pose_dot_labels: list[ctk.CTkLabel] = []
+        self._pose_name_labels: list[ctk.CTkLabel] = []
+        pose_names = ["Frente", "Derecha", "Izquierda"]
+        for i, name in enumerate(pose_names):
+            col = ctk.CTkFrame(inner, fg_color="transparent")
+            col.pack(side="left", padx=22)
+            dot = ctk.CTkLabel(col, text="○", font=ctk.CTkFont(size=20),
+                               text_color="#444444", fg_color="transparent")
+            dot.pack()
+            lbl = ctk.CTkLabel(col, text=name, font=ctk.CTkFont(size=10),
+                               text_color="#444444", fg_color="transparent")
+            lbl.pack()
+            self._pose_dot_labels.append(dot)
+            self._pose_name_labels.append(lbl)
+
+        # ── Canvas de cámara ──────────────────────────────────────────────────
         self.canvas = tk.Canvas(
-            self, width=WIN_W, height=600,
+            self, width=WIN_W, height=self.CANVAS_H,
             bg="#1A1A2E", highlightthickness=0,
         )
         self.canvas.pack()
 
-        # Status
+        # ── Labels superpuestos sobre el canvas ───────────────────────────────
         self.lbl_status = ctk.CTkLabel(
-            self, text="Posiciona tu rostro en la silueta",
+            self, text="Posiciona tu rostro",
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color=PALETTE["WHITE"], fg_color="#2A2A3E",
-            corner_radius=12, height=38, width=360,
+            text_color=PALETTE["WHITE"], fg_color="#1A1A2E",
+            corner_radius=10, height=36, width=380,
         )
-        self.lbl_status.place(relx=0.5, y=90, anchor="n")
+        self.lbl_status.place(relx=0.5, y=82, anchor="n")
 
-        # Progreso de captura automática
         self.lbl_progress = ctk.CTkLabel(
             self, text="",
             font=ctk.CTkFont(size=13),
             text_color=PALETTE["ACCENT"], fg_color="transparent",
         )
-        self.lbl_progress.place(relx=0.5, y=134, anchor="n")
+        self.lbl_progress.place(relx=0.5, y=124, anchor="n")
 
-        # Botones
+        # ── Botones inferiores ────────────────────────────────────────────────
         btn_row = ctk.CTkFrame(self, fg_color=PALETTE["CARD"],
                                corner_radius=0, height=90)
         btn_row.pack(fill="x", side="bottom")
         btn_row.pack_propagate(False)
         btn_row.grid_columnconfigure((0, 1), weight=1)
 
-        self.btn_capture = ctk.CTkButton(
-            btn_row, text="Capturar",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+        self.btn_retry = ctk.CTkButton(
+            btn_row, text="Repetir pose",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            fg_color="#444444", hover_color="#333333",
             text_color=PALETTE["WHITE"], height=60, corner_radius=12,
-            command=self._manual_capture,
+            command=self._retry_last_pose, state="disabled",
         )
-        self.btn_capture.grid(row=0, column=0, padx=(12, 6), pady=15, sticky="ew")
+        self.btn_retry.grid(row=0, column=0, padx=(12, 6), pady=15, sticky="ew")
 
         self.btn_save = ctk.CTkButton(
             btn_row, text="Registrar",
             font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color=PALETTE["SUCCESS"] if "SUCCESS" in PALETTE else "#27ae60",
-            hover_color="#1e8449",
+            fg_color=PALETTE.get("SUCCESS", "#27ae60"), hover_color="#1e8449",
             text_color=PALETTE["WHITE"], height=60, corner_radius=12,
-            command=self._save_user,
-            state="disabled",
+            command=self._save_user, state="disabled",
         )
         self.btn_save.grid(row=0, column=1, padx=(6, 12), pady=15, sticky="ew")
+
+    def _refresh_pose_indicators(self) -> None:
+        """Actualiza los indicadores ○/◉/● según las poses completadas."""
+        total = len(self.CAPTURE_POSES)
+        captured = len(self._captured_poses)
+        for i in range(total):
+            dot = self._pose_dot_labels[i]
+            lbl = self._pose_name_labels[i]
+            if i < captured:
+                dot.configure(text="●", text_color="#A5D6A7")
+                lbl.configure(text_color="#A5D6A7")
+            elif i == self._current_pose_idx:
+                dot.configure(text="◉", text_color="#FFD54F")
+                lbl.configure(text_color="#FFD54F")
+            else:
+                dot.configure(text="○", text_color="#444444")
+                lbl.configure(text_color="#444444")
+
+    def _show_pose_instruction(self) -> None:
+        """Muestra instrucción y progreso para la pose actual."""
+        if self._current_pose_idx >= len(self.CAPTURE_POSES):
+            return
+        pose = self.CAPTURE_POSES[self._current_pose_idx]
+        captured = len(self._captured_poses)
+        total = len(self.CAPTURE_POSES)
+        self.lbl_status.configure(
+            text=f"Pose {captured + 1}/{total}:  {pose['instruccion']}",
+            text_color=PALETTE["WHITE"],
+        )
+        self.lbl_progress.configure(text="Mantén el rostro estable...", text_color=PALETTE["ACCENT"])
 
     # ── Silueta ───────────────────────────────────────────────────────────────
 
     def _make_silhouette(self) -> Image.Image:
-        mask = Image.new("RGBA", (WIN_W, 600), (0, 0, 0, 0))
+        mask = Image.new("RGBA", (WIN_W, self.CANVAS_H), (0, 0, 0, 0))
         draw = ImageDraw.Draw(mask)
-        draw.rectangle([(0, 0), (WIN_W, 600)], fill=(0, 0, 0, 80))
-        cx, cy = WIN_W // 2, 280
-        draw.ellipse([cx-95, cy-150, cx+95, cy+90], fill=(0, 0, 0, 0))
-        draw.ellipse([cx-160, cy+90, cx+160, cy+230], fill=(0, 0, 0, 0))
+        draw.rectangle([(0, 0), (WIN_W, self.CANVAS_H)], fill=(0, 0, 0, 80))
+        cx, cy = WIN_W // 2, 250
+        draw.ellipse([cx - 95, cy - 140, cx + 95, cy + 80], fill=(0, 0, 0, 0))
+        draw.ellipse([cx - 155, cy + 80, cx + 155, cy + 210], fill=(0, 0, 0, 0))
         return mask
 
     def _draw_outline(self, draw: ImageDraw.Draw, color: tuple) -> None:
-        cx, cy = WIN_W // 2, 280
-        draw.ellipse([cx-95, cy-150, cx+95, cy+90],
-                     outline=color[:3], width=3)
-        draw.ellipse([cx-160, cy+90, cx+160, cy+230],
-                     outline=color[:3], width=3)
+        cx, cy = WIN_W // 2, 250
+        draw.ellipse([cx - 95, cy - 140, cx + 95, cy + 80], outline=color[:3], width=3)
+        draw.ellipse([cx - 155, cy + 80, cx + 155, cy + 210], outline=color[:3], width=3)
 
     # ── Cámara ────────────────────────────────────────────────────────────────
 
@@ -524,51 +580,37 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return
         try:
             from core.face_recognition import FaceRecognitionManager
-            logger.info("Inicializando FaceRecognitionManager para admin...")
             self._face_mgr = FaceRecognitionManager()
-
             if not self._face_mgr.initialize():
-                logger.error("FaceRecognitionManager init failed")
-                self.lbl_status.configure(text="✗ Cámara no disponible")
+                self.lbl_status.configure(text="✗ Cámara no disponible",
+                                          text_color=PALETTE["DANGER"])
                 self._face_mgr = None
                 return
-
             if not self._face_mgr.embedding_extractor.is_ready:
-                self.lbl_status.configure(
-                    text="✗ No hay extractor facial disponible",
-                    text_color=PALETTE["DANGER"],
-                )
-                self.lbl_progress.configure(
-                    text="Instala dlib/modelos para registrar rostros",
-                    text_color=PALETTE["DANGER"],
-                )
+                self.lbl_status.configure(text="✗ Extractor facial no disponible",
+                                          text_color=PALETTE["DANGER"])
+                self.lbl_progress.configure(text="Instala dlib + modelos para registrar rostros",
+                                            text_color=PALETTE["DANGER"])
                 self._face_mgr.release()
                 self._face_mgr = None
                 return
-
             self._embedding_mode = (
-                "dlib"
-                if getattr(self._face_mgr.embedding_extractor, "uses_dlib", False)
+                "dlib" if getattr(self._face_mgr.embedding_extractor, "uses_dlib", False)
                 else "fallback"
             )
             if self._embedding_mode == "fallback":
                 self.lbl_progress.configure(
-                    text="Modo básico activo (sin modelos dlib): usa buena iluminación",
+                    text="Modo básico: sin modelos dlib. Usa buena iluminación.",
                     text_color="#FFD54F",
                 )
-
-            logger.info("✓ FaceRecognitionManager inicializado")
         except Exception as exc:
             logger.error(f"Error al inicializar cámara: {exc}", exc_info=True)
-            self.lbl_status.configure(text=f"(!) Error: {str(exc)[:50]}")
+            self.lbl_status.configure(text=f"(!) Error: {str(exc)[:60]}")
             return
 
         self._camera_running = True
-        self._camera_thread = threading.Thread(
-            target=self._camera_loop, daemon=True
-        )
+        self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
         self._camera_thread.start()
-        logger.info("Camera thread started")
         self._update_canvas()
 
     def stop_camera(self) -> None:
@@ -576,235 +618,195 @@ class _Step4FaceCapture(ctk.CTkFrame):
         if self._face_mgr is not None:
             try:
                 self._face_mgr.release()
-                logger.info("Camera released")
-            except Exception as e:
-                logger.error(f"Error releasing camera: {e}")
+            except Exception:
+                pass
             self._face_mgr = None
 
-    # ── Camera loop (thread) ──────────────────────────────────────────────────
+    # ── Camera loop (hilo worker) ─────────────────────────────────────────────
 
     def _camera_loop(self) -> None:
         import time
-        logger.info("Camera loop started")
         while self._camera_running:
             try:
                 if self._face_mgr is None:
                     break
-
                 frame = self._face_mgr.get_frame()
                 if frame is None:
                     time.sleep(0.05)
                     continue
 
                 self._current_frame = frame
-
-                # Detección (dlib HOG + Haar cascade fallback integrado)
                 faces = self._face_mgr.face_detector.detect(frame)
-
                 self._detected_faces = faces
 
-                # Extraer landmarks para el primer rostro (para dibujar en canvas)
                 if faces:
                     box = faces[0].get("box")
-                    if box:
-                        lm = self._face_mgr.get_landmarks(frame, box)
-                        self._current_landmarks = lm or []
-                    else:
-                        self._current_landmarks = []
+                    self._current_landmarks = self._face_mgr.get_landmarks(frame, box) or [] if box else []
                 else:
                     self._current_landmarks = []
 
-                # Auto-captura: si hay rostro estable y aún no se capturó
-                if faces and not self._auto_captured:
+                # Conteo de estabilidad para auto-captura
+                all_done = len(self._captured_poses) >= len(self.CAPTURE_POSES)
+                if faces and not self._pose_captured and not all_done and not self._advance_pending:
                     self._stable_face_count += 1
-                else:
-                    if not faces:
-                        self._stable_face_count = 0
+                elif not faces:
+                    self._stable_face_count = 0
 
                 if (self._stable_face_count >= self.STABLE_FRAMES_NEEDED
-                        and not self._auto_captured
+                        and not self._pose_captured
+                        and not all_done
+                        and not self._advance_pending
                         and time.time() - self._last_capture_time > self.CAPTURE_COOLDOWN):
-                    self._try_auto_capture(frame, faces)
+                    self._try_capture_pose(frame, faces)
 
             except Exception as e:
-                logger.error(f"Error en camera_loop: {e}")
+                logger.error(f"Error en camera_loop registro: {e}")
                 break
-            time.sleep(0.05)  # ~20 fps de detección
-        logger.info("Camera loop ended")
+            time.sleep(0.05)
 
-    def _try_auto_capture(self, frame: np.ndarray, faces: list) -> None:
-        """Intenta auto-capturar el embedding en background."""
+    def _try_capture_pose(self, frame, faces) -> None:
         import time
         if not faces or self._face_mgr is None:
             return
-
         box = faces[0].get("box")
         if not box:
             return
 
-        logger.info("Auto-captura: extrayendo embedding dlib...")
+        pose = self.CAPTURE_POSES[self._current_pose_idx]
         embedding = self._face_mgr.get_embedding(frame, box)
-
         if embedding is not None:
-            self._captured_embedding = embedding
-            self._auto_captured = True
+            self._captured_poses.append({"tipoParte": pose["tipoParte"], "embedding": embedding})
+            self._pose_captured = True
             self._last_capture_time = time.time()
-            logger.info(f"✓ Embedding capturado automáticamente: {embedding.shape}")
-            # Actualizar UI desde thread principal
-            self.after(0, self._on_auto_capture_success)
+            logger.info("Pose '%s' capturada (%d/%d)", pose["tipoParte"],
+                        len(self._captured_poses), len(self.CAPTURE_POSES))
+            self.after(0, self._on_pose_captured)
         else:
-            logger.warning("Auto-captura: no se pudo extraer embedding")
+            logger.warning("No se pudo extraer embedding para pose '%s'", pose["tipoParte"])
             self._stable_face_count = 0
 
-    def _on_auto_capture_success(self) -> None:
-        """Callback en el hilo principal tras auto-captura exitosa."""
-        self.lbl_status.configure(
-            text="✓ Rostro capturado automáticamente",
-            text_color="#A5D6A7",
-        )
-        self.lbl_progress.configure(text="Embedding 128-dim listo — presiona Registrar")
-        self.btn_save.configure(state="normal")
-        self.btn_capture.configure(
-            text="Recapturar",
-            fg_color="#555555",
-        )
+    # ── Callbacks en hilo principal ───────────────────────────────────────────
 
-    # ── Display ───────────────────────────────────────────────────────────────
+    def _on_pose_captured(self) -> None:
+        captured = len(self._captured_poses)
+        total = len(self.CAPTURE_POSES)
+        self._refresh_pose_indicators()
+        self.btn_retry.configure(state="normal")
+
+        if captured >= total:
+            self.lbl_status.configure(
+                text=f"✓ {total}/{total} poses capturadas",
+                text_color="#A5D6A7",
+            )
+            self.lbl_progress.configure(
+                text="Biometría completa — presiona Registrar",
+                text_color="#A5D6A7",
+            )
+            self.btn_save.configure(state="normal")
+            self.btn_retry.configure(state="normal")
+        else:
+            next_pose = self.CAPTURE_POSES[captured]
+            self.lbl_status.configure(
+                text=f"✓ Pose {captured}/{total} lista",
+                text_color="#A5D6A7",
+            )
+            self.lbl_progress.configure(
+                text=f"Siguiente: {next_pose['instruccion']}",
+                text_color="#81D4FA",
+            )
+            self._advance_pending = True
+            self.after(1600, self._advance_pose)
+
+    def _advance_pose(self) -> None:
+        self._current_pose_idx = len(self._captured_poses)
+        self._stable_face_count = 0
+        self._pose_captured = False
+        self._advance_pending = False
+        self._refresh_pose_indicators()
+        self._show_pose_instruction()
+
+    def _retry_last_pose(self) -> None:
+        if not self._captured_poses:
+            return
+        removed = self._captured_poses.pop()
+        self._current_pose_idx = len(self._captured_poses)
+        self._stable_face_count = 0
+        self._pose_captured = False
+        self._advance_pending = False
+        self.btn_save.configure(state="disabled")
+        self.btn_retry.configure(state="disabled" if not self._captured_poses else "normal")
+        self._refresh_pose_indicators()
+        self._show_pose_instruction()
+        logger.info("Pose '%s' eliminada para re-capturar", removed["tipoParte"])
+
+    # ── Actualización de canvas ───────────────────────────────────────────────
 
     def _update_canvas(self) -> None:
         if not self._camera_running:
             return
 
         if self._current_frame is not None:
-            frame = self._current_frame.copy()
-
-            # BGR → RGB para PIL
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # Redimensionar manteniendo aspect ratio
+            frame_rgb = cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB)
             h, w = frame_rgb.shape[:2]
-            scale = min(WIN_W / w, 600 / h)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
+            scale = min(WIN_W / w, self.CANVAS_H / h)
+            new_w, new_h = int(w * scale), int(h * scale)
+            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h),
-                                       interpolation=cv2.INTER_LINEAR)
-
-            # Canvas negro centrado
-            canvas = np.zeros((600, WIN_W, 3), dtype=np.uint8)
-            y_off = (600 - new_h) // 2
+            canvas_arr = np.zeros((self.CANVAS_H, WIN_W, 3), dtype=np.uint8)
+            y_off = (self.CANVAS_H - new_h) // 2
             x_off = (WIN_W - new_w) // 2
-            canvas[y_off:y_off+new_h, x_off:x_off+new_w] = frame_resized
+            canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
 
-            img = Image.fromarray(canvas, mode="RGB").convert("RGBA")
-
+            img = Image.fromarray(canvas_arr, "RGB").convert("RGBA")
             has_face = len(self._detected_faces) > 0
-            outline_color = SILO_OK_FACE if has_face else SILO_NO_FACE
 
-            # Dibujar landmarks en el frame (puntos verdes)
+            # Landmarks
             if self._current_landmarks:
-                draw_img = ImageDraw.Draw(img)
-                for (lx, ly) in self._current_landmarks:
-                    # Transformar coordenadas del frame original al canvas
+                dimg = ImageDraw.Draw(img)
+                for lx, ly in self._current_landmarks:
                     sx = int(lx * scale) + x_off
                     sy = int(ly * scale) + y_off
-                    r = 2
-                    draw_img.ellipse([sx-r, sy-r, sx+r, sy+r],
-                                     fill=(0, 255, 100, 220))
+                    dimg.ellipse([sx - 2, sy - 2, sx + 2, sy + 2], fill=(0, 255, 100, 220))
 
-            # Silueta overlay
+            # Silueta + borde
             overlay = self._silhouette_mask.copy()
-            draw = ImageDraw.Draw(overlay)
-            self._draw_outline(draw, outline_color)
+            self._draw_outline(ImageDraw.Draw(overlay),
+                               SILO_OK_FACE if has_face else SILO_NO_FACE)
             img = Image.alpha_composite(img, overlay)
 
             from PIL import ImageTk
             self._photo_ref = ImageTk.PhotoImage(img)
-            self.canvas.create_image(0, 0, anchor="nw",
-                                     image=self._photo_ref)
+            self.canvas.create_image(0, 0, anchor="nw", image=self._photo_ref)
 
-            # Status label
-            if self._auto_captured:
-                pass  # ya se mostró el mensaje de éxito
-            elif has_face:
-                pct = min(100, int(self._stable_face_count
-                                   / self.STABLE_FRAMES_NEEDED * 100))
-                self.lbl_status.configure(
-                    text=f"Rostro detectado — capturando... {pct}%",
-                    text_color="#A5D6A7",
-                )
-                self.lbl_progress.configure(
-                    text="Mantén la posición",
-                )
-            else:
-                self.lbl_status.configure(
-                    text="Posiciona tu rostro en la silueta",
-                    text_color=PALETTE["WHITE"],
-                )
-                self.lbl_progress.configure(text="")
+            # Feedback de progreso de captura de pose
+            all_done = len(self._captured_poses) >= len(self.CAPTURE_POSES)
+            if not all_done and not self._pose_captured and not self._advance_pending:
+                if has_face:
+                    pct = min(100, int(self._stable_face_count / self.STABLE_FRAMES_NEEDED * 100))
+                    if pct > 0:
+                        self.lbl_progress.configure(
+                            text=f"Mantén la posición... {pct}%",
+                            text_color=PALETTE["ACCENT"],
+                        )
+                else:
+                    self._show_pose_instruction()
 
         self.after(50, self._update_canvas)
 
-    # ── Captura manual ────────────────────────────────────────────────────────
-
-    def _manual_capture(self) -> None:
-        """Botón Capturar / Recapturar."""
-        logger.info("=== Botón Capturar presionado ===")
-
-        if self._auto_captured:
-            self._auto_captured = False
-            self._captured_embedding = None
-            self._stable_face_count = 0
-            self.btn_save.configure(state="disabled")
-            self.btn_capture.configure(text="Capturar", fg_color=PALETTE["ACCENT"])
-            self.lbl_progress.configure(text="Recaptura iniciada")
-
-        if self._current_frame is None or self._face_mgr is None:
-            self.lbl_status.configure(text="(!) Cámara no lista",
-                                      text_color=PALETTE["DANGER"])
-            return
-        if not self._detected_faces:
-            self.lbl_status.configure(text="(!) No se detectó ningún rostro",
-                                      text_color=PALETTE["DANGER"])
-            return
-
-        frame = self._current_frame.copy()
-        box = self._detected_faces[0].get("box")
-        if not box:
-            return
-
-        self.lbl_status.configure(text="Extrayendo embedding...",
-                                  text_color="#FFD54F")
-        self.update_idletasks()
-
-        embedding = self._face_mgr.get_embedding(frame, box)
-        if embedding is None:
-            self.lbl_status.configure(text="(!) No se pudo extraer embedding",
-                                      text_color=PALETTE["DANGER"])
-            return
-
-        self._captured_embedding = embedding
-        self._auto_captured = True
-        self.lbl_status.configure(text="✓ Perfil facial capturado",
-                                  text_color="#A5D6A7")
-        self.lbl_progress.configure(text="Embedding 128-dim listo — presiona Registrar")
-        self.btn_save.configure(state="normal")
-        self.btn_capture.configure(text="Recapturar", fg_color="#555555")
-
-    # ── Guardar usuario completo ──────────────────────────────────────────────
+    # ── Guardar usuario con 3 encodings ──────────────────────────────────────
 
     def _save_user(self) -> None:
-        if self._captured_embedding is None:
-            self.lbl_status.configure(text="(!) Primero captura el rostro",
-                                      text_color=PALETTE["DANGER"])
+        if len(self._captured_poses) < len(self.CAPTURE_POSES):
+            self.lbl_status.configure(
+                text=f"(!) Captura las {len(self.CAPTURE_POSES)} poses primero",
+                text_color=PALETTE["DANGER"],
+            )
             return
 
         self.btn_save.configure(state="disabled")
         d = self.wizard._data
-        logger.info(f"Guardando usuario: {d.get('nombre')} {d.get('apPaterno')}")
+        modelo_name = "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8"
 
-        vec = self._captured_embedding.astype(np.float32, copy=False)
-        vec_bytes = vec.tobytes()
         try:
             with db_session() as conn:
                 cur = conn.execute("""
@@ -820,64 +822,62 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 ))
                 user_id = cur.lastrowid
 
-                vec_hash = hashlib.sha256(vec_bytes + f"{user_id}".encode()).hexdigest()
-                conn.execute("""
-                    INSERT INTO encoding
-                        (idUsuario, estado, vector, dimension, hashVector,
-                         tipoParte, vectorDtype, modelo, modeloVersion)
-                    VALUES (?, 'activo', ?, ?, ?, 'frontal', 'float32', ?, ?)
-                """, (
-                    user_id,
-                    vec_bytes,
-                    int(len(vec)),
-                    vec_hash,
-                    "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8",
-                    "1.0",
-                ))
+                for pose_data in self._captured_poses:
+                    vec = pose_data["embedding"].astype(np.float32, copy=False)
+                    vec_bytes = vec.tobytes()
+                    vec_hash = hashlib.sha256(
+                        vec_bytes + f"{user_id}_{pose_data['tipoParte']}".encode()
+                    ).hexdigest()
+                    conn.execute("""
+                        INSERT INTO encoding
+                            (idUsuario, estado, vector, dimension, hashVector,
+                             tipoParte, vectorDtype, modelo, modeloVersion)
+                        VALUES (?, 'activo', ?, ?, ?, ?, 'float32', ?, '1.0')
+                    """, (
+                        user_id, vec_bytes, int(len(vec)),
+                        vec_hash, pose_data["tipoParte"], modelo_name,
+                    ))
 
-            logger.info(f"✓ Usuario + encoding insertados con ID={user_id}")
+            logger.info("✓ Usuario id=%s + %d encodings guardados", user_id, len(self._captured_poses))
         except sqlite3.IntegrityError as exc:
-            logger.error(f"Error de integridad registrando usuario: {exc}")
+            logger.error("IntegrityError al guardar usuario: %s", exc)
             self.btn_save.configure(state="normal")
             self.lbl_status.configure(
-                text="Error: matrícula/correo ya existe o datos inválidos",
+                text="Error: matrícula o correo ya existe",
                 text_color=PALETTE["DANGER"],
             )
-            self.lbl_progress.configure(text="Corrige datos y vuelve a intentar")
             return
         except Exception as exc:
-            logger.error(f"Error insertando usuario/encoding: {exc}")
+            logger.error("Error insertando usuario: %s", exc)
             self.btn_save.configure(state="normal")
             self.lbl_status.configure(
-                text=f"Error al registrar: {exc}",
+                text=f"Error al registrar: {str(exc)[:60]}",
                 text_color=PALETTE["DANGER"],
             )
             return
 
         self.stop_camera()
-        self.wizard.next_step({"saved_user_id": user_id,
-                               "saved_nombre": d["nombre"]})
+        self.wizard.next_step({"saved_user_id": user_id, "saved_nombre": d["nombre"]})
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def on_enter(self, data: dict) -> None:
-        logger.info("=== Entrando a Step4FaceCapture (Admin) ===")
-        self._captured_embedding = None
-        self._auto_captured = False
+        logger.info("Entrando a captura facial multi-pose")
+        self._current_pose_idx = 0
+        self._captured_poses = []
         self._stable_face_count = 0
+        self._pose_captured = False
+        self._advance_pending = False
         self._last_capture_time = 0.0
         self._current_landmarks = []
         self.btn_save.configure(state="disabled")
-        self.btn_capture.configure(text="Capturar", fg_color=PALETTE["ACCENT"])
-        self.lbl_progress.configure(text="")
-        self.lbl_status.configure(text="Posiciona tu rostro en la silueta",
-                                  text_color=PALETTE["WHITE"])
-        logger.info("Iniciando cámara para registro...")
+        self.btn_retry.configure(state="disabled")
+        self._refresh_pose_indicators()
+        self._show_pose_instruction()
         self._start_camera()
 
     def on_leave(self) -> None:
-        """Detiene la cámara cuando se sale de este paso."""
-        logger.info("=== Saliendo de Step4FaceCapture ===")
+        logger.info("Saliendo de captura facial")
         self.stop_camera()
 
 

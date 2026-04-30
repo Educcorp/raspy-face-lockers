@@ -668,20 +668,20 @@ class ScanningScreen(ctk.CTkFrame):
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
-        """Muestra el overlay verde de éxito con los datos del usuario."""
+        """Muestra el overlay de resultado según si el usuario tiene locker o no."""
         self._success_shown = True
         self._user_data = user_data
 
-        locker_num = user_data.get("locker_numero")
-        tiene_locker = locker_num and locker_num != "Sin asignar"
+        locker_num = user_data.get("locker_numero")   # None si no tiene locker
 
-        if tiene_locker:
+        if locker_num:
             self.lbl_status.configure(text="✓ ACCESO CONCEDIDO", text_color="#A5D6A7")
-            self.lbl_success_title.configure(text="Locker numero")
+            self.lbl_success_title.configure(text="Locker número")
             self.lbl_success_locker.configure(text=str(locker_num))
         else:
-            self.lbl_status.configure(text="✓ IDENTIDAD VERIFICADA", text_color="#A5D6A7")
-            self.lbl_success_title.configure(text="Sin casillero")
+            # Usuario registrado en el sistema pero sin locker asignado
+            self.lbl_status.configure(text="IDENTIDAD VERIFICADA", text_color="#FFD54F")
+            self.lbl_success_title.configure(text="Sin locker")
             self.lbl_success_locker.configure(text="asignado")
 
         self.lbl_attempts.configure(text="")
@@ -922,9 +922,6 @@ class ScanningScreen(ctk.CTkFrame):
             logger.debug("No se pudo extraer embedding para autenticación")
             return None
 
-        # Determinar el tipo de modelo del probe para comparar solo contra
-        # encodings del mismo tipo. Dlib y fallback viven en espacios vectoriales
-        # distintos — mezclarlos produce distancias sin sentido y falsos positivos.
         probe_uses_dlib = getattr(self.face_manager.embedding_extractor, "uses_dlib", False)
         probe_model_prefix = "dlib" if probe_uses_dlib else "fallback"
 
@@ -933,57 +930,73 @@ class ScanningScreen(ctk.CTkFrame):
             logger.warning("No hay encodings activos en BD para autenticar")
             return None
 
-        best_candidate = None
-        best_distance = 999.0
-        second_best_distance = 999.0
-        for candidate in candidates:
-            # Solo comparar encodings compatibles con el modelo del probe
-            candidate_model = (candidate.get("modelo") or "")
-            if not candidate_model.startswith(probe_model_prefix):
-                continue
+        probe_vec = probe_embedding.astype(np.float32, copy=False)
+        threshold = self._threshold_for_model(probe_model_prefix)
 
+        # ── Agrupar por usuario: tomar la menor distancia entre sus poses ─────
+        # Con 3 encodings por usuario (frontal/derecha/izquierda), comparar a nivel
+        # de encoding y quedarse con el mejor por persona evita que haya 3x más
+        # oportunidades de falso positivo para usuarios con múltiples poses.
+        user_best: dict[int, dict] = {}
+        for candidate in candidates:
+            if not (candidate.get("modelo") or "").startswith(probe_model_prefix):
+                continue
             stored_vec = candidate.get("vector_np")
             if stored_vec is None:
                 continue
-            distance = self.face_manager.embedding_extractor.compare_embeddings(
-                probe_embedding.astype(np.float32, copy=False),
-                stored_vec,
-            )
-            if distance < best_distance:
-                second_best_distance = best_distance
-                best_distance = distance
-                best_candidate = candidate
-            elif distance < second_best_distance:
-                second_best_distance = distance
+            dist = self.face_manager.embedding_extractor.compare_embeddings(probe_vec, stored_vec)
+            uid = int(candidate["idUsuario"])
+            if uid not in user_best or dist < user_best[uid]["distance"]:
+                user_best[uid] = {"candidate": candidate, "distance": dist}
 
-        if not best_candidate:
-            logger.warning(
-                "No hay candidatos compatibles con modelo '%s' en BD", probe_model_prefix
-            )
+        if not user_best:
+            logger.warning("Sin candidatos compatibles con modelo '%s'", probe_model_prefix)
             return None
 
-        threshold = self._threshold_for_model(best_candidate.get("modelo"))
+        # Ordenar usuarios por distancia ascendente
+        ranked = sorted(user_best.values(), key=lambda x: x["distance"])
+        best_candidate = ranked[0]["candidate"]
+        best_distance  = ranked[0]["distance"]
+        second_distance = ranked[1]["distance"] if len(ranked) > 1 else 999.0
+
         logger.info(
-            "Auth facial: mejor candidato id=%s dist=%.4f umbral=%.4f 2do=%.4f modelo=%s",
+            "Auth facial: usuario=%s dist=%.4f umbral=%.4f 2do=%.4f modelo=%s",
             best_candidate.get("idUsuario"),
             best_distance,
             threshold,
-            second_best_distance,
+            second_distance,
             best_candidate.get("modelo"),
         )
 
+        # ── Rechazo 1: distancia superior al umbral absoluto ──────────────────
         if best_distance > threshold:
+            logger.info("Rechazado — dist %.4f > umbral %.4f (usuario no registrado)", best_distance, threshold)
             self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
             return None
 
-        # Abrir el relay del locker asignado al usuario antes de registrar en historial.
+        # ── Rechazo 2: margen insuficiente entre 1er y 2do candidato ─────────
+        # Si el ganador no supera al segundo por al menos MIN_MARGIN, la cara es
+        # ambigua y se rechaza para evitar confusión entre personas similares.
+        MIN_MARGIN = 0.10
+        if len(ranked) > 1 and (second_distance - best_distance) < MIN_MARGIN:
+            logger.info(
+                "Rechazado — margen %.4f < %.4f (ambigüedad entre usuarios)",
+                second_distance - best_distance, MIN_MARGIN,
+            )
+            self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
+            return None
+
+        # ── Usuario autenticado correctamente ─────────────────────────────────
         locker_id = best_candidate.get("idLocker")
-        open_seconds = float(GPIO_CONFIG.get("locker_open_seconds", 3.0))
-        relay_ok = self.gpio_controller.open_locker_by_id(locker_id, seconds=open_seconds)
-        if not relay_ok:
-            logger.warning(
-                "Reconocimiento exitoso, pero no se pudo activar el relay del locker %s",
-                locker_id,
+        if locker_id:
+            open_seconds = float(GPIO_CONFIG.get("locker_open_seconds", 3.0))
+            relay_ok = self.gpio_controller.open_locker_by_id(locker_id, seconds=open_seconds)
+            if not relay_ok:
+                logger.warning("No se pudo activar relay del locker %s", locker_id)
+        else:
+            logger.info(
+                "Usuario id=%s autenticado pero sin locker asignado",
+                best_candidate.get("idUsuario"),
             )
 
         self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=True)
@@ -998,15 +1011,17 @@ class ScanningScreen(ctk.CTkFrame):
         return {
             "nombre": full_name or "Usuario",
             "matricula": best_candidate.get("matricula") or "—",
-            "locker_numero": best_candidate.get("idLocker") or "Sin asignar",
+            "locker_numero": locker_id,   # None si no tiene locker asignado
             "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }
 
-    def _threshold_for_model(self, model_name: Optional[str]) -> float:
-        default_threshold = float(FACE_RECOGNITION_CONFIG.get("distance_threshold", 0.6))
-        if (model_name or "").startswith("fallback"):
-            return 0.95
-        return default_threshold
+    def _threshold_for_model(self, model_prefix: Optional[str]) -> float:
+        # dlib resnet: reducido a 0.44 (más estricto que el anterior 0.50).
+        # Con vectores L2-normalizados, misma persona ≈ 0.0-0.40, diferente ≥ 0.50.
+        # fallback (histograma): umbral más permisivo pero aún controlado.
+        if (model_prefix or "").startswith("fallback"):
+            return 0.75
+        return 0.44
 
     def _load_active_face_encodings(self) -> list[dict]:
         rows = fetch_all(

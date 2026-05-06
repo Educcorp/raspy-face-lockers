@@ -559,13 +559,19 @@ class UserDetailOverlay(ctk.CTkFrame):
 
         current_state = (self._vars["estado"].get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
-        execute(
-            "UPDATE usuarios SET estado=?, "
-            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-            "modificadoPor=1 WHERE idUsuario=?",
-            (new_state, self.user_id),
-        )
-        self._close()
+        try:
+            execute(
+                "UPDATE usuarios SET estado=?, "
+                "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+                "modificadoPor=1 WHERE idUsuario=?",
+                (new_state, self.user_id),
+            )
+        except Exception:
+            messagebox.showerror("Error", "No se pudo cambiar el estado del usuario.")
+            return
+        # Diferir el cierre hasta que _ConfirmDialog se destruya primero,
+        # evitando que su fondo quede cubriendo la pantalla (vista en blanco).
+        self.after(0, self._close)
 
     # ── Modo edición ──────────────────────────────────────────────────────────
 
@@ -592,6 +598,8 @@ class UserDetailOverlay(ctk.CTkFrame):
             self.btn_save.pack_forget()
 
     def _close(self) -> None:
+        if not self.winfo_exists():
+            return
         if self._on_close:
             self._on_close()
         self.destroy()
@@ -608,19 +616,22 @@ class _ConfirmDialog(ctk.CTkFrame):
         self.place(x=0, y=0, relwidth=1, relheight=1)
         self.lift()
 
-        # Tarjeta centrada
-        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20)
-        card.place(relx=0.5, rely=0.5, anchor="center", width=400, height=250)
+        # Tarjeta centrada — width/height van al constructor, no a place()
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=400, height=250)
+        card.pack(expand=True)
+        card.pack_propagate(False)
 
         ctk.CTkLabel(
             card, text=message,
             font=ctk.CTkFont(size=15),
             text_color=PALETTE["TEXT"], fg_color="transparent",
             wraplength=360, justify="center",
-        ).place(relx=0.5, y=60, anchor="n")
+        ).pack(expand=True, padx=20, pady=(30, 10))
 
-        btn_row = ctk.CTkFrame(card, fg_color="transparent")
-        btn_row.place(x=20, y=170, width=360, height=60)
+        btn_row = ctk.CTkFrame(card, fg_color="transparent", height=60)
+        btn_row.pack(fill="x", padx=20, pady=(0, 20))
+        btn_row.pack_propagate(False)
 
         ctk.CTkButton(
             btn_row, text="Cancelar", height=52,

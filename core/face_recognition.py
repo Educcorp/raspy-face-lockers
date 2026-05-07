@@ -504,17 +504,38 @@ class CameraManager:
                 self.cam = Picamera2(CAMERA_CONFIG.get("camera_index", 0))
                 logger.debug(f"✓ Picamera2 creado (índice {CAMERA_CONFIG.get('camera_index', 0)})")
 
+                # Determinar Transform según rotación configurada
+                try:
+                    from libcamera import Transform
+                    rotation = CAMERA_CONFIG.get("rotation", 0)
+                    if rotation == 90:
+                        cam_transform = Transform(vflip=1, transpose=1)   # rot90 horario
+                    elif rotation == 270:
+                        cam_transform = Transform(hflip=1, transpose=1)   # rot270 antihorario
+                    elif rotation == 180:
+                        cam_transform = Transform(hflip=1, vflip=1)
+                    else:
+                        cam_transform = Transform()
+                    logger.debug(f"✓ Transform aplicado: rotation={rotation}°")
+                except ImportError:
+                    cam_transform = None
+                    logger.warning("libcamera.Transform no disponible, sin rotación")
+
                 # Configuración
                 logger.debug("Configurando cámara...")
-                config = self.cam.create_preview_configuration(
-                    main={
+                config_kwargs = {
+                    "main": {
                         "format": "RGB888",
                         "size": (
-                            CAMERA_CONFIG.get("width", 640),
-                            CAMERA_CONFIG.get("height", 480),
-                        )
+                            CAMERA_CONFIG.get("width", 480),
+                            CAMERA_CONFIG.get("height", 640),
+                        ),
                     }
-                )
+                }
+                if cam_transform is not None:
+                    config_kwargs["transform"] = cam_transform
+
+                config = self.cam.create_preview_configuration(**config_kwargs)
                 self.cam.configure(config)
                 logger.debug("✓ Configuración de cámara aplicada")
 

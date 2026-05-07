@@ -19,8 +19,8 @@ DATABASE_URL = "sqlite:///locker_system.db"
 CAMERA_CONFIG = {
     "backend": "picamera2",  # libcamera | opencv | picamera2
     "camera_index": 0,
-    "width": 640,
-    "height": 480,
+    "width": 1296,
+    "height": 972,
     "fps": 30,
     "exposure": 0,  # -8 a 8
     "brightness": 0,

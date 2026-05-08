@@ -190,6 +190,27 @@ def get_active_face_encodings() -> list[dict]:
     return parsed
 
 
+def get_user_by_matricula(matricula: str) -> dict | None:
+    """
+    Busca un usuario activo por matrícula sin validar PIN.
+    Usado en el primer paso del flujo de autenticación por PIN del locker.
+    """
+    return fetch_one("""
+        SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
+               u.matricula, u.estado, u.pin,
+               a.idLockerAsignado,
+               l.idLocker
+        FROM usuarios u
+        LEFT JOIN asignacion_locker a
+            ON a.idUsuario = u.idUsuario AND a.estado = 'activo'
+        LEFT JOIN lockers l
+            ON l.idLocker = a.idLocker
+        WHERE CAST(u.matricula AS TEXT) = ?
+          AND u.estado = 'activo'
+        LIMIT 1
+    """, (str(matricula).strip(),))
+
+
 def authenticate_user_by_pin(matricula: str, pin: str) -> dict | None:
     """
     Autentica cualquier usuario activo por matrícula + PIN.

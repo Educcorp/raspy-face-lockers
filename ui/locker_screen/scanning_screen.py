@@ -108,6 +108,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._pin_matricula: str = ""
         self._pin_code: str = ""
         self._pin_fail_count: int = 0
+        self._found_user: Optional[dict] = None
 
         # Inicializar módulo de reconocimiento facial
         try:
@@ -615,6 +616,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._scan_progress_pct = 0
         self._reset_liveness_state()
         self._pin_fail_count = 0
+        self._found_user = None
         self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.scan_progress_bar.set(0)
@@ -892,7 +894,7 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Overlay de autenticación por PIN ──────────────────────────────────────
 
     def _build_pin_overlay(self) -> None:
-        """Construye el teclado numérico de emergencia (matrícula → PIN)."""
+        """Overlay de dos pasos: Paso 1 → matrícula, Paso 2 → PIN."""
         self.pin_overlay = ctk.CTkFrame(
             self,
             fg_color="#1A1A2E",
@@ -901,20 +903,32 @@ class ScanningScreen(ctk.CTkFrame):
             height=self.WIN_H,
         )
 
-        ctk.CTkLabel(
+        # Indicador de paso
+        self.lbl_pin_step = ctk.CTkLabel(
             self.pin_overlay,
-            text="AUTENTICACIÓN POR PIN",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            text_color=self.TEXT_COLOR,
-        ).pack(pady=(64, 4))
-
-        self.lbl_pin_instruction = ctk.CTkLabel(
-            self.pin_overlay,
-            text="Ingresa tu matrícula",
-            font=ctk.CTkFont(size=15),
+            text="PASO 1 DE 2  ·  IDENTIFÍCATE",
+            font=ctk.CTkFont(size=11),
             text_color=self.MUTED,
         )
-        self.lbl_pin_instruction.pack(pady=(0, 20))
+        self.lbl_pin_step.pack(pady=(52, 2))
+
+        # Título dinámico (cambia entre pasos)
+        self.lbl_pin_title = ctk.CTkLabel(
+            self.pin_overlay,
+            text="Ingresa tu matrícula",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=self.TEXT_COLOR,
+        )
+        self.lbl_pin_title.pack(pady=(0, 4))
+
+        # Subtítulo / instrucción
+        self.lbl_pin_instruction = ctk.CTkLabel(
+            self.pin_overlay,
+            text="Escribe tu número de matrícula y presiona  ✓",
+            font=ctk.CTkFont(size=13),
+            text_color=self.MUTED,
+        )
+        self.lbl_pin_instruction.pack(pady=(0, 16))
 
         # Campo de entrada
         input_frame = ctk.CTkFrame(
@@ -941,7 +955,7 @@ class ScanningScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=13),
             text_color=self.DANGER,
         )
-        self.lbl_pin_error.pack(pady=(4, 12))
+        self.lbl_pin_error.pack(pady=(4, 8))
 
         # Teclado numérico 3×4
         numpad_frame = ctk.CTkFrame(self.pin_overlay, fg_color="transparent")
@@ -996,7 +1010,7 @@ class ScanningScreen(ctk.CTkFrame):
             height=44,
             corner_radius=10,
             command=self._go_standby,
-        ).pack(pady=(20, 0))
+        ).pack(pady=(16, 0))
 
     def _show_pin_overlay(self) -> None:
         if self._success_shown:
@@ -1004,7 +1018,14 @@ class ScanningScreen(ctk.CTkFrame):
         self._pin_state = "matricula"
         self._pin_matricula = ""
         self._pin_code = ""
-        self.lbl_pin_instruction.configure(text="Ingresa tu matrícula")
+        self._found_user = None
+        self.lbl_pin_step.configure(text="PASO 1 DE 2  ·  IDENTIFÍCATE")
+        self.lbl_pin_title.configure(
+            text="Ingresa tu matrícula", text_color=self.TEXT_COLOR
+        )
+        self.lbl_pin_instruction.configure(
+            text="Escribe tu número de matrícula y presiona  ✓"
+        )
         self.lbl_pin_display.configure(text="")
         self.lbl_pin_error.configure(text="")
         self.pin_overlay.place(x=0, y=0, relwidth=1, relheight=1)
@@ -1038,19 +1059,44 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _pin_confirm(self) -> None:
         if self._pin_state == "matricula":
-            if not self._pin_matricula.strip():
-                self.lbl_pin_error.configure(text="Ingresa tu matrícula")
-                return
-            self._pin_state = "pin"
-            self._pin_code = ""
-            self.lbl_pin_instruction.configure(text="Ingresa tu PIN")
-            self._update_pin_display()
+            self._validate_matricula()
         else:
             self._verify_pin_auth()
+
+    def _validate_matricula(self) -> None:
+        """Paso 1: verifica que la matrícula exista en BD antes de pedir PIN."""
+        if not self._pin_matricula.strip():
+            self.lbl_pin_error.configure(text="Ingresa tu matrícula")
+            return
+
+        user = user_service.get_user_by_matricula(self._pin_matricula)
+        if user is None:
+            self.lbl_pin_error.configure(text="Matrícula no encontrada")
+            return
+
+        self._found_user = user
+        full_name = " ".join(
+            p for p in [user.get("nombre"), user.get("apPaterno")]
+            if p
+        ).strip()
+
+        self._pin_state = "pin"
+        self._pin_code = ""
+        self.lbl_pin_step.configure(text="PASO 2 DE 2  ·  VERIFICA TU IDENTIDAD")
+        self.lbl_pin_title.configure(
+            text=f"Hola, {full_name}", text_color=self.PRIMARY
+        )
+        self.lbl_pin_instruction.configure(text="Ingresa tu PIN de 4 dígitos")
+        self._update_pin_display()
+        self.lbl_pin_error.configure(text="")
 
     def _verify_pin_auth(self) -> None:
         if not self._pin_code.strip():
             self.lbl_pin_error.configure(text="Ingresa tu PIN")
+            return
+
+        if self._found_user is None:
+            self.lbl_pin_error.configure(text="Error: reinicia el proceso")
             return
 
         result = user_service.authenticate_user_by_pin(self._pin_matricula, self._pin_code)

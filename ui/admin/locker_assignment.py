@@ -62,7 +62,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text="Alumno",
+			text="Usuario (alumno, admin o superadmin)",
 			font=ctk.CTkFont(size=12),
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
@@ -278,10 +278,10 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		student_labels = [self._student_label(row) for row in self._students]
 		locker_labels = [self._locker_label(row) for row in self._lockers]
 
-		self.menu_student.configure(values=student_labels or ["Sin alumnos activos"])
+		self.menu_student.configure(values=student_labels or ["Sin usuarios activos"])
 		self.menu_locker.configure(values=locker_labels or ["Sin lockers disponibles"])
 
-		self._student_var.set(student_labels[0] if student_labels else "Sin alumnos activos")
+		self._student_var.set(student_labels[0] if student_labels else "Sin usuarios activos")
 		self._locker_var.set(locker_labels[0] if locker_labels else "Sin lockers disponibles")
 
 	def _load_assignments(self) -> None:

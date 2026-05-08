@@ -20,6 +20,7 @@ from auth.session import (
     can_create_users,
     can_edit_catalogs,
     get_current_user_id,
+    is_superadmin,
     normalize_user_type_name,
     ROLE_SUPERADMIN,
 )
@@ -375,6 +376,18 @@ class UserDetailOverlay(ctk.CTkFrame):
         if not self._can_edit:
             self.btn_delete.pack_forget()
 
+        self.btn_delete_permanent = ctk.CTkButton(
+            self._scroll,
+            text="Eliminar permanentemente",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#6d1a1a", hover_color="#4a0f0f",
+            text_color=PALETTE["WHITE"], height=48, corner_radius=12,
+            command=self._confirm_delete_permanent,
+        )
+        self.btn_delete_permanent.pack(fill="x", padx=4, pady=(0, 16))
+        if not self._can_edit:
+            self.btn_delete_permanent.pack_forget()
+
         self._set_edit_mode(False)
 
     def _make_field(self, label: str, key: str) -> None:
@@ -466,6 +479,14 @@ class UserDetailOverlay(ctk.CTkFrame):
         else:
             self.btn_delete.configure(state="normal")
 
+        if self._can_edit:
+            blocked = is_target_superadmin or is_self
+            self.btn_delete_permanent.configure(
+                state="disabled" if blocked else "normal",
+                fg_color=PALETTE["BORDER"] if blocked else "#6d1a1a",
+                hover_color=PALETTE["BORDER"] if blocked else "#4a0f0f",
+            )
+
         n = user_service.count_face_encodings(self.user_id)
         self.face_badge.configure(
             text=f"[OK] {n} perfil(es) facial(es) registrado(s)"
@@ -532,6 +553,39 @@ class UserDetailOverlay(ctk.CTkFrame):
             user_service.set_user_status(self.user_id, new_state)
         except Exception:
             messagebox.showerror("Error", "No se pudo cambiar el estado del usuario.")
+            return
+        self.after(0, self._close)
+
+    def _confirm_delete_permanent(self) -> None:
+        if not self._can_edit:
+            return
+        target_role = normalize_user_type_name(self._user.get("tipo"))
+        if target_role == ROLE_SUPERADMIN:
+            messagebox.showwarning("Acción no permitida",
+                                   "No se puede eliminar una cuenta Superadmin.")
+            return
+        if get_current_user_id() == self.user_id:
+            messagebox.showwarning("Acción no permitida",
+                                   "No puedes eliminar tu propia cuenta.")
+            return
+        full_name = f"{self._user.get('nombre', '')} {self._user.get('apPaterno', '')}"
+        _ConfirmDialog(
+            self,
+            message=(
+                f"¿Eliminar permanentemente a {full_name.strip()}?\n\n"
+                "Se eliminarán sus datos biométricos y asignaciones.\n"
+                "Esta acción no se puede deshacer."
+            ),
+            on_confirm=self._do_delete_permanent,
+        )
+
+    def _do_delete_permanent(self) -> None:
+        if not self._can_edit:
+            return
+        try:
+            user_service.delete_user_permanent(self.user_id)
+        except Exception:
+            messagebox.showerror("Error", "No se pudo eliminar al usuario.")
             return
         self.after(0, self._close)
 

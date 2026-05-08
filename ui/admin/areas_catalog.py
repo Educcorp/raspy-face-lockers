@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
-from auth.session import can_edit_catalogs, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
+from auth.session import can_edit_catalogs, is_superadmin, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
 
 
 # ── Widget genérico de fila de catálogo ──────────────────────────────────────
@@ -336,6 +336,15 @@ class _BaseFormOverlay(ctk.CTkFrame):
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=(0, 8))
 
+    def _delete_btn_permanent(self, command) -> None:
+        if not is_superadmin():
+            return
+        ctk.CTkButton(self.scroll, text="Eliminar permanentemente",
+                      font=ctk.CTkFont(size=14, weight="bold"),
+                      fg_color="#6d1a1a", hover_color="#4a0f0f",
+                      text_color=PALETTE["WHITE"], height=48, corner_radius=12,
+                      command=command).pack(fill="x", padx=4, pady=(0, 8))
+
     def _close(self) -> None:
         if self._on_close:
             self._on_close()
@@ -361,6 +370,7 @@ class AreaFormOverlay(_BaseFormOverlay):
         if is_edit:
             action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
             self._delete_btn(self._toggle_status, text=action_text)
+            self._delete_btn_permanent(self._confirm_delete_area)
 
     def _save(self) -> None:
         nombre = self.e_nombre.get().strip()
@@ -391,6 +401,28 @@ class AreaFormOverlay(_BaseFormOverlay):
         )
         self._close()
 
+    def _confirm_delete_area(self) -> None:
+        area_id = self._row["idArea"]
+        count = fetch_one("SELECT COUNT(*) AS n FROM lockers WHERE idArea=?", (area_id,))
+        if count and count["n"] > 0:
+            messagebox.showwarning(
+                "No permitido",
+                f"Esta área tiene {count['n']} locker(s) asignado(s). Reasígnalos antes de eliminar.",
+            )
+            return
+        nombre = self._row.get("nombreArea", "")
+        if not messagebox.askyesno(
+            "Eliminar área",
+            f"¿Eliminar permanentemente el área '{nombre}'?\n\nEsta acción no se puede deshacer.",
+        ):
+            return
+        try:
+            execute("DELETE FROM area_lockers WHERE idArea=?", (area_id,))
+        except Exception:
+            messagebox.showerror("Error", "No se pudo eliminar el área. Puede haber dependencias.")
+            return
+        self._close()
+
 
 # ── Unidad académica ──────────────────────────────────────────────────────────
 
@@ -416,6 +448,7 @@ class UnidadFormOverlay(_BaseFormOverlay):
         if is_edit:
             action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
             self._delete_btn(self._toggle_status, text=action_text)
+            self._delete_btn_permanent(self._confirm_delete_unidad)
 
     def _save(self) -> None:
         nombre = self.e_nombre.get().strip()
@@ -448,6 +481,31 @@ class UnidadFormOverlay(_BaseFormOverlay):
         )
         self._close()
 
+    def _confirm_delete_unidad(self) -> None:
+        uid = self._row["idUnidadAcademica"]
+        ur = fetch_one(
+            "SELECT COUNT(*) AS n FROM usuarios WHERE idUnidadAcademica=? AND estado != 'eliminado'",
+            (uid,),
+        )
+        if ur and ur["n"] > 0:
+            messagebox.showwarning(
+                "No permitido",
+                f"Esta unidad tiene {ur['n']} usuario(s) activos. Reasígnalos antes de eliminar.",
+            )
+            return
+        nombre = self._row.get("nombreUnidadAcademica", "")
+        if not messagebox.askyesno(
+            "Eliminar unidad",
+            f"¿Eliminar permanentemente '{nombre}'?\n\nEsta acción no se puede deshacer.",
+        ):
+            return
+        try:
+            execute("DELETE FROM unidad_academica WHERE idUnidadAcademica=?", (uid,))
+        except Exception:
+            messagebox.showerror("Error", "No se pudo eliminar la unidad. Puede haber dependencias.")
+            return
+        self._close()
+
 
 # ── Tipo de usuario ───────────────────────────────────────────────────────────
 
@@ -471,6 +529,9 @@ class TipoFormOverlay(_BaseFormOverlay):
         if is_edit:
             action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
             self._delete_btn(self._toggle_status, text=action_text)
+            current_role = normalize_user_type_name(row.get("nombreTipoUsuario"))
+            if current_role not in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+                self._delete_btn_permanent(self._confirm_delete_tipo)
 
     def _save(self) -> None:
         nombre = self.e_nombre.get().strip()
@@ -522,4 +583,36 @@ class TipoFormOverlay(_BaseFormOverlay):
             "modificadoPor=1 WHERE idTipoUsuario=?",
             (new_state, self._row["idTipoUsuario"])
         )
+        self._close()
+
+    def _confirm_delete_tipo(self) -> None:
+        tid = self._row["idTipoUsuario"]
+        current_role = normalize_user_type_name(self._row.get("nombreTipoUsuario"))
+        if current_role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
+            messagebox.showwarning(
+                "Acción no permitida",
+                "No se puede eliminar un tipo de usuario crítico (Superadmin/Admin).",
+            )
+            return
+        ur = fetch_one(
+            "SELECT COUNT(*) AS n FROM usuarios WHERE idTipoUsuario=? AND estado != 'eliminado'",
+            (tid,),
+        )
+        if ur and ur["n"] > 0:
+            messagebox.showwarning(
+                "No permitido",
+                f"Hay {ur['n']} usuario(s) activos con este tipo. Reasígnalos antes de eliminar.",
+            )
+            return
+        nombre = self._row.get("nombreTipoUsuario", "")
+        if not messagebox.askyesno(
+            "Eliminar tipo",
+            f"¿Eliminar permanentemente el tipo '{nombre}'?\n\nEsta acción no se puede deshacer.",
+        ):
+            return
+        try:
+            execute("DELETE FROM tipo_usuarios WHERE idTipoUsuario=?", (tid,))
+        except Exception:
+            messagebox.showerror("Error", "No se pudo eliminar el tipo. Puede haber dependencias.")
+            return
         self._close()

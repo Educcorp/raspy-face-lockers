@@ -11,7 +11,10 @@ import tkinter as tk
 from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
-from auth.session import can_edit_catalogs
+from auth.session import can_edit_catalogs, is_superadmin
+
+# Lockers 1-4 son predeterminados del sistema — no se pueden modificar ni eliminar
+_DEFAULT_LOCKER_IDS = frozenset({1, 2, 3, 4})
 
 
 def _estado_badge(estado: str) -> tuple[str, str]:
@@ -267,9 +270,29 @@ class LockerDetailOverlay(ctk.CTkFrame):
                                       corner_radius=8, height=42)
         self.lbl_asign.pack(fill="x", padx=4)
 
-        # Botones (mismo patrón visual que panel de Área)
+        # Botones
         self.btn_toggle = None
-        if self._can_edit:
+        if int(self.locker_id) in _DEFAULT_LOCKER_IDS:
+            # Locker de sistema — bloquear toda edición
+            self._estado_menu.configure(state="disabled")
+            ctk.CTkLabel(
+                scroll,
+                text="Locker de sistema — protegido",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color="#D4A34A",
+                fg_color=PALETTE["CARD"],
+                corner_radius=8,
+                height=40,
+            ).pack(fill="x", padx=4, pady=(16, 4))
+            ctk.CTkLabel(
+                scroll,
+                text="Los lockers 1-4 son predeterminados del sistema\ny no pueden modificarse ni eliminarse.",
+                font=ctk.CTkFont(size=12),
+                text_color=PALETTE["MUTED"],
+                fg_color="transparent",
+                justify="center",
+            ).pack(pady=(0, 8))
+        elif self._can_edit:
             ctk.CTkButton(
                 scroll,
                 text="Guardar estado",
@@ -294,6 +317,19 @@ class LockerDetailOverlay(ctk.CTkFrame):
                 command=self._toggle_status,
             )
             self.btn_toggle.pack(fill="x", padx=4, pady=(0, 8))
+
+            if is_superadmin():
+                ctk.CTkButton(
+                    scroll,
+                    text="Eliminar locker",
+                    font=ctk.CTkFont(size=15, weight="bold"),
+                    fg_color="#8B1A1A",
+                    hover_color="#6B0000",
+                    text_color=PALETTE["WHITE"],
+                    height=50,
+                    corner_radius=12,
+                    command=self._confirm_delete_locker,
+                ).pack(fill="x", padx=4, pady=(0, 8))
 
     def _load(self) -> None:
         row = fetch_one("""
@@ -378,6 +414,35 @@ class LockerDetailOverlay(ctk.CTkFrame):
             "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
             (new_state, self.locker_id),
         )
+        self._close()
+
+    def _confirm_delete_locker(self) -> None:
+        if not is_superadmin():
+            return
+        if int(self.locker_id) in _DEFAULT_LOCKER_IDS:
+            messagebox.showwarning("Protegido", "Los lockers predeterminados no pueden eliminarse.")
+            return
+        if self._has_active_assignment():
+            messagebox.showwarning(
+                "No permitido",
+                "Este locker tiene una asignación activa.\nLibéralo primero en el módulo de Asignaciones.",
+            )
+            return
+        confirmed = messagebox.askyesno(
+            "Eliminar locker",
+            f"¿Eliminar permanentemente el Locker #{self.locker_id}?\n\n"
+            "Se borrarán también sus asignaciones históricas.\n"
+            "Esta acción NO se puede deshacer.",
+        )
+        if not confirmed:
+            return
+        from database.connection import db_session
+        with db_session() as conn:
+            conn.execute(
+                "UPDATE asignacion_locker SET estado='vencido' WHERE idLocker=?",
+                (self.locker_id,),
+            )
+            conn.execute("DELETE FROM lockers WHERE idLocker=?", (self.locker_id,))
         self._close()
 
     def _close(self) -> None:

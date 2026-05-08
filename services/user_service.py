@@ -88,6 +88,19 @@ def set_user_status(user_id: int, estado: str) -> None:
     )
 
 
+def delete_user_permanent(user_id: int) -> None:
+    """
+    Elimina un usuario de forma definitiva.
+    Borra asignaciones (historial queda con FK NULL por ON DELETE SET NULL),
+    borra encodings, y finalmente borra el usuario.
+    """
+    with db_session() as conn:
+        conn.execute("DELETE FROM asignacion_locker WHERE idUsuario=?", (user_id,))
+        conn.execute("DELETE FROM encoding WHERE idUsuario=?", (user_id,))
+        conn.execute("DELETE FROM usuarios WHERE idUsuario=?", (user_id,))
+    logger.info("✓ Usuario id=%s eliminado definitivamente", user_id)
+
+
 def create_user_with_encodings(data: dict, poses: list[dict]) -> int:
     """
     Inserta un nuevo usuario junto con sus encodings faciales multi-pose.

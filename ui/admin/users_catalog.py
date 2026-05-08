@@ -9,12 +9,12 @@ Funcionalidades:
   • Botón "+" redirige al wizard de registro con cámara
 """
 
-import hashlib
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-from database.connection import fetch_all, fetch_one, execute
+from database.connection import fetch_all
+from services import user_service
 from ui.admin_app import PALETTE
 from auth.session import (
     can_create_users,
@@ -217,16 +217,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
     # ── Carga de datos ────────────────────────────────────────────────────────
 
     def _load(self) -> None:
-        self._rows = fetch_all("""
-            SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
-                   u.matricula, u.emailInst, u.tel, u.estado,
-                   t.nombreTipoUsuario AS tipo,
-                   ua.nombreUnidadAcademica AS unidad
-            FROM usuarios u
-            LEFT JOIN tipo_usuarios t  ON t.idTipoUsuario = u.idTipoUsuario
-            LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = u.idUnidadAcademica
-            ORDER BY u.nombre, u.apPaterno
-        """)
+        self._rows = user_service.get_all_users()
         self._filter()
 
     # ── Navegación ────────────────────────────────────────────────────────────
@@ -431,14 +422,7 @@ class UserDetailOverlay(ctk.CTkFrame):
     # ── Carga y guardado ──────────────────────────────────────────────────────
 
     def _load_user(self) -> None:
-        row = fetch_one("""
-            SELECT u.*, t.nombreTipoUsuario AS tipo,
-                   ua.nombreUnidadAcademica AS unidad
-            FROM usuarios u
-            LEFT JOIN tipo_usuarios t  ON t.idTipoUsuario = u.idTipoUsuario
-            LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = u.idUnidadAcademica
-            WHERE u.idUsuario = ?
-        """, (self.user_id,))
+        row = user_service.get_user_by_id(self.user_id)
 
         if not row:
             self._close()
@@ -482,12 +466,7 @@ class UserDetailOverlay(ctk.CTkFrame):
         else:
             self.btn_delete.configure(state="normal")
 
-        # Verificar si tiene rostro
-        face_count = fetch_one(
-            "SELECT COUNT(*) AS n FROM encoding WHERE idUsuario=? AND estado='activo'",
-            (self.user_id,)
-        )
-        n = face_count["n"] if face_count else 0
+        n = user_service.count_face_encodings(self.user_id)
         self.face_badge.configure(
             text=f"[OK] {n} perfil(es) facial(es) registrado(s)"
                  if n else "(!) Sin rostro registrado",
@@ -497,35 +476,25 @@ class UserDetailOverlay(ctk.CTkFrame):
     def _save(self) -> None:
         if not self._can_edit:
             return
-        # Resolver FK de tipo y unidad
         tipo_name   = self._vars["tipo"].get()
         unidad_name = self._vars["unidad"].get()
-        tipo_id   = next((t["idTipoUsuario"]      for t in self._tipos   if t["nombreTipoUsuario"] == tipo_name),   None)
-        unidad_id = next((u["idUnidadAcademica"]  for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
+        tipo_id   = next((t["idTipoUsuario"]     for t in self._tipos    if t["nombreTipoUsuario"] == tipo_name),   None)
+        unidad_id = next((u["idUnidadAcademica"] for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
 
         if not tipo_id or not unidad_id:
-            return  # datos incompletos
+            return
 
-        execute("""
-            UPDATE usuarios SET
-                nombre=?, apPaterno=?, apMaterno=?,
-                matricula=?, emailInst=?, tel=?,
-                idTipoUsuario=?, idUnidadAcademica=?,
-                estado=?,
-                fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'),
-                modificadoPor=1
-            WHERE idUsuario=?
-        """, (
-            self._vars["nombre"].get().strip(),
-            self._vars["apPaterno"].get().strip(),
-            self._vars["apMaterno"].get().strip() or None,
-            self._vars["matricula"].get().strip(),
-            self._vars["emailInst"].get().strip(),
-            self._vars["tel"].get().strip() or None,
-            tipo_id, unidad_id,
-            self._vars["estado"].get(),
-            self.user_id,
-        ))
+        user_service.update_user(self.user_id, {
+            "nombre":           self._vars["nombre"].get().strip(),
+            "apPaterno":        self._vars["apPaterno"].get().strip(),
+            "apMaterno":        self._vars["apMaterno"].get().strip() or None,
+            "matricula":        self._vars["matricula"].get().strip(),
+            "emailInst":        self._vars["emailInst"].get().strip(),
+            "tel":              self._vars["tel"].get().strip() or None,
+            "idTipoUsuario":    tipo_id,
+            "idUnidadAcademica": unidad_id,
+            "estado":           self._vars["estado"].get(),
+        })
         self._set_edit_mode(False)
         self._load_user()
 
@@ -560,17 +529,10 @@ class UserDetailOverlay(ctk.CTkFrame):
         current_state = (self._vars["estado"].get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         try:
-            execute(
-                "UPDATE usuarios SET estado=?, "
-                "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-                "modificadoPor=1 WHERE idUsuario=?",
-                (new_state, self.user_id),
-            )
+            user_service.set_user_status(self.user_id, new_state)
         except Exception:
             messagebox.showerror("Error", "No se pudo cambiar el estado del usuario.")
             return
-        # Diferir el cierre hasta que _ConfirmDialog se destruya primero,
-        # evitando que su fondo quede cubriendo la pantalla (vista en blanco).
         self.after(0, self._close)
 
     # ── Modo edición ──────────────────────────────────────────────────────────

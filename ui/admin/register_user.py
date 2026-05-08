@@ -14,7 +14,6 @@ Seguridad del PIN: se almacena como SHA-256 hex (64 chars), igual que el locker.
 Los vectores faciales se serializan con numpy tobytes() en la tabla encoding.
 """
 
-import hashlib
 import threading
 import tkinter as tk
 from typing import Optional
@@ -24,7 +23,8 @@ import sqlite3
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
-from database.connection import db_session, fetch_all, fetch_one
+from database.connection import fetch_all, fetch_one
+from services import user_service
 from ui.admin_app import PALETTE
 from auth.session import can_create_users, filter_assignable_user_types
 
@@ -807,38 +807,17 @@ class _Step4FaceCapture(ctk.CTkFrame):
         d = self.wizard._data
         modelo_name = "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8"
 
+        poses = [
+            {
+                "tipoParte": p["tipoParte"],
+                "embedding": p["embedding"],
+                "modelo":    modelo_name,
+            }
+            for p in self._captured_poses
+        ]
+
         try:
-            with db_session() as conn:
-                cur = conn.execute("""
-                    INSERT INTO usuarios
-                        (nombre, apPaterno, apMaterno, idTipoUsuario, idUnidadAcademica,
-                         emailInst, tel, matricula, pin, creadoPor)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-                """, (
-                    d["nombre"], d["apPaterno"], d.get("apMaterno"),
-                    d["idTipoUsuario"], d["idUnidadAcademica"],
-                    d["emailInst"], d.get("tel"),
-                    d["matricula"], d["pin_hash"],
-                ))
-                user_id = cur.lastrowid
-
-                for pose_data in self._captured_poses:
-                    vec = pose_data["embedding"].astype(np.float32, copy=False)
-                    vec_bytes = vec.tobytes()
-                    vec_hash = hashlib.sha256(
-                        vec_bytes + f"{user_id}_{pose_data['tipoParte']}".encode()
-                    ).hexdigest()
-                    conn.execute("""
-                        INSERT INTO encoding
-                            (idUsuario, estado, vector, dimension, hashVector,
-                             tipoParte, vectorDtype, modelo, modeloVersion)
-                        VALUES (?, 'activo', ?, ?, ?, ?, 'float32', ?, '1.0')
-                    """, (
-                        user_id, vec_bytes, int(len(vec)),
-                        vec_hash, pose_data["tipoParte"], modelo_name,
-                    ))
-
-            logger.info("✓ Usuario id=%s + %d encodings guardados", user_id, len(self._captured_poses))
+            user_id = user_service.create_user_with_encodings(d, poses)
         except sqlite3.IntegrityError as exc:
             logger.error("IntegrityError al guardar usuario: %s", exc)
             self.btn_save.configure(state="normal")

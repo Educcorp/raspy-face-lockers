@@ -18,14 +18,13 @@ import tkinter
 import logging
 from typing import Optional
 from datetime import datetime
-from datetime import timedelta
 from collections import deque
 import random
 
 from config import FACE_RECOGNITION_CONFIG
 from config import GPIO_CONFIG
 from core.gpio_controller import get_locker_gpio_controller
-from database.connection import fetch_all, execute
+from services import user_service, locker_service, access_log_service
 
 logger = logging.getLogger(__name__)
 
@@ -924,175 +923,38 @@ class ScanningScreen(ctk.CTkFrame):
 
         probe_uses_dlib = getattr(self.face_manager.embedding_extractor, "uses_dlib", False)
         probe_model_prefix = "dlib" if probe_uses_dlib else "fallback"
+        probe_vec = probe_embedding.astype(np.float32, copy=False)
 
-        candidates = self._load_active_face_encodings()
+        candidates = user_service.get_active_face_encodings()
         if not candidates:
             logger.warning("No hay encodings activos en BD para autenticar")
             return None
 
-        probe_vec = probe_embedding.astype(np.float32, copy=False)
-        threshold = self._threshold_for_model(probe_model_prefix)
+        matched, closest = user_service.find_best_face_match(probe_vec, probe_model_prefix, candidates)
 
-        # ── Agrupar por usuario: tomar la menor distancia entre sus poses ─────
-        # Con 3 encodings por usuario (frontal/derecha/izquierda), comparar a nivel
-        # de encoding y quedarse con el mejor por persona evita que haya 3x más
-        # oportunidades de falso positivo para usuarios con múltiples poses.
-        user_best: dict[int, dict] = {}
-        for candidate in candidates:
-            if not (candidate.get("modelo") or "").startswith(probe_model_prefix):
-                continue
-            stored_vec = candidate.get("vector_np")
-            if stored_vec is None:
-                continue
-            dist = self.face_manager.embedding_extractor.compare_embeddings(probe_vec, stored_vec)
-            uid = int(candidate["idUsuario"])
-            if uid not in user_best or dist < user_best[uid]["distance"]:
-                user_best[uid] = {"candidate": candidate, "distance": dist}
-
-        if not user_best:
-            logger.warning("Sin candidatos compatibles con modelo '%s'", probe_model_prefix)
-            return None
-
-        # Ordenar usuarios por distancia ascendente
-        ranked = sorted(user_best.values(), key=lambda x: x["distance"])
-        best_candidate = ranked[0]["candidate"]
-        best_distance  = ranked[0]["distance"]
-        second_distance = ranked[1]["distance"] if len(ranked) > 1 else 999.0
-
-        logger.info(
-            "Auth facial: usuario=%s dist=%.4f umbral=%.4f 2do=%.4f modelo=%s",
-            best_candidate.get("idUsuario"),
-            best_distance,
-            threshold,
-            second_distance,
-            best_candidate.get("modelo"),
-        )
-
-        # ── Rechazo 1: distancia superior al umbral absoluto ──────────────────
-        if best_distance > threshold:
-            logger.info("Rechazado — dist %.4f > umbral %.4f (usuario no registrado)", best_distance, threshold)
-            self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
-            return None
-
-        # ── Rechazo 2: margen insuficiente entre 1er y 2do candidato ─────────
-        # Si el ganador no supera al segundo por al menos MIN_MARGIN, la cara es
-        # ambigua y se rechaza para evitar confusión entre personas similares.
-        MIN_MARGIN = 0.10
-        if len(ranked) > 1 and (second_distance - best_distance) < MIN_MARGIN:
-            logger.info(
-                "Rechazado — margen %.4f < %.4f (ambigüedad entre usuarios)",
-                second_distance - best_distance, MIN_MARGIN,
+        if matched is None:
+            access_log_service.register_access(
+                closest.get("idLockerAsignado") if closest else None,
+                permitted=False,
             )
-            self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=False)
             return None
 
-        # ── Usuario autenticado correctamente ─────────────────────────────────
-        locker_id = best_candidate.get("idLocker")
+        locker_id = matched.get("idLocker")
         if locker_id:
-            open_seconds = float(GPIO_CONFIG.get("locker_open_seconds", 3.0))
-            relay_ok = self.gpio_controller.open_locker_by_id(locker_id, seconds=open_seconds)
-            if not relay_ok:
-                logger.warning("No se pudo activar relay del locker %s", locker_id)
+            locker_service.open_locker(locker_id)
         else:
-            logger.info(
-                "Usuario id=%s autenticado pero sin locker asignado",
-                best_candidate.get("idUsuario"),
-            )
+            logger.info("Usuario id=%s autenticado pero sin locker asignado", matched.get("idUsuario"))
 
-        self._register_access_attempt(best_candidate.get("idLockerAsignado"), permitted=True)
+        access_log_service.register_access(matched.get("idLockerAsignado"), permitted=True)
+
         full_name = " ".join(
-            p for p in [
-                best_candidate.get("nombre"),
-                best_candidate.get("apPaterno"),
-                best_candidate.get("apMaterno"),
-            ] if p
+            p for p in [matched.get("nombre"), matched.get("apPaterno"), matched.get("apMaterno")]
+            if p
         ).strip()
 
         return {
             "nombre": full_name or "Usuario",
-            "matricula": best_candidate.get("matricula") or "—",
-            "locker_numero": locker_id,   # None si no tiene locker asignado
+            "matricula": matched.get("matricula") or "—",
+            "locker_numero": locker_id,
             "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }
-
-    def _threshold_for_model(self, model_prefix: Optional[str]) -> float:
-        # dlib resnet: reducido a 0.44 (más estricto que el anterior 0.50).
-        # Con vectores L2-normalizados, misma persona ≈ 0.0-0.40, diferente ≥ 0.50.
-        # fallback (histograma): umbral más permisivo pero aún controlado.
-        if (model_prefix or "").startswith("fallback"):
-            return 0.75
-        return 0.44
-
-    def _load_active_face_encodings(self) -> list[dict]:
-        rows = fetch_all(
-            """
-            SELECT
-                e.idUsuario,
-                e.vector,
-                e.dimension,
-                e.vectorDtype,
-                e.modelo,
-                u.nombre,
-                u.apPaterno,
-                u.apMaterno,
-                u.matricula,
-                a.idLockerAsignado,
-                l.idLocker
-            FROM encoding e
-            JOIN usuarios u
-                ON u.idUsuario = e.idUsuario
-            LEFT JOIN asignacion_locker a
-                ON a.idUsuario = u.idUsuario AND a.estado = 'activo'
-            LEFT JOIN lockers l
-                ON l.idLocker = a.idLocker
-            WHERE e.estado = 'activo'
-              AND u.estado = 'activo'
-            """
-        )
-
-        parsed: list[dict] = []
-        for row in rows:
-            raw = row.get("vector")
-            dim = int(row.get("dimension") or 128)
-            dtype_name = (row.get("vectorDtype") or "float32").strip().lower()
-            dtype = np.float64 if dtype_name == "float64" else np.float32
-            if raw is None:
-                continue
-
-            vector_np = np.frombuffer(raw, dtype=dtype)
-            if vector_np.size != dim:
-                logger.warning(
-                    "Encoding inválido usuario=%s esperado=%s real=%s",
-                    row.get("idUsuario"),
-                    dim,
-                    vector_np.size,
-                )
-                continue
-
-            if dtype != np.float32:
-                vector_np = vector_np.astype(np.float32)
-
-            row["vector_np"] = vector_np
-            parsed.append(row)
-
-        return parsed
-
-    def _register_access_attempt(self, locker_assignment_id: Optional[int], permitted: bool) -> None:
-        try:
-            now = datetime.now()
-            expires_at = now + (timedelta(minutes=5) if permitted else timedelta(minutes=1))
-            execute(
-                """
-                INSERT INTO historial_accesos
-                    (idLockerAsignado, accesoPermitido, motivo, fechaExpiracion)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    locker_assignment_id,
-                    "si" if permitted else "no",
-                    "facial",
-                    expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
-                ),
-            )
-        except Exception as e:
-            logger.warning(f"No se pudo registrar historial de acceso: {e}")

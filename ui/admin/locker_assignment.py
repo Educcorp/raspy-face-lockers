@@ -520,24 +520,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		for i, row in enumerate(lockers):
 			lid = int(row["idLocker"])
 
-			def _open(l=lid) -> None:
-				if self.lbl_manual_feedback:
-					self.lbl_manual_feedback.configure(
-						text=f"Abriendo Locker {l}…", text_color=PALETTE["MUTED"]
-					)
-				def _task(l=l):
-					ok = locker_service.open_locker(l)
-					msg = f"Locker {l} abierto correctamente" if ok else f"No se pudo abrir Locker {l}"
-					color = PALETTE.get("SUCCESS", "#27ae60") if ok else PALETTE["DANGER"]
-					if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
-						self.lbl_manual_feedback.after(
-							0, lambda m=msg, c=color: self.lbl_manual_feedback.configure(
-								text=m, text_color=c
-							)
-						)
-				threading.Thread(target=_task, daemon=True).start()
-
-			ctk.CTkButton(
+			btn = ctk.CTkButton(
 				self.manual_open_frame,
 				text=f"  Locker {lid}",
 				font=ctk.CTkFont(size=14, weight="bold"),
@@ -546,8 +529,29 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 				text_color=PALETTE["WHITE"],
 				height=48,
 				corner_radius=12,
-				command=_open,
-			).grid(row=0, column=i, padx=6, pady=4, sticky="ew")
+			)
+			btn.grid(row=0, column=i, padx=6, pady=4, sticky="ew")
+
+			def _open(l=lid, b=btn) -> None:
+				b.configure(state="disabled", fg_color=PALETTE["BORDER"])
+				if self.lbl_manual_feedback:
+					self.lbl_manual_feedback.configure(
+						text=f"Abriendo Locker {l}…", text_color=PALETTE["MUTED"]
+					)
+				def _task(l=l, b=b):
+					ok = locker_service.open_locker(l, seconds=3.0)
+					msg = f"Locker {l} abierto" if ok else f"No se pudo abrir Locker {l}"
+					color = PALETTE.get("SUCCESS", "#27ae60") if ok else PALETTE["DANGER"]
+					def _done(m=msg, c=color, b=b):
+						if b.winfo_exists():
+							b.configure(state="normal", fg_color=PALETTE["ACCENT"])
+						if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
+							self.lbl_manual_feedback.configure(text=m, text_color=c)
+					if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
+						self.lbl_manual_feedback.after(0, _done)
+				threading.Thread(target=_task, daemon=True).start()
+
+			btn.configure(command=_open)
 
 		for i in range(len(lockers)):
 			self.manual_open_frame.grid_columnconfigure(i, weight=1)

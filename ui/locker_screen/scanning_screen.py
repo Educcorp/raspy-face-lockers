@@ -639,10 +639,6 @@ class ScanningScreen(ctk.CTkFrame):
         self._camera_running = False
         if self._camera_thread:
             self._camera_thread.join(timeout=2.0)
-        try:
-            self.gpio_controller.cleanup()
-        except Exception as e:
-            logger.warning(f"No se pudo limpiar GPIO al salir de scanning: {e}")
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None

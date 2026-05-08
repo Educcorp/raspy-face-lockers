@@ -55,9 +55,6 @@ GPIO_CONFIG = {
     "pin_locker_m2": 27,
     "pin_locker_m3": 22,
     "pin_locker_m4": 23,
-    "pin_light_sensor": 17,  # BCM
-    "pin_motor_relay": 17,
-    "pin_button_test": 22,
     "debounce_ms": 50,
 }
 

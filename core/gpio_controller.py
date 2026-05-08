@@ -36,7 +36,11 @@ class LockerGPIOController:
         self._pinctrl_bin = shutil.which("pinctrl")
         self._setup_done = False
         self._backend = "none"
-        self._lock = threading.Lock()
+        self._setup_lock = threading.Lock()
+        # Un lock por locker para que puedan abrirse en paralelo sin bloquearse entre sí
+        self._locker_locks: dict[int, threading.Lock] = {
+            lid: threading.Lock() for lid in self._pins
+        }
 
     def _pinctrl_level_token(self, active: bool) -> str:
         if self._active_low:
@@ -63,33 +67,37 @@ class LockerGPIOController:
         if self._setup_done:
             return True
 
-        if GPIO is not None:
-            try:
-                GPIO.setwarnings(False)
-                GPIO.setmode(GPIO.BCM)
-                # Todos los relays arrancan en HIGH (inactivo) — evita disparos involuntarios.
-                for locker_id, pin in self._pins.items():
-                    GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
-                    logger.info("GPIO inicializado: Locker %s → BCM pin %s", locker_id, pin)
-                self._setup_done = True
-                self._backend = "rpi_gpio"
+        with self._setup_lock:
+            if self._setup_done:
                 return True
-            except Exception as exc:
-                logger.warning("RPi.GPIO no usable: %s", exc)
 
-        # Fallback pinctrl: poner todos en HIGH (inactivo)
-        all_ok = all(
-            self._pinctrl_write_pin(pin, active=False)
-            for pin in self._pins.values()
-        )
-        if all_ok:
-            self._setup_done = True
-            self._backend = "pinctrl"
-            logger.info("GPIO inicializado con pinctrl para %d lockers", len(self._pins))
-            return True
+            if GPIO is not None:
+                try:
+                    GPIO.setwarnings(False)
+                    GPIO.setmode(GPIO.BCM)
+                    # Todos los relays arrancan en HIGH (inactivo) — evita disparos involuntarios.
+                    for locker_id, pin in self._pins.items():
+                        GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
+                        logger.info("GPIO inicializado: Locker %s → BCM pin %s", locker_id, pin)
+                    self._setup_done = True
+                    self._backend = "rpi_gpio"
+                    return True
+                except Exception as exc:
+                    logger.warning("RPi.GPIO no usable: %s", exc)
 
-        logger.error("No hay backend GPIO funcional para los pines de locker")
-        return False
+            # Fallback pinctrl: poner todos en HIGH (inactivo)
+            all_ok = all(
+                self._pinctrl_write_pin(pin, active=False)
+                for pin in self._pins.values()
+            )
+            if all_ok:
+                self._setup_done = True
+                self._backend = "pinctrl"
+                logger.info("GPIO inicializado con pinctrl para %d lockers", len(self._pins))
+                return True
+
+            logger.error("No hay backend GPIO funcional para los pines de locker")
+            return False
 
     def open_locker_by_id(self, locker_id: int | None, seconds: float | None = None) -> bool:
         """Activa el relay del locker indicado por `locker_id` durante `seconds`."""
@@ -109,34 +117,44 @@ class LockerGPIOController:
             )
             return False
 
-        with self._lock:
-            if not self._ensure_setup():
-                return False
+        if not self._ensure_setup():
+            return False
 
-            try:
-                if self._backend == "rpi_gpio":
-                    active_value = GPIO.LOW if self._active_low else GPIO.HIGH
-                    inactive_value = GPIO.HIGH if self._active_low else GPIO.LOW
-                    GPIO.output(pin, active_value)
-                    logger.info("Locker %s abierto (pin=%s) por %.2fs", locker_id, pin, hold_seconds)
-                    time.sleep(hold_seconds)
-                    GPIO.output(pin, inactive_value)
-                elif self._backend == "pinctrl":
-                    if not self._pinctrl_write_pin(pin, active=True):
-                        return False
-                    logger.info("Locker %s abierto (pin=%s) por %.2fs", locker_id, pin, hold_seconds)
-                    time.sleep(hold_seconds)
-                    if not self._pinctrl_write_pin(pin, active=False):
-                        return False
-                else:
-                    logger.error("Backend GPIO desconocido: %s", self._backend)
+        locker_lock = self._locker_locks.get(int(locker_id))
+        if locker_lock is None:
+            logger.warning("Sin lock para locker_id=%s", locker_id)
+            return False
+
+        if not locker_lock.acquire(blocking=False):
+            logger.info("Locker %s ya está en proceso de apertura, ignorando solicitud", locker_id)
+            return False
+
+        try:
+            if self._backend == "rpi_gpio":
+                active_value = GPIO.LOW if self._active_low else GPIO.HIGH
+                inactive_value = GPIO.HIGH if self._active_low else GPIO.LOW
+                GPIO.output(pin, active_value)
+                logger.info("Locker %s abierto (pin=%s) por %.2fs", locker_id, pin, hold_seconds)
+                time.sleep(hold_seconds)
+                GPIO.output(pin, inactive_value)
+            elif self._backend == "pinctrl":
+                if not self._pinctrl_write_pin(pin, active=True):
                     return False
-            except Exception as exc:
-                logger.error("Error activando relay Locker %s (pin=%s): %s", locker_id, pin, exc)
+                logger.info("Locker %s abierto (pin=%s) por %.2fs", locker_id, pin, hold_seconds)
+                time.sleep(hold_seconds)
+                if not self._pinctrl_write_pin(pin, active=False):
+                    return False
+            else:
+                logger.error("Backend GPIO desconocido: %s", self._backend)
                 return False
+        except Exception as exc:
+            logger.error("Error activando relay Locker %s (pin=%s): %s", locker_id, pin, exc)
+            return False
+        finally:
+            locker_lock.release()
 
-            logger.info("Locker %s cerrado (pin=%s)", locker_id, pin)
-            return True
+        logger.info("Locker %s cerrado (pin=%s)", locker_id, pin)
+        return True
 
     def open_locker(self, seconds: float | None = None) -> bool:
         """Compatibilidad hacia atrás: abre el Locker 1 (M1, pin 17)."""
@@ -147,7 +165,7 @@ class LockerGPIOController:
         if not self._setup_done:
             return
 
-        with self._lock:
+        with self._setup_lock:
             try:
                 if self._backend == "rpi_gpio" and GPIO is not None:
                     inactive_value = GPIO.HIGH if self._active_low else GPIO.LOW

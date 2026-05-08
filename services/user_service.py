@@ -5,6 +5,7 @@ Operaciones de negocio sobre usuarios y autenticación facial.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 from typing import Optional
 
@@ -187,6 +188,39 @@ def get_active_face_encodings() -> list[dict]:
         parsed.append(row)
 
     return parsed
+
+
+def authenticate_user_by_pin(matricula: str, pin: str) -> dict | None:
+    """
+    Autentica cualquier usuario activo por matrícula + PIN.
+    Retorna dict con datos + locker asignado, o None si las credenciales no son válidas.
+    """
+    row = fetch_one("""
+        SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
+               u.matricula, u.estado, u.pin,
+               a.idLockerAsignado,
+               l.idLocker
+        FROM usuarios u
+        LEFT JOIN asignacion_locker a
+            ON a.idUsuario = u.idUsuario AND a.estado = 'activo'
+        LEFT JOIN lockers l
+            ON l.idLocker = a.idLocker
+        WHERE CAST(u.matricula AS TEXT) = ?
+        LIMIT 1
+    """, (str(matricula).strip(),))
+
+    if not row:
+        return None
+    if (row.get("estado") or "").strip().lower() != "activo":
+        return None
+
+    pin_stored = row.get("pin") or ""
+    pin_hashed = hashlib.sha256(pin.strip().encode()).hexdigest()
+    if not (hmac.compare_digest(pin_stored, pin_hashed)
+            or hmac.compare_digest(pin_stored, pin.strip())):
+        return None
+
+    return row
 
 
 def threshold_for_model(model_prefix: Optional[str]) -> float:

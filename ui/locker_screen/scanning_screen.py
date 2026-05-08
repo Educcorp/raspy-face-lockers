@@ -48,6 +48,8 @@ class ScanningScreen(ctk.CTkFrame):
     SILHOUETTE_FACE_OK  = (90, 180, 90, 160)     # verde semi-transparente
 
     MAX_ATTEMPTS    = 3
+    PIN_MAX_FAILS   = 3
+    LOCK_SECONDS    = 60
     DISPLAY_SECONDS = 8
     RECOGNITION_INTERVAL_FRAMES = 5   # intentos de reconocimiento cada 5 frames (~0.33s)
     STABLE_FACE_FRAMES = 12           # rostro estable ~0.8s antes de intentar reconocimiento
@@ -101,6 +103,12 @@ class ScanningScreen(ctk.CTkFrame):
         # Datos del usuario reconocido
         self._user_data: Optional[dict] = None
 
+        # Estado del overlay de PIN
+        self._pin_state: str = "matricula"  # "matricula" | "pin"
+        self._pin_matricula: str = ""
+        self._pin_code: str = ""
+        self._pin_fail_count: int = 0
+
         # Inicializar módulo de reconocimiento facial
         try:
             from core.face_recognition import get_face_recognition_manager
@@ -112,6 +120,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.gpio_controller = get_locker_gpio_controller()
 
         self._build_ui()
+        self._build_pin_overlay()
+        self._build_lock_overlay()
         self._reset_liveness_state()
 
     # ── Construcción de UI ────────────────────────────────────────────────────
@@ -127,28 +137,43 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
 
-        # ── Status label en la parte superior ─────────────────────────────────
+        # ── Status label (fondo oscuro para legibilidad sobre cámara) ─────────
         self.lbl_status = ctk.CTkLabel(
             self,
             text="POSICIONA TU ROSTRO",
-            font=ctk.CTkFont(size=19, weight="bold"),
+            font=ctk.CTkFont(size=18, weight="bold"),
             text_color=self.TEXT_COLOR,
-            fg_color="transparent",
-            bg_color="transparent",
-            corner_radius=0,
-            height=40,
+            fg_color="#1A1A2E",
+            corner_radius=10,
+            height=44,
+            width=390,
         )
-        self.lbl_status.place(relx=0.5, y=100, anchor="center")
+        self.lbl_status.place(relx=0.5, y=104, anchor="center")
 
         # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
             self,
             text="",
             font=ctk.CTkFont(size=13),
-            text_color=self.MUTED,
-            fg_color="transparent",
+            text_color=self.WARNING,
+            fg_color="#1A1A2E",
+            corner_radius=8,
+            height=30,
+            width=260,
         )
-        self.lbl_attempts.place(relx=0.5, y=72, anchor="n")
+        self.lbl_attempts.place(relx=0.5, y=56, anchor="center")
+
+        # ── Barra de progreso de escaneo ──────────────────────────────────────
+        self.scan_progress_bar = ctk.CTkProgressBar(
+            self,
+            width=340,
+            height=8,
+            fg_color="#2A2A3E",
+            progress_color=self.PRIMARY,
+            corner_radius=4,
+        )
+        self.scan_progress_bar.set(0)
+        self.scan_progress_bar.place(relx=0.5, rely=0.885, anchor="center")
 
         # ── Botón de retroceso (flecha) en la parte inferior ─────────────────
         self.btn_back = ctk.CTkButton(
@@ -414,130 +439,75 @@ class ScanningScreen(ctk.CTkFrame):
             logger.info(f"Camera loop finalizado. Total: {frame_count}")
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
-        """Dibuja el frame de cámara a pantalla completa con cuadro dinámico siguiendo el rostro."""
+        """Dibuja el frame en modo espejo y letterbox (sin zoom), con guía de rostro."""
         try:
-            # Picamera2 "RGB888" retorna BGR en memoria — convertir a RGB para PIL
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # Redimensionar con crop al centro para llenar pantalla completa
+            # BGR → RGB y espejo horizontal (modo selfie)
+            frame_rgb = cv2.flip(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 1)
             h, w = frame_rgb.shape[:2]
-            target_aspect = self.WIN_W / self.WIN_H  # 480/800 = 0.6
-            frame_aspect = w / h
 
-            if frame_aspect > target_aspect:
-                # Frame es más ancho - crop horizontal
-                new_h = h
-                new_w = int(h * target_aspect)
-                x_offset = (w - new_w) // 2
-                y_offset = 0
-                frame_cropped = frame_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
-            else:
-                # Frame es más alto - crop vertical
-                new_w = w
-                new_h = int(w / target_aspect)
-                x_offset = 0
-                y_offset = (h - new_h) // 2
-                frame_cropped = frame_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w]
+            # Letterbox: escalar manteniendo aspecto, sin recortar
+            scale = min(self.WIN_W / w, self.WIN_H / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
-            # Redimensionar al tamaño exacto de la pantalla
-            frame_resized = cv2.resize(frame_cropped, (self.WIN_W, self.WIN_H), interpolation=cv2.INTER_LINEAR)
+            # Centrar en lienzo negro
+            canvas_arr = np.zeros((self.WIN_H, self.WIN_W, 3), dtype=np.uint8)
+            x_off = (self.WIN_W - new_w) // 2
+            y_off = (self.WIN_H - new_h) // 2
+            canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
 
-            # Convertir a PIL
-            pil_image = Image.fromarray(frame_resized, mode="RGB")
-
-            # Dibujar guía de escaneo con esquinas en L
+            pil_image = Image.fromarray(canvas_arr, mode="RGB")
             draw = ImageDraw.Draw(pil_image)
 
-            # Determinar coordenadas del cuadro (dinámicas si hay rostro, fijas si no)
+            # Calcular cuadro guía (coordenadas en pantalla, ya en espejo)
             if len(faces) > 0:
                 face_box = faces[0].get("box")
                 if face_box:
-                    # Calcular factor de escala para las coordenadas de la cara
-                    scale_x = self.WIN_W / new_w
-                    scale_y = self.WIN_H / new_h
-
-                    x, y, face_w, face_h = face_box
-
-                    # Ajustar coordenadas por el crop
-                    if frame_aspect > target_aspect:
-                        # Crop horizontal
-                        x = x - x_offset
-                    else:
-                        # Crop vertical
-                        y = y - y_offset
-
-                    # Escalar al tamaño de pantalla
-                    x = int(x * scale_x)
-                    y = int(y * scale_y)
-                    face_w = int(face_w * scale_x)
-                    face_h = int(face_h * scale_y)
-
-                    # Agregar padding al cuadro para que sea más amplio
-                    padding = int(max(face_w, face_h) * 0.3)
-                    x1 = max(0, x - padding)
-                    y1 = max(0, y - padding)
-                    x2 = min(self.WIN_W, x + face_w + padding)
-                    y2 = min(self.WIN_H, y + face_h + padding)
+                    fx, fy, fw, fh = face_box
+                    # Espejo: invertir x en el espacio del frame original
+                    fx_m = w - fx - fw
+                    # Escalar al espacio de pantalla + offset letterbox
+                    xs = int(fx_m * scale) + x_off
+                    ys = int(fy  * scale) + y_off
+                    ws = int(fw  * scale)
+                    hs = int(fh  * scale)
+                    pad = int(max(ws, hs) * 0.3)
+                    x1 = max(0,        xs - pad)
+                    y1 = max(0,        ys - pad)
+                    x2 = min(self.WIN_W, xs + ws + pad)
+                    y2 = min(self.WIN_H, ys + hs + pad)
                 else:
-                    # Si no hay box, usar coordenadas fijas
-                    cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
-                    box_width = 280
-                    box_height = 360
-                    x1 = cx - (box_width // 2)
-                    y1 = cy - (box_height // 2)
-                    x2 = cx + (box_width // 2)
-                    y2 = cy + (box_height // 2)
+                    x1, y1, x2, y2 = self._default_guide_box()
             else:
-                # Sin rostro: guía fija centrada
-                cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
-                box_width = 280
-                box_height = 360
-                x1 = cx - (box_width // 2)
-                y1 = cy - (box_height // 2)
-                x2 = cx + (box_width // 2)
-                y2 = cy + (box_height // 2)
+                x1, y1, x2, y2 = self._default_guide_box()
 
-            # Color del cuadro: verde si rostro detectado correctamente, rojo si no
-            if self._liveness_passed:
-                box_color = (90, 180, 90)  # Verde
-            else:
-                box_color = (200, 80, 80)  # Rojo
+            box_color = (90, 180, 90) if self._liveness_passed else (200, 80, 80)
+            cl, lw = 40, 5
+            draw.line([(x1,      y1), (x1 + cl, y1)], fill=box_color, width=lw)
+            draw.line([(x1,      y1), (x1,      y1 + cl)], fill=box_color, width=lw)
+            draw.line([(x2 - cl, y1), (x2,      y1)], fill=box_color, width=lw)
+            draw.line([(x2,      y1), (x2,      y1 + cl)], fill=box_color, width=lw)
+            draw.line([(x1,      y2 - cl), (x1, y2)], fill=box_color, width=lw)
+            draw.line([(x1,      y2), (x1 + cl, y2)], fill=box_color, width=lw)
+            draw.line([(x2,      y2 - cl), (x2, y2)], fill=box_color, width=lw)
+            draw.line([(x2 - cl, y2), (x2,      y2)], fill=box_color, width=lw)
 
-            # Dibujar solo las esquinas en forma de L
-            corner_length = 40  # Longitud de cada línea de la esquina
-            line_width = 5
-
-            # Esquina superior izquierda
-            draw.line([(x1, y1), (x1 + corner_length, y1)], fill=box_color, width=line_width)  # Horizontal
-            draw.line([(x1, y1), (x1, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
-
-            # Esquina superior derecha
-            draw.line([(x2 - corner_length, y1), (x2, y1)], fill=box_color, width=line_width)  # Horizontal
-            draw.line([(x2, y1), (x2, y1 + corner_length)], fill=box_color, width=line_width)  # Vertical
-
-            # Esquina inferior izquierda
-            draw.line([(x1, y2 - corner_length), (x1, y2)], fill=box_color, width=line_width)  # Vertical
-            draw.line([(x1, y2), (x1 + corner_length, y2)], fill=box_color, width=line_width)  # Horizontal
-
-            # Esquina inferior derecha
-            draw.line([(x2, y2 - corner_length), (x2, y2)], fill=box_color, width=line_width)  # Vertical
-            draw.line([(x2 - corner_length, y2), (x2, y2)], fill=box_color, width=line_width)  # Horizontal
-
-            # Convertir a RGB para PhotoImage
-            pil_rgb = pil_image.convert("RGB")
-
-            import tempfile
             ppm_path = "/tmp/locker_scan.ppm"
             try:
-                pil_rgb.save(ppm_path, "PPM")
-                new_photo = tkinter.PhotoImage(file=ppm_path)
-                self._photo_image = new_photo
+                pil_image.save(ppm_path, "PPM")
+                self._photo_image = tkinter.PhotoImage(file=ppm_path)
                 self.after(0, self._set_camera_image)
             except Exception as e:
                 logger.warning(f"Error creando PhotoImage: {e}")
 
         except Exception as e:
             logger.error(f"Error actualizando display: {e}")
+
+    def _default_guide_box(self) -> tuple[int, int, int, int]:
+        """Cuadro guía centrado cuando no hay rostro detectado."""
+        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+        return cx - 140, cy - 180, cx + 140, cy + 180
 
     def _show_camera_error(self, error_msg: str) -> None:
         """Muestra un mensaje de error cuando la cámara no está disponible."""
@@ -596,12 +566,15 @@ class ScanningScreen(ctk.CTkFrame):
                 self.canvas.delete("all")
                 self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
                 self.canvas.image = self._photo_image
+                # Mantener el botón de regreso encima del canvas en todo momento
+                self.btn_back.lift()
 
-                # Actualizar texto del status con progreso de escaneo
+                # Actualizar barra de progreso y mensajes de estado
                 if not self._success_shown:
                     if self._face_detected:
                         if self._liveness_passed:
                             pct = self._scan_progress_pct
+                            self.scan_progress_bar.set(pct / 100)
                             if pct >= 100:
                                 self.lbl_status.configure(
                                     text="IDENTIFICANDO...",
@@ -609,17 +582,19 @@ class ScanningScreen(ctk.CTkFrame):
                                 )
                             else:
                                 self.lbl_status.configure(
-                                    text=f"ESCANEANDO  {pct}%",
+                                    text=f"ESCANEANDO...  {pct}%",
                                     text_color="#FFD54F",
                                 )
                         else:
+                            self.scan_progress_bar.set(0)
                             self.lbl_status.configure(
-                                text="MUEVE LIGERAMENTE TU ROSTRO",
+                                text="Mueve ligeramente tu rostro",
                                 text_color="#FFD54F",
                             )
                     else:
+                        self.scan_progress_bar.set(0)
                         self.lbl_status.configure(
-                            text="POSICIONA TU ROSTRO",
+                            text="Posiciona tu rostro en el encuadre",
                             text_color="#FFFFFF",
                         )
         except Exception as e:
@@ -639,10 +614,15 @@ class ScanningScreen(ctk.CTkFrame):
         self._face_first_seen_ts = 0.0
         self._scan_progress_pct = 0
         self._reset_liveness_state()
+        self._pin_fail_count = 0
         self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
+        self.scan_progress_bar.set(0)
         self.overlay_bg.place_forget()
+        self._hide_pin_overlay()
+        self._hide_lock_overlay()
         self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_back.lift()
 
         if not self._camera_running:
             self._camera_running = True
@@ -669,6 +649,7 @@ class ScanningScreen(ctk.CTkFrame):
     def on_face_match(self, user_data: dict) -> None:
         """Muestra el overlay de resultado según si el usuario tiene locker o no."""
         self._success_shown = True
+        self._camera_running = False  # detener cámara — ya no se necesita detectar más
         self._user_data = user_data
 
         locker_num = user_data.get("locker_numero")   # None si no tiene locker
@@ -710,8 +691,8 @@ class ScanningScreen(ctk.CTkFrame):
             text=f"Intentos: {self._attempts} / {self.MAX_ATTEMPTS}"
         )
         if self._attempts >= self.MAX_ATTEMPTS:
-            self.lbl_status.configure(text="✗ Acceso denegado", text_color="#EF9A9A")
-            self.after(2500, self._go_standby)
+            self.lbl_status.configure(text="✗ No reconocido — usa tu PIN", text_color="#EF9A9A")
+            self.after(1200, self._show_pin_overlay)
         else:
             self.lbl_status.configure(
                 text=f"Rostro no reconocido ({self._attempts}/{self.MAX_ATTEMPTS})",
@@ -907,6 +888,271 @@ class ScanningScreen(ctk.CTkFrame):
             self._blink_closed_seen = False
             return True
         return False
+
+    # ── Overlay de autenticación por PIN ──────────────────────────────────────
+
+    def _build_pin_overlay(self) -> None:
+        """Construye el teclado numérico de emergencia (matrícula → PIN)."""
+        self.pin_overlay = ctk.CTkFrame(
+            self,
+            fg_color="#1A1A2E",
+            corner_radius=0,
+            width=self.WIN_W,
+            height=self.WIN_H,
+        )
+
+        ctk.CTkLabel(
+            self.pin_overlay,
+            text="AUTENTICACIÓN POR PIN",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=self.TEXT_COLOR,
+        ).pack(pady=(64, 4))
+
+        self.lbl_pin_instruction = ctk.CTkLabel(
+            self.pin_overlay,
+            text="Ingresa tu matrícula",
+            font=ctk.CTkFont(size=15),
+            text_color=self.MUTED,
+        )
+        self.lbl_pin_instruction.pack(pady=(0, 20))
+
+        # Campo de entrada
+        input_frame = ctk.CTkFrame(
+            self.pin_overlay,
+            fg_color="#2A2A3E",
+            corner_radius=12,
+            width=340,
+            height=60,
+        )
+        input_frame.pack(pady=(0, 4))
+        input_frame.pack_propagate(False)
+
+        self.lbl_pin_display = ctk.CTkLabel(
+            input_frame,
+            text="",
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#FFFFFF",
+        )
+        self.lbl_pin_display.place(relx=0.5, rely=0.5, anchor="center")
+
+        self.lbl_pin_error = ctk.CTkLabel(
+            self.pin_overlay,
+            text="",
+            font=ctk.CTkFont(size=13),
+            text_color=self.DANGER,
+        )
+        self.lbl_pin_error.pack(pady=(4, 12))
+
+        # Teclado numérico 3×4
+        numpad_frame = ctk.CTkFrame(self.pin_overlay, fg_color="transparent")
+        numpad_frame.pack()
+
+        layout = [
+            ("1", "2", "3"),
+            ("4", "5", "6"),
+            ("7", "8", "9"),
+            ("⌫", "0", "✓"),
+        ]
+
+        for row_idx, row in enumerate(layout):
+            for col_idx, label in enumerate(row):
+                if label == "⌫":
+                    cmd = self._pin_backspace
+                    fg = "#3A3A5E"
+                    hover = "#4A4A7E"
+                elif label == "✓":
+                    cmd = self._pin_confirm
+                    fg = self.PRIMARY
+                    hover = "#6A9F69"
+                else:
+                    digit = label
+                    cmd = lambda d=digit: self._pin_digit(d)
+                    fg = "#2A2A4E"
+                    hover = "#3A3A6E"
+
+                ctk.CTkButton(
+                    numpad_frame,
+                    text=label,
+                    font=ctk.CTkFont(size=28, weight="bold"),
+                    fg_color=fg,
+                    hover_color=hover,
+                    text_color="#FFFFFF",
+                    width=96,
+                    height=72,
+                    corner_radius=12,
+                    command=cmd,
+                ).grid(row=row_idx, column=col_idx, padx=8, pady=8)
+
+        ctk.CTkButton(
+            self.pin_overlay,
+            text="Cancelar",
+            font=ctk.CTkFont(size=14),
+            fg_color="transparent",
+            hover_color="#333355",
+            text_color=self.MUTED,
+            border_width=1,
+            border_color=self.MUTED,
+            width=200,
+            height=44,
+            corner_radius=10,
+            command=self._go_standby,
+        ).pack(pady=(20, 0))
+
+    def _show_pin_overlay(self) -> None:
+        if self._success_shown:
+            return
+        self._pin_state = "matricula"
+        self._pin_matricula = ""
+        self._pin_code = ""
+        self.lbl_pin_instruction.configure(text="Ingresa tu matrícula")
+        self.lbl_pin_display.configure(text="")
+        self.lbl_pin_error.configure(text="")
+        self.pin_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.pin_overlay.lift()
+
+    def _hide_pin_overlay(self) -> None:
+        self.pin_overlay.place_forget()
+
+    def _update_pin_display(self) -> None:
+        if self._pin_state == "matricula":
+            self.lbl_pin_display.configure(text=self._pin_matricula)
+        else:
+            self.lbl_pin_display.configure(text="●" * len(self._pin_code))
+
+    def _pin_digit(self, digit: str) -> None:
+        self.lbl_pin_error.configure(text="")
+        if self._pin_state == "matricula":
+            if len(self._pin_matricula) < 12:
+                self._pin_matricula += digit
+        else:
+            if len(self._pin_code) < 8:
+                self._pin_code += digit
+        self._update_pin_display()
+
+    def _pin_backspace(self) -> None:
+        if self._pin_state == "matricula":
+            self._pin_matricula = self._pin_matricula[:-1]
+        else:
+            self._pin_code = self._pin_code[:-1]
+        self._update_pin_display()
+
+    def _pin_confirm(self) -> None:
+        if self._pin_state == "matricula":
+            if not self._pin_matricula.strip():
+                self.lbl_pin_error.configure(text="Ingresa tu matrícula")
+                return
+            self._pin_state = "pin"
+            self._pin_code = ""
+            self.lbl_pin_instruction.configure(text="Ingresa tu PIN")
+            self._update_pin_display()
+        else:
+            self._verify_pin_auth()
+
+    def _verify_pin_auth(self) -> None:
+        if not self._pin_code.strip():
+            self.lbl_pin_error.configure(text="Ingresa tu PIN")
+            return
+
+        result = user_service.authenticate_user_by_pin(self._pin_matricula, self._pin_code)
+        if result is None:
+            self._pin_fail_count += 1
+            remaining = self.PIN_MAX_FAILS - self._pin_fail_count
+            if self._pin_fail_count >= self.PIN_MAX_FAILS:
+                self._hide_pin_overlay()
+                self.after(200, self._show_lock_screen)
+                return
+            self.lbl_pin_error.configure(
+                text=f"Matrícula o PIN incorrecto  ({remaining} intento{'s' if remaining != 1 else ''} restante)"
+            )
+            self._pin_code = ""
+            self._update_pin_display()
+            return
+
+        locker_id = result.get("idLocker")
+        if locker_id:
+            locker_service.open_locker(locker_id)
+        else:
+            logger.info("PIN auth: usuario id=%s sin locker asignado", result.get("idUsuario"))
+
+        access_log_service.register_access(
+            result.get("idLockerAsignado"), permitted=True, motivo="pin"
+        )
+
+        full_name = " ".join(
+            p for p in [result.get("nombre"), result.get("apPaterno"), result.get("apMaterno")]
+            if p
+        ).strip()
+
+        user_data = {
+            "nombre": full_name or "Usuario",
+            "matricula": result.get("matricula") or "—",
+            "locker_numero": locker_id,
+            "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
+        }
+        self._hide_pin_overlay()
+        self.on_face_match(user_data)
+
+    # ── Pantalla de bloqueo tras PIN fallido ──────────────────────────────────
+
+    def _build_lock_overlay(self) -> None:
+        """Pantalla de bloqueo mostrada tras agotar intentos de PIN."""
+        self.lock_overlay = ctk.CTkFrame(
+            self,
+            fg_color="#0D0D1A",
+            corner_radius=0,
+            width=self.WIN_W,
+            height=self.WIN_H,
+        )
+
+        ctk.CTkLabel(
+            self.lock_overlay,
+            text="BLOQUEADO",
+            font=ctk.CTkFont(size=48, weight="bold"),
+            text_color=self.DANGER,
+        ).pack(pady=(220, 8))
+
+        ctk.CTkLabel(
+            self.lock_overlay,
+            text="Demasiados intentos fallidos",
+            font=ctk.CTkFont(size=16),
+            text_color=self.MUTED,
+        ).pack(pady=(0, 36))
+
+        self.lbl_lock_countdown = ctk.CTkLabel(
+            self.lock_overlay,
+            text="",
+            font=ctk.CTkFont(size=18),
+            text_color=self.TEXT_COLOR,
+        )
+        self.lbl_lock_countdown.pack()
+
+        ctk.CTkLabel(
+            self.lock_overlay,
+            text="El sistema se desbloqueará automáticamente",
+            font=ctk.CTkFont(size=12),
+            text_color=self.MUTED,
+        ).pack(pady=(12, 0))
+
+    def _show_lock_screen(self) -> None:
+        self._camera_running = False
+        self.lock_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lock_overlay.lift()
+        self._lock_countdown(self.LOCK_SECONDS)
+
+    def _hide_lock_overlay(self) -> None:
+        self.lock_overlay.place_forget()
+
+    def _lock_countdown(self, seconds: int) -> None:
+        if not self.lock_overlay.winfo_ismapped():
+            return
+        if seconds <= 0:
+            self._hide_lock_overlay()
+            self._go_standby()
+            return
+        self.lbl_lock_countdown.configure(
+            text=f"Espera  {seconds}  segundo{'s' if seconds != 1 else ''}…"
+        )
+        self.after(1000, self._lock_countdown, seconds - 1)
 
     def _recognize_current_face(self, frame: np.ndarray, faces: list) -> Optional[dict]:
         if not faces or not self.face_manager:

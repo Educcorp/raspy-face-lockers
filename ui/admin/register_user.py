@@ -19,6 +19,7 @@ import tkinter as tk
 from typing import Optional
 import logging
 import sqlite3
+import hashlib
 
 import customtkinter as ctk
 from PIL import Image, ImageDraw
@@ -443,7 +444,6 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._advance_pending: bool = False     # esperando auto-avance a siguiente pose
         self._last_capture_time: float = 0.0
 
-        self._silhouette_mask = self._make_silhouette()
         self._build()
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -499,6 +499,15 @@ class _Step4FaceCapture(ctk.CTkFrame):
         )
         self.lbl_progress.place(relx=0.5, y=124, anchor="n")
 
+        # Barra de progreso de captura de pose
+        self.pose_progress = ctk.CTkProgressBar(
+            self, width=340, height=10,
+            fg_color="#2A2A3E", progress_color=PALETTE["ACCENT"],
+            corner_radius=5,
+        )
+        self.pose_progress.set(0)
+        self.pose_progress.place(relx=0.5, rely=0.82, anchor="center")
+
         # ── Botones inferiores ────────────────────────────────────────────────
         btn_row = ctk.CTkFrame(self, fg_color=PALETTE["CARD"],
                                corner_radius=0, height=90)
@@ -553,22 +562,6 @@ class _Step4FaceCapture(ctk.CTkFrame):
             text_color=PALETTE["WHITE"],
         )
         self.lbl_progress.configure(text="Mantén el rostro estable...", text_color=PALETTE["ACCENT"])
-
-    # ── Silueta ───────────────────────────────────────────────────────────────
-
-    def _make_silhouette(self) -> Image.Image:
-        mask = Image.new("RGBA", (WIN_W, self.CANVAS_H), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(mask)
-        draw.rectangle([(0, 0), (WIN_W, self.CANVAS_H)], fill=(0, 0, 0, 80))
-        cx, cy = WIN_W // 2, 250
-        draw.ellipse([cx - 95, cy - 140, cx + 95, cy + 80], fill=(0, 0, 0, 0))
-        draw.ellipse([cx - 155, cy + 80, cx + 155, cy + 210], fill=(0, 0, 0, 0))
-        return mask
-
-    def _draw_outline(self, draw: ImageDraw.Draw, color: tuple) -> None:
-        cx, cy = WIN_W // 2, 250
-        draw.ellipse([cx - 95, cy - 140, cx + 95, cy + 80], outline=color[:3], width=3)
-        draw.ellipse([cx - 155, cy + 80, cx + 155, cy + 210], outline=color[:3], width=3)
 
     # ── Cámara ────────────────────────────────────────────────────────────────
 
@@ -746,7 +739,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return
 
         if self._current_frame is not None:
-            frame_rgb = cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB)
+            frame_rgb = cv2.flip(cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB), 1)
             h, w = frame_rgb.shape[:2]
             scale = min(WIN_W / w, self.CANVAS_H / h)
             new_w, new_h = int(w * scale), int(h * scale)
@@ -757,39 +750,46 @@ class _Step4FaceCapture(ctk.CTkFrame):
             x_off = (WIN_W - new_w) // 2
             canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
 
-            img = Image.fromarray(canvas_arr, "RGB").convert("RGBA")
+            pil_image = Image.fromarray(canvas_arr, "RGB")
+            draw = ImageDraw.Draw(pil_image)
             has_face = len(self._detected_faces) > 0
 
-            # Landmarks
-            if self._current_landmarks:
-                dimg = ImageDraw.Draw(img)
-                for lx, ly in self._current_landmarks:
-                    sx = int(lx * scale) + x_off
-                    sy = int(ly * scale) + y_off
-                    dimg.ellipse([sx - 2, sy - 2, sx + 2, sy + 2], fill=(0, 255, 100, 220))
-
-            # Silueta + borde
-            overlay = self._silhouette_mask.copy()
-            self._draw_outline(ImageDraw.Draw(overlay),
-                               SILO_OK_FACE if has_face else SILO_NO_FACE)
-            img = Image.alpha_composite(img, overlay)
+            # Corner-bracket face guide (clean, no circles or silhouette ellipses)
+            cx, cy = WIN_W // 2, self.CANVAS_H // 2 - 20
+            gw, gh = 130, 175
+            x1, y1, x2, y2 = cx - gw, cy - gh, cx + gw, cy + gh
+            color = (90, 180, 90) if has_face else (200, 80, 80)
+            cl, lw = 36, 5
+            draw.line([(x1,      y1), (x1 + cl, y1)], fill=color, width=lw)
+            draw.line([(x1,      y1), (x1,      y1 + cl)], fill=color, width=lw)
+            draw.line([(x2 - cl, y1), (x2,      y1)], fill=color, width=lw)
+            draw.line([(x2,      y1), (x2,      y1 + cl)], fill=color, width=lw)
+            draw.line([(x1,      y2 - cl), (x1,  y2)], fill=color, width=lw)
+            draw.line([(x1,      y2), (x1 + cl, y2)], fill=color, width=lw)
+            draw.line([(x2,      y2 - cl), (x2,  y2)], fill=color, width=lw)
+            draw.line([(x2 - cl, y2), (x2,      y2)], fill=color, width=lw)
 
             from PIL import ImageTk
-            self._photo_ref = ImageTk.PhotoImage(img)
+            self._photo_ref = ImageTk.PhotoImage(pil_image)
             self.canvas.create_image(0, 0, anchor="nw", image=self._photo_ref)
 
-            # Feedback de progreso de captura de pose
             all_done = len(self._captured_poses) >= len(self.CAPTURE_POSES)
             if not all_done and not self._pose_captured and not self._advance_pending:
                 if has_face:
                     pct = min(100, int(self._stable_face_count / self.STABLE_FRAMES_NEEDED * 100))
+                    self.pose_progress.set(pct / 100)
                     if pct > 0:
                         self.lbl_progress.configure(
                             text=f"Mantén la posición... {pct}%",
                             text_color=PALETTE["ACCENT"],
                         )
+                    else:
+                        self._show_pose_instruction()
                 else:
+                    self.pose_progress.set(0)
                     self._show_pose_instruction()
+            elif all_done:
+                self.pose_progress.set(1.0)
 
         self.after(50, self._update_canvas)
 
@@ -854,6 +854,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._refresh_pose_indicators()
         self._show_pose_instruction()
         self._start_camera()
+        self.pose_progress.set(0)
 
     def on_leave(self) -> None:
         logger.info("Saliendo de captura facial")

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import tkinter as tk
 
 import customtkinter as ctk
 
 from auth.session import can_edit_catalogs
 from database.connection import db_session, fetch_all, fetch_one
+from services import locker_service
 from ui.admin_app import PALETTE
 
 
@@ -171,6 +173,31 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self.assignments_frame = ctk.CTkFrame(body, fg_color="transparent")
 		self.assignments_frame.pack(fill="both", expand=True)
 
+		# ── Apertura manual de lockers (solo admin/superadmin) ────────────────
+		if self._can_edit:
+			ctk.CTkLabel(
+				body,
+				text="Abrir locker manualmente",
+				font=ctk.CTkFont(size=14, weight="bold"),
+				text_color=PALETTE["TEXT"],
+				fg_color="transparent",
+			).pack(anchor="w", padx=4, pady=(18, 6))
+
+			self.manual_open_frame = ctk.CTkFrame(body, fg_color="transparent")
+			self.manual_open_frame.pack(fill="x", padx=4, pady=(0, 8))
+
+			self.lbl_manual_feedback = ctk.CTkLabel(
+				body,
+				text="",
+				font=ctk.CTkFont(size=12),
+				text_color=PALETTE["MUTED"],
+				fg_color="transparent",
+			)
+			self.lbl_manual_feedback.pack(anchor="w", padx=4, pady=(0, 6))
+		else:
+			self.manual_open_frame = None
+			self.lbl_manual_feedback = None
+
 		if not self._can_edit:
 			self.menu_student.configure(state="disabled")
 			self.menu_locker.configure(state="disabled")
@@ -210,24 +237,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		return f"No se pudo {action}."
 
 	def _load_catalogs(self) -> None:
-		students_filtered = fetch_all(
-			"""
-			SELECT
-				u.idUsuario,
-				u.nombre,
-				u.apPaterno,
-				u.apMaterno,
-				u.matricula,
-				t.nombreTipoUsuario AS tipo
-			FROM usuarios u
-			LEFT JOIN tipo_usuarios t ON t.idTipoUsuario = u.idTipoUsuario
-			WHERE u.estado = 'activo'
-			  AND LOWER(COALESCE(t.nombreTipoUsuario, '')) IN ('usuario', 'alumno')
-			ORDER BY u.nombre, u.apPaterno
-			"""
-		)
-
-		self._students = students_filtered or fetch_all(
+		# Todos los usuarios activos (sin filtro de tipo — admin también puede tener locker)
+		self._students = fetch_all(
 			"""
 			SELECT
 				u.idUsuario,
@@ -496,7 +507,55 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._load_catalogs()
 		self._load_assignments()
 
+	def _build_manual_open_buttons(self) -> None:
+		"""Construye botones de apertura manual, uno por locker activo."""
+		if not self._can_edit or self.manual_open_frame is None:
+			return
+		for widget in self.manual_open_frame.winfo_children():
+			widget.destroy()
+
+		lockers = fetch_all(
+			"SELECT idLocker FROM lockers WHERE estado='activo' ORDER BY idLocker"
+		)
+		for i, row in enumerate(lockers):
+			lid = int(row["idLocker"])
+
+			def _open(l=lid) -> None:
+				if self.lbl_manual_feedback:
+					self.lbl_manual_feedback.configure(
+						text=f"Abriendo Locker {l}…", text_color=PALETTE["MUTED"]
+					)
+				def _task(l=l):
+					ok = locker_service.open_locker(l)
+					msg = f"Locker {l} abierto correctamente" if ok else f"No se pudo abrir Locker {l}"
+					color = PALETTE.get("SUCCESS", "#27ae60") if ok else PALETTE["DANGER"]
+					if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
+						self.lbl_manual_feedback.after(
+							0, lambda m=msg, c=color: self.lbl_manual_feedback.configure(
+								text=m, text_color=c
+							)
+						)
+				threading.Thread(target=_task, daemon=True).start()
+
+			ctk.CTkButton(
+				self.manual_open_frame,
+				text=f"  Locker {lid}",
+				font=ctk.CTkFont(size=14, weight="bold"),
+				fg_color=PALETTE["ACCENT"],
+				hover_color=PALETTE["ACCENT_HOVER"],
+				text_color=PALETTE["WHITE"],
+				height=48,
+				corner_radius=12,
+				command=_open,
+			).grid(row=0, column=i, padx=6, pady=4, sticky="ew")
+
+		for i in range(len(lockers)):
+			self.manual_open_frame.grid_columnconfigure(i, weight=1)
+
 	def on_show(self, **_kwargs) -> None:
 		self.lbl_feedback.configure(text="", text_color=PALETTE["MUTED"])
+		if self.lbl_manual_feedback is not None:
+			self.lbl_manual_feedback.configure(text="")
 		self._refresh_data()
+		self._build_manual_open_buttons()
 

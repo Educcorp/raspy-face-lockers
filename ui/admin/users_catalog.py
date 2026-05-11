@@ -24,6 +24,10 @@ from auth.session import (
     normalize_user_type_name,
     ROLE_SUPERADMIN,
 )
+from utils.validators import (
+    validate_name, validate_matricula, validate_email, validate_tel,
+    limit_var, MAX_NOMBRE, MAX_APELLIDO, MAX_EMAIL, MAX_TEL,
+)
 
 
 # ── Helpers de estilo ─────────────────────────────────────────────────────────
@@ -254,6 +258,16 @@ class UserDetailOverlay(ctk.CTkFrame):
     Reemplaza CTkToplevel para compatibilidad con Linux/Raspberry Pi.
     """
 
+    # Límites de caracteres en campos editables
+    _LIMITS: dict[str, int] = {
+        "nombre":    MAX_NOMBRE,
+        "apPaterno": MAX_APELLIDO,
+        "apMaterno": MAX_APELLIDO,
+        "matricula": 10,
+        "emailInst": MAX_EMAIL,
+        "tel":       MAX_TEL,
+    }
+
     def __init__(self, parent, controller, user_id: int, on_close=None):
         root = parent.winfo_toplevel()
         super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
@@ -322,15 +336,16 @@ class UserDetailOverlay(ctk.CTkFrame):
         # Campos definidos
         self._field_widgets: dict[str, ctk.CTkEntry | ctk.CTkOptionMenu] = {}
         fields = [
-            ("nombre",    "Nombre"),
-            ("apPaterno", "Apellido Paterno"),
-            ("apMaterno", "Apellido Materno"),
-            ("matricula", "Matrícula"),
-            ("emailInst", "Correo institucional"),
-            ("tel",       "Teléfono"),
+            ("nombre",    f"Nombre  (máx. {MAX_NOMBRE} car.)"),
+            ("apPaterno", f"Apellido Paterno  (máx. {MAX_APELLIDO} car.)"),
+            ("apMaterno", f"Apellido Materno  (máx. {MAX_APELLIDO} car.)"),
+            ("matricula", "Matrícula  (5-10 dígitos)"),
+            ("emailInst", f"Correo institucional  (máx. {MAX_EMAIL} car.)"),
+            ("tel",       "Teléfono  (opcional, 10-15 dígitos)"),
         ]
         for key, label in fields:
             self._vars[key] = tk.StringVar()
+            limit_var(self._vars[key], self._LIMITS.get(key, 200))
             self._make_field(label, key)
 
         # Selectores
@@ -353,6 +368,16 @@ class UserDetailOverlay(ctk.CTkFrame):
             text_color=PALETTE["MUTED"], fg_color="transparent",
         )
         self.face_badge.pack(anchor="w", padx=4, pady=(6, 0))
+
+        # Label de error para validaciones de edición
+        self.lbl_err = ctk.CTkLabel(
+            self._scroll, text="",
+            font=ctk.CTkFont(size=13),
+            text_color=PALETTE["DANGER"],
+            fg_color="transparent",
+            wraplength=430, justify="center",
+        )
+        self.lbl_err.pack(pady=(4, 0))
 
         # Botones de acción (mismo patrón visual que panel de Área)
         self.btn_save = ctk.CTkButton(
@@ -497,25 +522,93 @@ class UserDetailOverlay(ctk.CTkFrame):
     def _save(self) -> None:
         if not self._can_edit:
             return
+
+        nombre    = self._vars["nombre"].get().strip()
+        apPaterno = self._vars["apPaterno"].get().strip()
+        apMaterno = self._vars["apMaterno"].get().strip() or None
+        mat       = self._vars["matricula"].get().strip()
+        email     = self._vars["emailInst"].get().strip().lower()
+        tel       = self._vars["tel"].get().strip() or None
+
+        # ── Validaciones de formato / longitud ────────────────────────────────
+        err = validate_name(nombre, "Nombre")
+        if err:
+            self.lbl_err.configure(text=err, text_color=PALETTE["DANGER"])
+            return
+
+        err = validate_name(apPaterno, "Apellido paterno")
+        if err:
+            self.lbl_err.configure(text=err, text_color=PALETTE["DANGER"])
+            return
+
+        if apMaterno:
+            err = validate_name(apMaterno, "Apellido materno")
+            if err:
+                self.lbl_err.configure(text=err, text_color=PALETTE["DANGER"])
+                return
+
+        err = validate_matricula(mat)
+        if err:
+            self.lbl_err.configure(text=err, text_color=PALETTE["DANGER"])
+            return
+
+        err = validate_email(email)
+        if err:
+            self.lbl_err.configure(text=err, text_color=PALETTE["DANGER"])
+            return
+
+        err = validate_tel(tel or "")
+        if err:
+            self.lbl_err.configure(text=err, text_color=PALETTE["DANGER"])
+            return
+
+        # ── Unicidad: matrícula (excluyendo usuario actual) ───────────────────
+        if user_service.matricula_exists(int(mat), exclude_user_id=self.user_id):
+            self.lbl_err.configure(
+                text=f"La matrícula {mat} ya pertenece a otro usuario",
+                text_color=PALETTE["DANGER"],
+            )
+            return
+
+        # ── Unicidad: correo (excluyendo usuario actual) ──────────────────────
+        if user_service.email_exists(email, exclude_user_id=self.user_id):
+            self.lbl_err.configure(
+                text=f"El correo {email} ya pertenece a otro usuario",
+                text_color=PALETTE["DANGER"],
+            )
+            return
+
         tipo_name   = self._vars["tipo"].get()
         unidad_name = self._vars["unidad"].get()
         tipo_id   = next((t["idTipoUsuario"]     for t in self._tipos    if t["nombreTipoUsuario"] == tipo_name),   None)
         unidad_id = next((u["idUnidadAcademica"] for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
 
         if not tipo_id or not unidad_id:
+            self.lbl_err.configure(
+                text="Selecciona un tipo de usuario y unidad académica válidos",
+                text_color=PALETTE["DANGER"],
+            )
             return
 
-        user_service.update_user(self.user_id, {
-            "nombre":           self._vars["nombre"].get().strip(),
-            "apPaterno":        self._vars["apPaterno"].get().strip(),
-            "apMaterno":        self._vars["apMaterno"].get().strip() or None,
-            "matricula":        self._vars["matricula"].get().strip(),
-            "emailInst":        self._vars["emailInst"].get().strip(),
-            "tel":              self._vars["tel"].get().strip() or None,
-            "idTipoUsuario":    tipo_id,
-            "idUnidadAcademica": unidad_id,
-            "estado":           self._vars["estado"].get(),
-        })
+        self.lbl_err.configure(text="")
+        try:
+            user_service.update_user(self.user_id, {
+                "nombre":            nombre,
+                "apPaterno":         apPaterno,
+                "apMaterno":         apMaterno,
+                "matricula":         int(mat),
+                "emailInst":         email,
+                "tel":               tel,
+                "idTipoUsuario":     tipo_id,
+                "idUnidadAcademica": unidad_id,
+                "estado":            self._vars["estado"].get(),
+            })
+        except Exception as exc:
+            self.lbl_err.configure(
+                text=f"Error al guardar: {str(exc)[:80]}",
+                text_color=PALETTE["DANGER"],
+            )
+            return
         self._set_edit_mode(False)
         self._load_user()
 

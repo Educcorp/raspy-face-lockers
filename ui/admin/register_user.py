@@ -28,6 +28,10 @@ from database.connection import fetch_all, fetch_one
 from services import user_service
 from ui.admin_app import PALETTE
 from auth.session import can_create_users, filter_assignable_user_types
+from utils.validators import (
+    validate_name, validate_matricula, validate_email, validate_tel,
+    limit_var, MAX_NOMBRE, MAX_APELLIDO, MAX_EMAIL, MAX_TEL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,13 +144,27 @@ class RegisterUserScreen(ctk.CTkFrame):
 
 class _Step1BasicData(ctk.CTkFrame):
 
+    # Límites por campo (en sync con init_db.sql y validators.py)
+    _LIMITS: dict[str, int] = {
+        "nombre":    MAX_NOMBRE,
+        "apPaterno": MAX_APELLIDO,
+        "apMaterno": MAX_APELLIDO,
+        "matricula": 10,
+        "emailInst": MAX_EMAIL,
+        "tel":       MAX_TEL,
+    }
+
     def __init__(self, parent, wizard: RegisterUserScreen):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.wizard = wizard
         self._vars: dict[str, tk.StringVar] = {
-            k: tk.StringVar() for k in
-            ["nombre", "apPaterno", "apMaterno", "matricula", "emailInst", "tel"]
+            k: tk.StringVar() for k in self._LIMITS
         }
+        # Aplicar límites de caracteres en tiempo real
+        for key, max_len in self._LIMITS.items():
+            limit_var(self._vars[key], max_len)
+        # Flag para advertencia de nombre duplicado
+        self._nombre_dup_warned = False
         self._build()
 
     def _build(self) -> None:
@@ -158,12 +176,12 @@ class _Step1BasicData(ctk.CTkFrame):
         scroll = _scroll(self)
 
         fields = [
-            ("nombre",    "Nombre *"),
-            ("apPaterno", "Apellido paterno *"),
-            ("apMaterno", "Apellido materno"),
-            ("matricula", "Matrícula *"),
-            ("emailInst", "Correo institucional *"),
-            ("tel",       "Teléfono"),
+            ("nombre",    f"Nombre *  (máx. {MAX_NOMBRE} caracteres)"),
+            ("apPaterno", f"Apellido paterno *  (máx. {MAX_APELLIDO} caracteres)"),
+            ("apMaterno", f"Apellido materno  (máx. {MAX_APELLIDO} caracteres)"),
+            ("matricula", "Matrícula *  (5-10 dígitos)"),
+            ("emailInst", f"Correo institucional *  (máx. {MAX_EMAIL} caracteres)"),
+            ("tel",       "Teléfono  (opcional, 10-15 dígitos)"),
         ]
         self._entries: dict[str, ctk.CTkEntry] = {}
         for key, label in fields:
@@ -179,37 +197,99 @@ class _Step1BasicData(ctk.CTkFrame):
         self.lbl_err = ctk.CTkLabel(scroll, text="",
                                     font=ctk.CTkFont(size=13),
                                     text_color=PALETTE["DANGER"],
-                                    fg_color="transparent")
+                                    fg_color="transparent",
+                                    wraplength=430, justify="center")
         self.lbl_err.pack(pady=4)
 
         _big_btn(scroll, "Siguiente →", self._next)
 
+    def _show_error(self, msg: str, warn: bool = False) -> None:
+        color = PALETTE.get("WARN", "#d4a034") if warn else PALETTE["DANGER"]
+        self.lbl_err.configure(text=msg, text_color=color)
+
     def _next(self) -> None:
         nombre    = self._vars["nombre"].get().strip()
         apPaterno = self._vars["apPaterno"].get().strip()
+        apMaterno = self._vars["apMaterno"].get().strip() or None
         mat       = self._vars["matricula"].get().strip()
-        email     = self._vars["emailInst"].get().strip()
+        email     = self._vars["emailInst"].get().strip().lower()
+        tel       = self._vars["tel"].get().strip() or None
 
+        # ── Campos requeridos ─────────────────────────────────────────────────
         if not all([nombre, apPaterno, mat, email]):
-            self.lbl_err.configure(text="Por favor completa los campos requeridos (*)")
+            self._show_error("Completa todos los campos obligatorios (*)")
             return
-        if not mat.isdigit():
-            self.lbl_err.configure(text="La matrícula debe ser numérica")
+
+        # ── Validaciones de formato / longitud ────────────────────────────────
+        err = validate_name(nombre, "Nombre")
+        if err:
+            self._show_error(err)
             return
+
+        err = validate_name(apPaterno, "Apellido paterno")
+        if err:
+            self._show_error(err)
+            return
+
+        if apMaterno:
+            err = validate_name(apMaterno, "Apellido materno")
+            if err:
+                self._show_error(err)
+                return
+
+        err = validate_matricula(mat)
+        if err:
+            self._show_error(err)
+            return
+
+        # ── Verificación de correo (formato) ─────────────────────────────────
+        err = validate_email(email)
+        if err:
+            self._show_error(err)
+            return
+
+        err = validate_tel(tel or "")
+        if err:
+            self._show_error(err)
+            return
+
+        # ── Unicidad: matrícula ───────────────────────────────────────────────
+        if user_service.matricula_exists(int(mat)):
+            self._show_error(f"La matrícula {mat} ya está registrada")
+            return
+
+        # ── Unicidad: correo ──────────────────────────────────────────────────
+        if user_service.email_exists(email):
+            self._show_error(f"El correo {email} ya está registrado")
+            return
+
+        # ── Advertencia: nombre completo duplicado (permite continuar) ────────
+        if user_service.nombre_completo_exists(nombre, apPaterno, apMaterno):
+            if not self._nombre_dup_warned:
+                self._nombre_dup_warned = True
+                self._show_error(
+                    "Ya existe un usuario con ese nombre completo.\n"
+                    "Presiona Siguiente de nuevo si deseas continuar de todas formas.",
+                    warn=True,
+                )
+                return
+        # Resetear flag al cambiar datos
+        self._nombre_dup_warned = False
+
         self.lbl_err.configure(text="")
         self.wizard.next_step({
             "nombre":    nombre,
             "apPaterno": apPaterno,
-            "apMaterno": self._vars["apMaterno"].get().strip() or None,
+            "apMaterno": apMaterno,
             "matricula": int(mat),
             "emailInst": email,
-            "tel":       self._vars["tel"].get().strip() or None,
+            "tel":       tel,
         })
 
     def on_enter(self, data: dict) -> None:
-        # Restaurar si hay datos previos
         for k, var in self._vars.items():
             var.set(str(data.get(k, "") or ""))
+        self._nombre_dup_warned = False
         self.lbl_err.configure(text="")
 
 
@@ -804,8 +884,51 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return
 
         self.btn_save.configure(state="disabled")
+
+        # ── Verificar duplicado biométrico ────────────────────────────────────
+        # Comparar cada pose capturada contra todos los encodings activos.
+        # Si alguna pose coincide con un usuario existente se bloquea el registro.
+        model_prefix = "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8"
+        try:
+            candidates = user_service.get_active_face_encodings()
+        except Exception as exc:
+            logger.warning("No se pudieron cargar encodings para verificar: %s", exc)
+            candidates = []
+
+        if candidates:
+            self.lbl_status.configure(
+                text="Verificando identidad biométrica…",
+                text_color=PALETTE["MUTED"],
+            )
+            self.update_idletasks()
+
+            for pose in self._captured_poses:
+                probe = pose["embedding"].astype(np.float32, copy=False)
+                matched, _ = user_service.find_best_face_match(
+                    probe, model_prefix, candidates
+                )
+                if matched:
+                    nombre_dup = (
+                        f"{matched.get('nombre', '')} "
+                        f"{matched.get('apPaterno', '')}"
+                    ).strip()
+                    logger.warning(
+                        "Intento de registro duplicado: rostro coincide con usuario '%s'",
+                        nombre_dup,
+                    )
+                    self.btn_save.configure(state="normal")
+                    self.lbl_status.configure(
+                        text=f"Rostro ya registrado — {nombre_dup}",
+                        text_color=PALETTE["DANGER"],
+                    )
+                    self.lbl_progress.configure(
+                        text="Este rostro pertenece a una cuenta activa. No se puede registrar de nuevo.",
+                        text_color=PALETTE["DANGER"],
+                    )
+                    return
+
         d = self.wizard._data
-        modelo_name = "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8"
+        modelo_name = model_prefix
 
         poses = [
             {

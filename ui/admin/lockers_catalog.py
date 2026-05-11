@@ -30,7 +30,6 @@ class LockersCatalogScreen(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller = controller
-        self._can_edit = can_edit_catalogs()
         self._search_var = tk.StringVar()
         self._rows: list[dict] = []
         self._build_ui()
@@ -55,15 +54,6 @@ class LockersCatalogScreen(ctk.CTkFrame):
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
-
-        ctk.CTkButton(
-            hdr, text="+", width=46, height=46,
-            font=ctk.CTkFont(size=22),
-            fg_color=PALETTE["ACCENT"] if self._can_edit else PALETTE["BORDER"],
-            hover_color=PALETTE["ACCENT_HOVER"] if self._can_edit else PALETTE["BORDER"],
-            text_color=PALETTE["WHITE"],
-            command=self._new_locker if self._can_edit else None,
-        ).pack(side="right", padx=8)
 
         # Búsqueda
         sf = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=12, height=48)
@@ -180,11 +170,6 @@ class LockersCatalogScreen(ctk.CTkFrame):
 
     def _open_detail(self, locker_id: int) -> None:
         LockerDetailOverlay(self, locker_id, on_close=self._load)
-
-    def _new_locker(self) -> None:
-        if not self._can_edit:
-            return
-        LockerFormOverlay(self, on_close=self._load)
 
     def on_show(self, **_kwargs) -> None:
         self._load()
@@ -452,88 +437,3 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
 
 # ── Formulario nuevo locker ───────────────────────────────────────────────────
-
-class LockerFormOverlay(ctk.CTkFrame):
-    """Overlay de pantalla completa – compatible con Linux/RPi."""
-
-    def __init__(self, parent, on_close=None):
-        root = parent.winfo_toplevel()
-        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
-        self._on_close = on_close
-        self.place(x=0, y=0, relwidth=1, relheight=1)
-        self.lift()
-
-        self._areas: list[dict] = fetch_all(
-            "SELECT idArea, nombreArea FROM area_lockers ORDER BY nombreArea"
-        )
-        self._unidades: list[dict] = fetch_all(
-            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica ORDER BY nombreUnidadAcademica"
-        )
-        self._area_var   = tk.StringVar()
-        self._unidad_var = tk.StringVar()
-        self._estado_var = tk.StringVar(value="activo")
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        hdr = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], height=64, corner_radius=0)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        ctk.CTkButton(hdr, text="←", width=46, height=46,
-                      font=ctk.CTkFont(size=22, weight="bold"),
-                      fg_color="transparent", hover_color=PALETTE["BORDER"],
-                      text_color=PALETTE["TEXT"],
-                      command=self._close).pack(side="left", padx=8)
-        ctk.CTkLabel(hdr, text="Nuevo Locker",
-                     font=ctk.CTkFont(size=18, weight="bold"),
-                     text_color=PALETTE["TEXT"],
-                     fg_color="transparent").pack(side="left", padx=4)
-
-        frm = ctk.CTkScrollableFrame(self, fg_color=PALETTE["BG"])
-        frm.pack(fill="both", expand=True, padx=14, pady=10)
-
-        def selector(label, var, values):
-            ctk.CTkLabel(frm, text=label, font=ctk.CTkFont(size=12),
-                         text_color=PALETTE["MUTED"],
-                         fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
-            ctk.CTkOptionMenu(frm, variable=var, values=values,
-                              fg_color=PALETTE["CARD"],
-                              button_color=PALETTE["ACCENT"],
-                              button_hover_color=PALETTE["ACCENT_HOVER"],
-                              text_color=PALETTE["TEXT"],
-                              font=ctk.CTkFont(size=15), height=46,
-                              ).pack(fill="x", padx=4)
-
-        area_names   = [a["nombreArea"]             for a in self._areas]
-        unidad_names = [u["nombreUnidadAcademica"]  for u in self._unidades]
-        if area_names:
-            self._area_var.set(area_names[0])
-        if unidad_names:
-            self._unidad_var.set(unidad_names[0])
-
-        selector("Área / Zona",      self._area_var,   area_names or ["—"])
-        selector("Unidad Académica", self._unidad_var, unidad_names or ["—"])
-        selector("Estado",           self._estado_var, ["activo", "inactivo", "mantenimiento"])
-
-        ctk.CTkButton(frm, text="Crear Locker",
-                      font=ctk.CTkFont(size=16, weight="bold"),
-                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
-                      text_color=PALETTE["WHITE"], height=52, corner_radius=12,
-                      command=self._create).pack(fill="x", padx=4, pady=18)
-
-    def _create(self) -> None:
-        area_name   = self._area_var.get()
-        unidad_name = self._unidad_var.get()
-        area_id   = next((a["idArea"]              for a in self._areas   if a["nombreArea"] == area_name),   None)
-        unidad_id = next((u["idUnidadAcademica"]   for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
-        if not area_id or not unidad_id:
-            return
-        execute("""
-            INSERT INTO lockers (idUnidadAcademica, idArea, estado, creadoPor)
-            VALUES (?, ?, ?, 1)
-        """, (unidad_id, area_id, self._estado_var.get()))
-        self._close()
-
-    def _close(self) -> None:
-        if self._on_close:
-            self._on_close()
-        self.destroy()

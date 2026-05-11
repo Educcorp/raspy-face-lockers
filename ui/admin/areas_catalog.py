@@ -15,6 +15,11 @@ from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
 from auth.session import can_edit_catalogs, is_superadmin, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
+from utils.validators import (
+    validate_area_nombre, validate_unidad_nombre, validate_zona,
+    validate_tipo_nombre, limit_var,
+    MAX_AREA_NOMBRE, MAX_UNIDAD_NOMBRE, MAX_ZONA, MAX_TIPO_NOMBRE,
+)
 
 
 # ── Widget genérico de fila de catálogo ──────────────────────────────────────
@@ -286,6 +291,22 @@ class _BaseFormOverlay(ctk.CTkFrame):
         self.scroll = ctk.CTkScrollableFrame(self, fg_color=PALETTE["BG"])
         self.scroll.pack(fill="both", expand=True, padx=14, pady=10)
 
+        # Label de error reutilizable — se muestra antes de los botones de acción
+        self._err_lbl = ctk.CTkLabel(
+            self.scroll, text="",
+            font=ctk.CTkFont(size=13),
+            text_color=PALETTE["DANGER"],
+            fg_color="transparent",
+            wraplength=430, justify="center",
+        )
+        self._err_lbl.pack(pady=(4, 0))
+
+    def _show_err(self, msg: str) -> None:
+        self._err_lbl.configure(text=msg, text_color=PALETTE["DANGER"])
+
+    def _clear_err(self) -> None:
+        self._err_lbl.configure(text="")
+
     def _field(self, label: str) -> ctk.CTkEntry:
         ctk.CTkLabel(self.scroll, text=label, font=ctk.CTkFont(size=12),
                      text_color=PALETTE["MUTED"],
@@ -359,13 +380,16 @@ class AreaFormOverlay(_BaseFormOverlay):
         super().__init__(parent, "Editar Área" if is_edit else "Nueva Área",
                          on_close=on_close)
         self._row = row
-        self.e_nombre = self._field("Nombre del área")
+        self._nombre_var = tk.StringVar()
+        limit_var(self._nombre_var, MAX_AREA_NOMBRE)
+        self.e_nombre = self._field(f"Nombre del área  (máx. {MAX_AREA_NOMBRE} caracteres)")
+        self.e_nombre.configure(textvariable=self._nombre_var)
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
         self._selector("Estado", self._estado_var, ["activo", "inactivo"])
         if is_edit:
-            self.e_nombre.insert(0, row.get("nombreArea", ""))
+            self._nombre_var.set(row.get("nombreArea", ""))
         self._save_btn(self._save)
         if is_edit:
             action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
@@ -373,9 +397,25 @@ class AreaFormOverlay(_BaseFormOverlay):
             self._delete_btn_permanent(self._confirm_delete_area)
 
     def _save(self) -> None:
-        nombre = self.e_nombre.get().strip()
-        if not nombre:
+        nombre = self._nombre_var.get().strip()
+        err = validate_area_nombre(nombre)
+        if err:
+            self._show_err(err)
             return
+
+        # Unicidad: verificar que no exista otra área con el mismo nombre
+        current_id = self._row["idArea"] if self._row else None
+        dup = fetch_one(
+            "SELECT 1 FROM area_lockers WHERE nombreArea=? AND idArea!=? LIMIT 1"
+            if current_id else
+            "SELECT 1 FROM area_lockers WHERE nombreArea=? LIMIT 1",
+            (nombre, current_id) if current_id else (nombre,),
+        )
+        if dup:
+            self._show_err(f"Ya existe un área con el nombre '{nombre}'")
+            return
+
+        self._clear_err()
         if self._row:
             execute(
                 "UPDATE area_lockers SET nombreArea=?, estado=?, "
@@ -433,16 +473,24 @@ class UnidadFormOverlay(_BaseFormOverlay):
                          "Editar Unidad" if is_edit else "Nueva Unidad",
                          on_close=on_close)
         self._row = row
-        self.e_nombre = self._field("Nombre de la unidad académica")
-        self.e_zona   = self._field("Zona (opcional)")
+        self._nombre_var = tk.StringVar()
+        self._zona_var   = tk.StringVar()
+        limit_var(self._nombre_var, MAX_UNIDAD_NOMBRE)
+        limit_var(self._zona_var, MAX_ZONA)
+
+        self.e_nombre = self._field(f"Nombre de la unidad académica  (máx. {MAX_UNIDAD_NOMBRE} caracteres)")
+        self.e_nombre.configure(textvariable=self._nombre_var)
+        self.e_zona = self._field(f"Zona  (opcional, máx. {MAX_ZONA} caracteres)")
+        self.e_zona.configure(textvariable=self._zona_var)
+
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
         self._selector("Estado", self._estado_var, ["activo", "inactivo"])
 
         if is_edit:
-            self.e_nombre.insert(0, row.get("nombreUnidadAcademica", ""))
-            self.e_zona.insert(0,   row.get("zona", "") or "")
+            self._nombre_var.set(row.get("nombreUnidadAcademica", ""))
+            self._zona_var.set(row.get("zona", "") or "")
 
         self._save_btn(self._save)
         if is_edit:
@@ -451,10 +499,33 @@ class UnidadFormOverlay(_BaseFormOverlay):
             self._delete_btn_permanent(self._confirm_delete_unidad)
 
     def _save(self) -> None:
-        nombre = self.e_nombre.get().strip()
-        zona   = self.e_zona.get().strip() or None
-        if not nombre:
+        nombre = self._nombre_var.get().strip()
+        zona   = self._zona_var.get().strip() or None
+
+        err = validate_unidad_nombre(nombre)
+        if err:
+            self._show_err(err)
             return
+
+        if zona:
+            err = validate_zona(zona)
+            if err:
+                self._show_err(err)
+                return
+
+        # Unicidad: nombre de unidad
+        current_id = self._row["idUnidadAcademica"] if self._row else None
+        dup = fetch_one(
+            "SELECT 1 FROM unidad_academica WHERE nombreUnidadAcademica=? AND idUnidadAcademica!=? LIMIT 1"
+            if current_id else
+            "SELECT 1 FROM unidad_academica WHERE nombreUnidadAcademica=? LIMIT 1",
+            (nombre, current_id) if current_id else (nombre,),
+        )
+        if dup:
+            self._show_err(f"Ya existe una unidad con el nombre '{nombre}'")
+            return
+
+        self._clear_err()
         if self._row:
             execute(
                 "UPDATE unidad_academica SET nombreUnidadAcademica=?, zona=?, "
@@ -516,14 +587,17 @@ class TipoFormOverlay(_BaseFormOverlay):
                          "Editar Tipo" if is_edit else "Nuevo Tipo de Usuario",
                          on_close=on_close)
         self._row = row
-        self.e_nombre = self._field("Nombre del tipo de usuario")
+        self._nombre_var = tk.StringVar()
+        limit_var(self._nombre_var, MAX_TIPO_NOMBRE)
+        self.e_nombre = self._field(f"Nombre del tipo de usuario  (máx. {MAX_TIPO_NOMBRE} caracteres)")
+        self.e_nombre.configure(textvariable=self._nombre_var)
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
         self._selector("Estado", self._estado_var, ["activo", "inactivo"])
 
         if is_edit:
-            self.e_nombre.insert(0, row.get("nombreTipoUsuario", ""))
+            self._nombre_var.set(row.get("nombreTipoUsuario", ""))
 
         self._save_btn(self._save)
         if is_edit:
@@ -534,8 +608,10 @@ class TipoFormOverlay(_BaseFormOverlay):
                 self._delete_btn_permanent(self._confirm_delete_tipo)
 
     def _save(self) -> None:
-        nombre = self.e_nombre.get().strip()
-        if not nombre:
+        nombre = self._nombre_var.get().strip()
+        err = validate_tipo_nombre(nombre)
+        if err:
+            self._show_err(err)
             return
         current_name = (self._row.get("nombreTipoUsuario") if self._row else "") or ""
         current_role = normalize_user_type_name(current_name)
@@ -552,6 +628,20 @@ class TipoFormOverlay(_BaseFormOverlay):
                     "No se puede deshabilitar un tipo de usuario crítico (Superadmin/Admin).",
                 )
                 return
+
+        # Unicidad: nombre de tipo de usuario
+        current_id = self._row["idTipoUsuario"] if self._row else None
+        dup = fetch_one(
+            "SELECT 1 FROM tipo_usuarios WHERE nombreTipoUsuario=? AND idTipoUsuario!=? LIMIT 1"
+            if current_id else
+            "SELECT 1 FROM tipo_usuarios WHERE nombreTipoUsuario=? LIMIT 1",
+            (nombre, current_id) if current_id else (nombre,),
+        )
+        if dup:
+            self._show_err(f"Ya existe un tipo de usuario con el nombre '{nombre}'")
+            return
+
+        self._clear_err()
         if self._row:
             execute(
                 "UPDATE tipo_usuarios SET nombreTipoUsuario=?, estado=?, "

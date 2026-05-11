@@ -257,6 +257,65 @@ def authenticate_user_by_pin(matricula: str, pin: str) -> dict | None:
     return row
 
 
+# ── Verificaciones de unicidad ────────────────────────────────────────────────
+
+def email_exists(email: str, exclude_user_id: int | None = None) -> bool:
+    """Devuelve True si el correo ya está registrado (excluye al usuario indicado)."""
+    if exclude_user_id is not None:
+        row = fetch_one(
+            "SELECT 1 FROM usuarios WHERE emailInst=? AND idUsuario!=? LIMIT 1",
+            (email.strip(), exclude_user_id),
+        )
+    else:
+        row = fetch_one(
+            "SELECT 1 FROM usuarios WHERE emailInst=? LIMIT 1",
+            (email.strip(),),
+        )
+    return row is not None
+
+
+def matricula_exists(matricula: int | str, exclude_user_id: int | None = None) -> bool:
+    """Devuelve True si la matrícula ya está registrada (excluye al usuario indicado)."""
+    if exclude_user_id is not None:
+        row = fetch_one(
+            "SELECT 1 FROM usuarios WHERE matricula=? AND idUsuario!=? LIMIT 1",
+            (int(matricula), exclude_user_id),
+        )
+    else:
+        row = fetch_one(
+            "SELECT 1 FROM usuarios WHERE matricula=? LIMIT 1",
+            (int(matricula),),
+        )
+    return row is not None
+
+
+def nombre_completo_exists(
+    nombre: str,
+    ap_paterno: str,
+    ap_materno: str | None = None,
+    exclude_user_id: int | None = None,
+) -> bool:
+    """Devuelve True si ya existe un usuario con el mismo nombre completo exacto."""
+    if ap_materno:
+        sql = (
+            "SELECT 1 FROM usuarios "
+            "WHERE nombre=? AND apPaterno=? AND apMaterno=?"
+        )
+        params: tuple = (nombre, ap_paterno, ap_materno)
+    else:
+        sql = (
+            "SELECT 1 FROM usuarios "
+            "WHERE nombre=? AND apPaterno=? AND (apMaterno IS NULL OR apMaterno='')"
+        )
+        params = (nombre, ap_paterno)
+
+    if exclude_user_id is not None:
+        sql += " AND idUsuario!=?"
+        params += (exclude_user_id,)
+    sql += " LIMIT 1"
+    return fetch_one(sql, params) is not None
+
+
 def threshold_for_model(model_prefix: Optional[str]) -> float:
     """Umbral de distancia euclidiana según modelo de embedding."""
     if (model_prefix or "").startswith("fallback"):

@@ -648,39 +648,23 @@ class _Step4FaceCapture(ctk.CTkFrame):
     def _start_camera(self) -> None:
         if self._camera_running:
             return
+        # Esperar a que un hilo anterior haya terminado
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=3.0)
+        self._camera_thread = None
         if not _CV2_AVAILABLE:
             self.lbl_status.configure(text="(!) OpenCV no instalado")
             return
         try:
             from core.face_recognition import FaceRecognitionManager
             self._face_mgr = FaceRecognitionManager()
-            if not self._face_mgr.initialize():
-                self.lbl_status.configure(text="✗ Cámara no disponible",
-                                          text_color=PALETTE["DANGER"])
-                self._face_mgr = None
-                return
-            if not self._face_mgr.embedding_extractor.is_ready:
-                self.lbl_status.configure(text="✗ Extractor facial no disponible",
-                                          text_color=PALETTE["DANGER"])
-                self.lbl_progress.configure(text="Instala dlib + modelos para registrar rostros",
-                                            text_color=PALETTE["DANGER"])
-                self._face_mgr.release()
-                self._face_mgr = None
-                return
-            self._embedding_mode = (
-                "dlib" if getattr(self._face_mgr.embedding_extractor, "uses_dlib", False)
-                else "fallback"
-            )
-            if self._embedding_mode == "fallback":
-                self.lbl_progress.configure(
-                    text="Modo básico: sin modelos dlib. Usa buena iluminación.",
-                    text_color="#FFD54F",
-                )
         except Exception as exc:
-            logger.error(f"Error al inicializar cámara: {exc}", exc_info=True)
+            logger.error(f"Error al crear FaceRecognitionManager: {exc}", exc_info=True)
             self.lbl_status.configure(text=f"(!) Error: {str(exc)[:60]}")
             return
 
+        # La inicialización real (con reintentos) ocurre dentro del hilo
+        # para no bloquear el hilo principal de la UI.
         self._camera_running = True
         self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
         self._camera_thread.start()
@@ -688,6 +672,11 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
     def stop_camera(self) -> None:
         self._camera_running = False
+        # Esperar a que el hilo termine antes de liberar la cámara
+        # para evitar destruir el hardware mientras el hilo lo está usando.
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=3.0)
+        self._camera_thread = None
         if self._face_mgr is not None:
             try:
                 self._face_mgr.release()
@@ -699,6 +688,62 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
     def _camera_loop(self) -> None:
         import time
+
+        # ── Inicializar con reintentos (igual que ScanningScreen) ────────────
+        if self._face_mgr and not self._face_mgr.initialized:
+            init_ok = False
+            for attempt in range(1, 4):
+                if not self._camera_running:
+                    return
+                if self._face_mgr and self._face_mgr.initialize():
+                    init_ok = True
+                    break
+                logger.warning("Inicialización de cámara (registro) falló (intento %d/3)", attempt)
+                try:
+                    if self._face_mgr:
+                        self._face_mgr.release()
+                except Exception:
+                    pass
+                from core.face_recognition import FaceRecognitionManager
+                self._face_mgr = FaceRecognitionManager()
+                time.sleep(0.35 * attempt)
+
+            if not init_ok:
+                self.after(0, lambda: self.lbl_status.configure(
+                    text="✗ Cámara no disponible", text_color=PALETTE["DANGER"]
+                ))
+                self._camera_running = False
+                return
+
+            if not self._face_mgr.embedding_extractor.is_ready:
+                self.after(0, lambda: (
+                    self.lbl_status.configure(
+                        text="✗ Extractor facial no disponible",
+                        text_color=PALETTE["DANGER"],
+                    ),
+                    self.lbl_progress.configure(
+                        text="Instala dlib + modelos para registrar rostros",
+                        text_color=PALETTE["DANGER"],
+                    ),
+                ))
+                try:
+                    self._face_mgr.release()
+                except Exception:
+                    pass
+                self._face_mgr = None
+                self._camera_running = False
+                return
+
+            self._embedding_mode = (
+                "dlib" if getattr(self._face_mgr.embedding_extractor, "uses_dlib", False)
+                else "fallback"
+            )
+            if self._embedding_mode == "fallback":
+                self.after(0, lambda: self.lbl_progress.configure(
+                    text="Modo básico: sin modelos dlib. Usa buena iluminación.",
+                    text_color="#FFD54F",
+                ))
+
         while self._camera_running:
             try:
                 if self._face_mgr is None:

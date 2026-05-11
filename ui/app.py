@@ -35,6 +35,9 @@ class LockerApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
 
+        self._mode = "light"           # requerido por LoginScreen para el toggle de tema
+        self._admin_frames_built = False
+
         # ── Ventana ───────────────────────────────────────────────────────────
         self.title("Smart Locker")
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
@@ -75,6 +78,43 @@ class LockerApp(ctk.CTk):
         frame.tkraise()
         if hasattr(frame, "on_show"):
             frame.on_show()
+
+    # ── Admin bridge ─────────────────────────────────────────────────────────
+
+    def ensure_admin_frames(self) -> None:
+        """Registra las pantallas del panel admin la primera vez que se necesitan."""
+        if self._admin_frames_built:
+            return
+        from ui.admin.login_screen      import LoginScreen
+        from ui.admin.dashboard         import DashboardScreen
+        from ui.admin.users_catalog     import UsersCatalogScreen
+        from ui.admin.lockers_catalog   import LockersCatalogScreen
+        from ui.admin.areas_catalog     import AreasCatalogScreen
+        from ui.admin.locker_assignment import LockerAssignmentScreen
+        from ui.admin.register_user     import RegisterUserScreen
+        for FrameClass in (
+            LoginScreen, DashboardScreen, UsersCatalogScreen,
+            LockersCatalogScreen, AreasCatalogScreen,
+            LockerAssignmentScreen, RegisterUserScreen,
+        ):
+            frame = FrameClass(parent=self, controller=self)
+            self._frames[FrameClass] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+        self._admin_frames_built = True
+
+    def toggle_theme(self) -> None:
+        """No-op: la pantalla de locker usa un único tema."""
+        pass
+
+    def on_login_success(self) -> None:
+        from ui.admin.dashboard import DashboardScreen
+        self.show_frame(DashboardScreen)
+
+    def logout(self) -> None:
+        from auth.session import clear_session
+        from ui.locker_screen.standby_screen import StandbyScreen
+        clear_session()
+        self.show_frame(StandbyScreen)
 
     def show_user(self, user_data: dict) -> None:
         """

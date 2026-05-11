@@ -180,18 +180,50 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back = ctk.CTkButton(
             self,
             text="←",
-            font=ctk.CTkFont(size=40, weight="bold"),
+            font=ctk.CTkFont(size=22, weight="bold"),
             fg_color="transparent",
             bg_color="transparent",
             hover_color="#CCCCCC",
             text_color="#FFFFFF",
-            border_width=3,
+            border_width=2,
             border_color="#FFFFFF",
-            width=72, height=72,
-            corner_radius=16,
+            width=48, height=48,
+            corner_radius=12,
             command=self._go_standby,
         )
-        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_back.place(x=60, rely=0.94, anchor="center")
+
+        # ── Botón de acceso a panel admin (icono de perfil, top-right) ────────
+        _admin_icon_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "assets", "icons", "icon_persona_blanco.png"
+        )
+        self._admin_icon_img = None
+        try:
+            if os.path.exists(_admin_icon_path):
+                _img = Image.open(_admin_icon_path)
+                self._admin_icon_img = ctk.CTkImage(
+                    light_image=_img, dark_image=_img, size=(22, 22)
+                )
+        except Exception:
+            pass
+
+        self.btn_admin = ctk.CTkButton(
+            self,
+            text="" if self._admin_icon_img else "⚙",
+            image=self._admin_icon_img,
+            font=ctk.CTkFont(size=14),
+            fg_color="#2A2A4E",
+            bg_color="transparent",
+            hover_color="#3A3A6E",
+            text_color="#FFFFFF",
+            border_width=1,
+            border_color="#5B8C5A",
+            width=38, height=38,
+            corner_radius=10,
+            command=self._go_admin_login,
+        )
+        self.btn_admin.place(x=452, y=44, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
         # Contenedor con fondo oscuro para overlay modal
@@ -432,11 +464,9 @@ class ScanningScreen(ctk.CTkFrame):
             logger.error(f"Error en camera loop: {e}")
             self.after(0, self._show_camera_error, f"Error crítico: {str(e)}")
         finally:
-            if self.face_manager:
-                try:
-                    self.face_manager.release()
-                except:
-                    pass
+            # NO liberar la cámara aquí: on_hide() lo hace después de que
+            # el hilo termina, evitando la condición de carrera donde este
+            # finally destruye la cámara que ya re-inicializó un hilo nuevo.
             logger.info(f"Camera loop finalizado. Total: {frame_count}")
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
@@ -567,8 +597,9 @@ class ScanningScreen(ctk.CTkFrame):
                 self.canvas.delete("all")
                 self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
                 self.canvas.image = self._photo_image
-                # Mantener el botón de regreso encima del canvas en todo momento
+                # Mantener botones encima del canvas en todo momento
                 self.btn_back.lift()
+                self.btn_admin.lift()
 
                 # Actualizar barra de progreso y mensajes de estado
                 if not self._success_shown:
@@ -623,8 +654,16 @@ class ScanningScreen(ctk.CTkFrame):
         self.overlay_bg.place_forget()
         self._hide_pin_overlay()
         self._hide_lock_overlay()
-        self.btn_back.place(x=80, rely=0.94, anchor="center")
+        self.btn_back.place(x=60, rely=0.94, anchor="center")
         self.btn_back.lift()
+        self.btn_admin.place(x=452, y=44, anchor="center")
+        self.btn_admin.lift()
+
+        # Esperar a que un hilo anterior haya terminado antes de iniciar uno nuevo.
+        # Esto evita tener dos hilos de cámara activos al mismo tiempo.
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=3.0)
+        self._camera_thread = None
 
         if not self._camera_running:
             self._camera_running = True
@@ -637,8 +676,20 @@ class ScanningScreen(ctk.CTkFrame):
     def on_hide(self) -> None:
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
-        if self._camera_thread:
-            self._camera_thread.join(timeout=2.0)
+
+        # Esperar a que el hilo del camera loop termine completamente
+        # antes de liberar la cámara para evitar la condición de carrera.
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=3.0)
+        self._camera_thread = None
+
+        # Liberar la cámara una vez que el hilo ya no la usa.
+        if self.face_manager and self.face_manager.initialized:
+            try:
+                self.face_manager.release()
+            except Exception as e:
+                logger.warning("Error liberando cámara en on_hide: %s", e)
+
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None
@@ -674,6 +725,7 @@ class ScanningScreen(ctk.CTkFrame):
         # Centrar el cuadro verde dentro del overlay
         self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
         self.btn_back.place_forget()
+        self.btn_admin.place_forget()
 
         # Iniciar countdown
         self._start_countdown(self.DISPLAY_SECONDS)
@@ -715,6 +767,15 @@ class ScanningScreen(ctk.CTkFrame):
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
+
+    def _go_admin_login(self) -> None:
+        # Detener reconocimiento ANTES de construir los frames de admin
+        # para evitar que una detección en vuelo abra el locker.
+        self._camera_running = False
+        from ui.admin.login_screen import LoginScreen
+        if hasattr(self.controller, "ensure_admin_frames"):
+            self.controller.ensure_admin_frames()
+        self.controller.show_frame(LoginScreen)
 
     def _reset_liveness_state(self) -> None:
         self._liveness_passed = False
@@ -1112,7 +1173,7 @@ class ScanningScreen(ctk.CTkFrame):
 
         locker_id = result.get("idLocker")
         if locker_id:
-            locker_service.open_locker(locker_id)
+            threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
         else:
             logger.info("PIN auth: usuario id=%s sin locker asignado", result.get("idUsuario"))
 
@@ -1228,8 +1289,10 @@ class ScanningScreen(ctk.CTkFrame):
             return None
 
         locker_id = matched.get("idLocker")
-        if locker_id:
-            locker_service.open_locker(locker_id)
+        if locker_id and self._camera_running:
+            threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
+        elif locker_id:
+            logger.info("Reconocimiento completado pero cámara detenida — locker no abierto")
         else:
             logger.info("Usuario id=%s autenticado pero sin locker asignado", matched.get("idUsuario"))
 

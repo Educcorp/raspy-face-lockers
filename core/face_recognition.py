@@ -596,7 +596,7 @@ class CameraManager:
         """Libera la cámara completa y resetea el estado."""
         with self._lock:
             logger.info("Liberando cámara...")
-            
+
             try:
                 if self.cam is not None:
                     try:
@@ -604,7 +604,16 @@ class CameraManager:
                         logger.debug("✓ Cámara detenida")
                     except Exception as e:
                         logger.debug(f"Error deteniendo cámara: {e}")
-                    
+
+                    # close() libera el file descriptor del dispositivo; sin esto
+                    # picamera2 mantiene la cámara "abierta" y el siguiente
+                    # Picamera2() falla al intentar abrirla de nuevo.
+                    try:
+                        self.cam.close()
+                        logger.debug("✓ Cámara cerrada (fd liberado)")
+                    except Exception as e:
+                        logger.debug(f"Error cerrando cámara: {e}")
+
                     try:
                         del self.cam
                         logger.debug("✓ Instancia de cámara eliminada")
@@ -616,8 +625,11 @@ class CameraManager:
                 self.initialized = False
                 self.cam = None
                 logger.info("✓ Cámara completamente liberada")
-        
-        # CRÍTICO: Reset global singleton después de liberar
+
+        # Pausa breve para que el kernel procese el cierre antes del próximo init
+        time.sleep(0.2)
+
+        # Reset global singleton después de liberar
         global _camera_manager
         _camera_manager = None
         logger.info("✓ Singleton global resetado")

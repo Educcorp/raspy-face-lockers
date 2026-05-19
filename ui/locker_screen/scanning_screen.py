@@ -410,11 +410,31 @@ class ScanningScreen(ctk.CTkFrame):
                 now = time.time()
 
                 if faces:
+                    face_box = faces[0].get("box")
+
+                    # Detectar cambio de cara: múltiples caras simultáneas o salto brusco
+                    face_switched = len(faces) > 1
+                    if not face_switched and face_box and self._last_seen_face_box:
+                        prev = self._last_seen_face_box
+                        prev_cx = prev[0] + prev[2] * 0.5
+                        prev_cy = prev[1] + prev[3] * 0.5
+                        curr_cx = face_box[0] + face_box[2] * 0.5
+                        curr_cy = face_box[1] + face_box[3] * 0.5
+                        dist = np.sqrt((curr_cx - prev_cx) ** 2 + (curr_cy - prev_cy) ** 2)
+                        frame_w = max(frame.shape[1], 1)
+                        if dist / frame_w > 0.15:
+                            face_switched = True
+
+                    if face_switched:
+                        self._stable_face_frames = 0
+                        self._face_first_seen_ts = 0.0
+                        self._scan_progress_pct = 0
+                        self._reset_liveness_state()
+
                     if self._stable_face_frames == 0:
-                        # Primera vez que aparece el rostro en esta sesión
                         self._face_first_seen_ts = now
                     self._stable_face_frames += 1
-                    self._last_seen_face_box = faces[0].get("box")
+                    self._last_seen_face_box = face_box
                     if self._last_seen_face_box:
                         self._update_liveness(frame, self._last_seen_face_box)
                 else:
@@ -480,7 +500,7 @@ class ScanningScreen(ctk.CTkFrame):
             scale = min(self.WIN_W / w, self.WIN_H / h)
             new_w = int(w * scale)
             new_h = int(h * scale)
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
             # Centrar en lienzo negro
             canvas_arr = np.zeros((self.WIN_H, self.WIN_W, 3), dtype=np.uint8)
@@ -524,13 +544,10 @@ class ScanningScreen(ctk.CTkFrame):
             draw.line([(x2,      y2 - cl), (x2, y2)], fill=box_color, width=lw)
             draw.line([(x2 - cl, y2), (x2,      y2)], fill=box_color, width=lw)
 
-            ppm_path = "/tmp/locker_scan.ppm"
             try:
-                pil_image.save(ppm_path, "PPM")
-                self._photo_image = tkinter.PhotoImage(file=ppm_path)
-                self.after(0, self._set_camera_image)
+                self.after(0, self._set_camera_image, pil_image.copy())
             except Exception as e:
-                logger.warning(f"Error creando PhotoImage: {e}")
+                logger.warning(f"Error enviando frame al display: {e}")
 
         except Exception as e:
             logger.error(f"Error actualizando display: {e}")
@@ -590,45 +607,45 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_back.place(x=80, rely=0.94, anchor="center")
 
 
-    def _set_camera_image(self) -> None:
-        """Pone la imagen en el canvas (main thread)."""
+    def _set_camera_image(self, pil_img: "Image.Image") -> None:
+        """Recibe imagen PIL y la muestra en el canvas. Siempre corre en el main thread."""
         try:
-            if self._photo_image is not None:
-                self.canvas.delete("all")
-                self.canvas.create_image(0, 0, anchor="nw", image=self._photo_image)
-                self.canvas.image = self._photo_image
-                # Mantener botones encima del canvas en todo momento
-                self.btn_back.lift()
-                self.btn_admin.lift()
+            from PIL import ImageTk
+            photo = ImageTk.PhotoImage(pil_img)
+            self._photo_image = photo  # mantener referencia para evitar GC
+            self.canvas.delete("all")
+            self.canvas.create_image(0, 0, anchor="nw", image=photo)
+            self.canvas.image = photo
+            self.btn_back.lift()
+            self.btn_admin.lift()
 
-                # Actualizar barra de progreso y mensajes de estado
-                if not self._success_shown:
-                    if self._face_detected:
-                        if self._liveness_passed:
-                            pct = self._scan_progress_pct
-                            self.scan_progress_bar.set(pct / 100)
-                            if pct >= 100:
-                                self.lbl_status.configure(
-                                    text="IDENTIFICANDO...",
-                                    text_color="#A5D6A7",
-                                )
-                            else:
-                                self.lbl_status.configure(
-                                    text=f"ESCANEANDO...  {pct}%",
-                                    text_color="#FFD54F",
-                                )
-                        else:
-                            self.scan_progress_bar.set(0)
+            if not self._success_shown:
+                if self._face_detected:
+                    if self._liveness_passed:
+                        pct = self._scan_progress_pct
+                        self.scan_progress_bar.set(pct / 100)
+                        if pct >= 100:
                             self.lbl_status.configure(
-                                text="Mueve ligeramente tu rostro",
+                                text="IDENTIFICANDO...",
+                                text_color="#A5D6A7",
+                            )
+                        else:
+                            self.lbl_status.configure(
+                                text=f"ESCANEANDO...  {pct}%",
                                 text_color="#FFD54F",
                             )
                     else:
                         self.scan_progress_bar.set(0)
                         self.lbl_status.configure(
-                            text="Posiciona tu rostro en el encuadre",
-                            text_color="#FFFFFF",
+                            text="Mueve ligeramente tu rostro",
+                            text_color="#FFD54F",
                         )
+                else:
+                    self.scan_progress_bar.set(0)
+                    self.lbl_status.configure(
+                        text="Posiciona tu rostro en el encuadre",
+                        text_color="#FFFFFF",
+                    )
         except Exception as e:
             logger.error(f"Error mostrando imagen: {e}")
 

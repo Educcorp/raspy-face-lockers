@@ -141,7 +141,8 @@ class RegisterUserScreen(ctk.CTkFrame):
             from ui.admin.dashboard import DashboardScreen
             self.controller.show_frame(DashboardScreen)
             return
-        self._reregister_user_id = None
+        if self._reregister_user_id is not None:
+            return  # start_reregister ya configuró el paso correcto
         self._data = {}
         self._goto_step(0)
 

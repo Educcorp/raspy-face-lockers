@@ -1089,6 +1089,7 @@ class ScanningScreen(ctk.CTkFrame):
     def _show_pin_overlay(self) -> None:
         if self._success_shown:
             return
+        self._camera_running = False  # detener reconocimiento mientras se usa el PIN
         self._pin_state = "matricula"
         self._pin_matricula = ""
         self._pin_code = ""

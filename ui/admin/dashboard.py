@@ -15,53 +15,55 @@ Catálogos:
 
 import customtkinter as ctk
 from database.connection import fetch_one
+from core.i18n import t, register_observer, unregister_observer
 from ui.admin_app import PALETTE, get_icon
+from ui.components.language_button import LanguageToggleButton
 from auth.session import can_create_users, get_current_full_name, get_current_role_label
 
 
-# Catálogos con ícono, nombre, consulta SQL de conteo y pantalla destino
+# Catálogos con ícono, claves i18n, consulta SQL de conteo y pantalla destino
 _CATALOGS = [
     {
-        "icon":   "USR",
-        "label":  "Usuarios",
-        "hint":   "Gestión de cuentas",
-        "sql":    "SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'",
-        "target": "UsersCatalogScreen",
+        "icon":       "USR",
+        "label_key":  "dash_users",
+        "hint_key":   "dash_accounts",
+        "sql":        "SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'",
+        "target":     "UsersCatalogScreen",
     },
     {
-        "icon":   "LCK",
-        "label":  "Lockers",
-        "hint":   "Inventario físico",
-        "sql":    "SELECT COUNT(*) AS n FROM lockers",
-        "target": "LockersCatalogScreen",
+        "icon":       "LCK",
+        "label_key":  "dash_lockers",
+        "hint_key":   "dash_inventory",
+        "sql":        "SELECT COUNT(*) AS n FROM lockers",
+        "target":     "LockersCatalogScreen",
     },
     {
-        "icon":   "ZNA",
-        "label":  "Áreas / Zonas",
-        "hint":   "Ubicación por zona",
-        "sql":    "SELECT COUNT(*) AS n FROM area_lockers",
-        "target": "AreasCatalogScreen",
+        "icon":       "ZNA",
+        "label_key":  "dash_areas",
+        "hint_key":   "dash_location",
+        "sql":        "SELECT COUNT(*) AS n FROM area_lockers",
+        "target":     "AreasCatalogScreen",
     },
     {
-        "icon":   "UND",
-        "label":  "Unidades Acad.",
-        "hint":   "Facultades y escuelas",
-        "sql":    "SELECT COUNT(*) AS n FROM unidad_academica WHERE estado='activo'",
-        "target": "AreasCatalogScreen",   # misma pantalla, tab diferente
+        "icon":       "UND",
+        "label_key":  "dash_academic",
+        "hint_key":   "dash_faculties",
+        "sql":        "SELECT COUNT(*) AS n FROM unidad_academica WHERE estado='activo'",
+        "target":     "AreasCatalogScreen",   # misma pantalla, tab diferente
     },
     {
-        "icon":   "TIP",
-        "label":  "Tipos Usuario",
-        "hint":   "Roles del sistema",
-        "sql":    "SELECT COUNT(*) AS n FROM tipo_usuarios WHERE estado='activo'",
-        "target": "AreasCatalogScreen",
+        "icon":       "TIP",
+        "label_key":  "dash_user_types",
+        "hint_key":   "dash_roles",
+        "sql":        "SELECT COUNT(*) AS n FROM tipo_usuarios WHERE estado='activo'",
+        "target":     "AreasCatalogScreen",
     },
     {
-        "icon":   "ASG",
-        "label":  "Asignaciones",
-        "hint":   "Lockers en uso",
-        "sql":    "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'",
-        "target": "LockerAssignmentScreen",
+        "icon":       "ASG",
+        "label_key":  "dash_assignments",
+        "hint_key":   "dash_in_use",
+        "sql":        "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'",
+        "target":     "LockerAssignmentScreen",
     },
 ]
 
@@ -100,7 +102,7 @@ class _CatalogCard(ctk.CTkFrame):
         body.grid_rowconfigure(1, weight=1)
         body.grid_rowconfigure(2, weight=0)
 
-        ctk.CTkLabel(
+        self.lbl_label = ctk.CTkLabel(
             body,
             text=label,
             font=ctk.CTkFont(size=17, weight="bold"),
@@ -109,9 +111,10 @@ class _CatalogCard(ctk.CTkFrame):
             justify="left",
             anchor="w",
             wraplength=150,
-        ).grid(row=0, column=0, sticky="ew")
+        )
+        self.lbl_label.grid(row=0, column=0, sticky="ew")
 
-        ctk.CTkLabel(
+        self.lbl_hint = ctk.CTkLabel(
             body,
             text=hint,
             font=ctk.CTkFont(size=11),
@@ -120,7 +123,8 @@ class _CatalogCard(ctk.CTkFrame):
             justify="left",
             anchor="w",
             wraplength=150,
-        ).grid(row=1, column=0, sticky="nw", pady=(5, 0))
+        )
+        self.lbl_hint.grid(row=1, column=0, sticky="nw", pady=(5, 0))
 
         self.lbl_count = ctk.CTkLabel(
             body, text=str(count),
@@ -130,13 +134,14 @@ class _CatalogCard(ctk.CTkFrame):
         )
         self.lbl_count.grid(row=2, column=0, sticky="w", pady=(8, 0))
 
-        ctk.CTkLabel(
+        self.lbl_active = ctk.CTkLabel(
             body,
-            text="Registros activos",
+            text=t("dash_active_records"),
             font=ctk.CTkFont(size=11),
             fg_color="transparent",
             text_color=PALETTE["MUTED"],
-        ).grid(row=3, column=0, sticky="w", pady=(1, 0))
+        )
+        self.lbl_active.grid(row=3, column=0, sticky="w", pady=(1, 0))
 
         # Binding táctil en todos los widgets hijo
         self.bind("<Button-1>", self._clicked)
@@ -158,6 +163,10 @@ class _CatalogCard(ctk.CTkFrame):
     def set_count(self, n: int):
         self.lbl_count.configure(text=str(n))
 
+    def update_labels(self, label: str, hint: str) -> None:
+        self.lbl_label.configure(text=label)
+        self.lbl_hint.configure(text=hint)
+
     def _on_enter(self, _event=None):
         self.configure(fg_color=self._hover_fg)
 
@@ -172,7 +181,32 @@ class DashboardScreen(ctk.CTkFrame):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller = controller
         self._cards: list[_CatalogCard] = []
+        self._lang_reg: list = []
+        register_observer(self._on_lang_change)
         self._build_ui()
+
+    def _reg(self, widget, key: str, **kwargs) -> None:
+        self._lang_reg.append((widget, key, kwargs))
+        widget.configure(text=t(key, **kwargs))
+
+    def _on_lang_change(self) -> None:
+        for widget, key, kwargs in self._lang_reg:
+            try:
+                if widget.winfo_exists():
+                    widget.configure(text=t(key, **kwargs))
+            except Exception:
+                pass
+        # Update card labels/hints
+        for card, cat in zip(self._cards, _CATALOGS):
+            try:
+                if card.winfo_exists():
+                    card.update_labels(t(cat["label_key"]), t(cat["hint_key"]))
+            except Exception:
+                pass
+
+    def destroy(self) -> None:
+        unregister_observer(self._on_lang_change)
+        super().destroy()
 
     # ── Construcción ──────────────────────────────────────────────────────────
 
@@ -271,6 +305,14 @@ class DashboardScreen(ctk.CTkFrame):
             command=self._confirm_logout,
         ).pack(side="right", padx=(0, 6), pady=10)
 
+        # ── Botón de idioma en el header ──────────────────────────────────────
+        LanguageToggleButton(
+            header,
+            text_color=PALETTE["TEXT"],
+            border_color=PALETTE["BORDER"],
+            hover_color=PALETTE["BORDER"],
+        ).pack(side="right", padx=(0, 6), pady=10)
+
         # ── Resumen operativo ───────────────────────────────────────────────
         summary = ctk.CTkFrame(
             self,
@@ -307,13 +349,15 @@ class DashboardScreen(ctk.CTkFrame):
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
         ).pack(anchor="w", padx=10, pady=(5, 0))
-        ctk.CTkLabel(
+        lbl_modules = ctk.CTkLabel(
             left_metric,
-            text="Módulos disponibles",
+            text=t("dash_modules"),
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=10, pady=(0, 6))
+        )
+        lbl_modules.pack(anchor="w", padx=10, pady=(0, 6))
+        self._lang_reg.append((lbl_modules, "dash_modules", {}))
 
         right_metric = ctk.CTkFrame(
             summary,
@@ -332,19 +376,21 @@ class DashboardScreen(ctk.CTkFrame):
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
         ).pack(anchor="w", padx=10, pady=(5, 0))
-        ctk.CTkLabel(
+        lbl_total = ctk.CTkLabel(
             right_metric,
-            text="Registros activos totales",
+            text=t("dash_total_records"),
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=10, pady=(0, 6))
+        )
+        lbl_total.pack(anchor="w", padx=10, pady=(0, 6))
+        self._lang_reg.append((lbl_total, "dash_total_records", {}))
 
         # ── Botón destacado: Registrar Usuario ────────────────────────────────
         can_register = can_create_users()
         reg_btn = ctk.CTkButton(
             self,
-            text="+  Registrar Usuario",
+            text=t("dash_register_user"),
             font=ctk.CTkFont(size=18, weight="bold"),
             fg_color=PALETTE["ACCENT"] if can_register else PALETTE["BORDER"],
             hover_color=PALETTE.get("ACCENT_HOVER", PALETTE["ACCENT"]) if can_register else PALETTE["BORDER"],
@@ -354,14 +400,17 @@ class DashboardScreen(ctk.CTkFrame):
             command=self._go_register if can_register else None,
         )
         reg_btn.pack(fill="x", padx=18, pady=(0, 8))
+        self._lang_reg.append((reg_btn, "dash_register_user", {}))
 
         # ── Sección catálogos ─────────────────────────────────────────────────
-        ctk.CTkLabel(
-            self, text="Catálogos",
+        lbl_catalogs = ctk.CTkLabel(
+            self, text=t("dash_catalogs"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=22, pady=(0, 4))
+        )
+        lbl_catalogs.pack(anchor="w", padx=22, pady=(0, 4))
+        self._lang_reg.append((lbl_catalogs, "dash_catalogs", {}))
 
         # Grid 2×3 de tarjetas
         grid_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -382,8 +431,8 @@ class DashboardScreen(ctk.CTkFrame):
 
             card = _CatalogCard(
                 grid_frame,
-                label=cat["label"],
-                hint=cat["hint"],
+                label=t(cat["label_key"]),
+                hint=t(cat["hint_key"]),
                 count=count,
                 on_click=make_callback(),
             )
@@ -422,7 +471,6 @@ class DashboardScreen(ctk.CTkFrame):
     def _confirm_logout(self) -> None:
         _LogoutConfirmDialog(
             self,
-            message="Estás a punto de cerrar sesión. ¿Deseas continuar?",
             on_confirm=self.controller.logout,
         )
 
@@ -438,7 +486,7 @@ class DashboardScreen(ctk.CTkFrame):
 class _LogoutConfirmDialog(ctk.CTkFrame):
     """Confirmación superpuesta dentro del panel (sin abrir ventana externa)."""
 
-    def __init__(self, parent, message: str, on_confirm):
+    def __init__(self, parent, on_confirm):
         root = parent.winfo_toplevel()
         super().__init__(
             root,
@@ -475,7 +523,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text="Cerrar sesión",
+            text=t("dash_logout"),
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
@@ -483,7 +531,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text=message,
+            text=t("dash_logout_confirm"),
             font=ctk.CTkFont(size=14),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
@@ -493,7 +541,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text="Si eliges No, continuarás con la sesión activa.",
+            text=t("dash_logout_detail"),
             font=ctk.CTkFont(size=12),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -509,7 +557,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_row,
-            text="No",
+            text=t("dash_logout_no"),
             height=48,
             fg_color=PALETTE["BORDER"],
             hover_color=PALETTE["MUTED"],
@@ -530,7 +578,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_row,
-            text="Sí",
+            text=t("dash_logout_yes"),
             height=48,
             fg_color=PALETTE["DANGER"],
             hover_color="#922b21",

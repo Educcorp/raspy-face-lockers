@@ -26,6 +26,7 @@ from PIL import Image, ImageDraw
 
 from database.connection import fetch_all, fetch_one
 from services import user_service
+from core.i18n import t
 from ui.admin_app import PALETTE
 from auth.session import can_create_users, filter_assignable_user_types
 from utils.validators import (
@@ -70,7 +71,6 @@ class RegisterUserScreen(ctk.CTkFrame):
         self._step_frames: list[ctk.CTkFrame] = []
         self._current_step = 0  # Initialize to avoid AttributeError
         self._data: dict = {}  # datos recopilados a lo largo del wizard
-        self._reregister_user_id: int | None = None
         self._build_wizard()
 
     # ── Construcción ──────────────────────────────────────────────────────────
@@ -117,22 +117,11 @@ class RegisterUserScreen(ctk.CTkFrame):
         if self._current_step > 0:
             self._goto_step(self._current_step - 1)
 
-    def start_reregister(self, user_id: int, nombre: str) -> None:
-        """Inicia el wizard en modo re-registro de rostro para un usuario existente."""
-        self._reregister_user_id = user_id
-        self._data = {"reregister": True, "nombre": nombre, "user_id": user_id}
-        self._goto_step(3)
-
     def finish(self) -> None:
-        """Vuelve al catálogo de usuarios o al dashboard según el modo."""
+        """Vuelve al dashboard y reinicia el wizard."""
         self._data = {}
-        if self._reregister_user_id is not None:
-            self._reregister_user_id = None
-            from ui.admin.users_catalog import UsersCatalogScreen
-            self.controller.show_frame(UsersCatalogScreen)
-        else:
-            from ui.admin.dashboard import DashboardScreen
-            self.controller.show_frame(DashboardScreen)
+        from ui.admin.dashboard import DashboardScreen
+        self.controller.show_frame(DashboardScreen)
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
@@ -141,8 +130,6 @@ class RegisterUserScreen(ctk.CTkFrame):
             from ui.admin.dashboard import DashboardScreen
             self.controller.show_frame(DashboardScreen)
             return
-        if self._reregister_user_id is not None:
-            return  # start_reregister ya configuró el paso correcto
         self._data = {}
         self._goto_step(0)
 
@@ -182,7 +169,7 @@ class _Step1BasicData(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 1 de 5", "Datos básicos",
+        _wizard_header(self, t("reg_step1"), t("reg_step1_title"),
                        back_cmd=lambda: self.wizard.controller.show_frame(
                            __import__("ui.admin.dashboard",
                                       fromlist=["DashboardScreen"]).DashboardScreen
@@ -215,7 +202,7 @@ class _Step1BasicData(ctk.CTkFrame):
                                     wraplength=430, justify="center")
         self.lbl_err.pack(pady=4)
 
-        _big_btn(scroll, "Siguiente →", self._next)
+        _big_btn(scroll, t("reg_next"), self._next)
 
     def _show_error(self, msg: str, warn: bool = False) -> None:
         color = PALETTE.get("WARN", "#d4a034") if warn else PALETTE["DANGER"]
@@ -323,7 +310,7 @@ class _Step2TypeUnit(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 2 de 5", "Tipo y unidad",
+        _wizard_header(self, t("reg_step2"), t("reg_step2_title"),
                        back_cmd=self.wizard.prev_step)
 
         scroll = _scroll(self)
@@ -350,7 +337,7 @@ class _Step2TypeUnit(ctk.CTkFrame):
                                     text_color=PALETTE["DANGER"],
                                     fg_color="transparent")
         self.lbl_err.pack(pady=4)
-        _big_btn(scroll, "Siguiente →", self._next)
+        _big_btn(scroll, t("reg_next"), self._next)
 
     def on_enter(self, data: dict) -> None:
         self._tipos = fetch_all(
@@ -413,11 +400,11 @@ class _Step3PIN(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 3 de 5", "Establece un PIN",
+        _wizard_header(self, t("reg_step3"), t("reg_step3_title"),
                        back_cmd=self.wizard.prev_step)
 
         # Instrucción
-        ctk.CTkLabel(self, text="El usuario usará este PIN de 4 dígitos\npara abrir su locker.",
+        ctk.CTkLabel(self, text=t("reg_step3_desc"),
                      font=ctk.CTkFont(size=14),
                      text_color=PALETTE["MUTED"],
                      fg_color="transparent", justify="center").pack(pady=(10, 4))
@@ -510,11 +497,11 @@ class _Step4FaceCapture(ctk.CTkFrame):
     CAPTURE_COOLDOWN = 2.0
     CANVAS_H = 540
 
-    # Poses guiadas en orden
+    # Poses guiadas en orden — instruccion_key se resuelve con t() en runtime
     CAPTURE_POSES = [
-        {"tipoParte": "frontal",   "instruccion": "Mira directo a la cámara",           "icono": "●"},
-        {"tipoParte": "derecha",   "instruccion": "Gira tu cabeza hacia tu DERECHA  →",  "icono": "→"},
-        {"tipoParte": "izquierda", "instruccion": "Gira tu cabeza hacia tu IZQUIERDA  ←", "icono": "←"},
+        {"tipoParte": "frontal",   "instruccion_key": "reg_pose_frontal", "icono": "●"},
+        {"tipoParte": "derecha",   "instruccion_key": "reg_pose_right",   "icono": "→"},
+        {"tipoParte": "izquierda", "instruccion_key": "reg_pose_left",    "icono": "←"},
     ]
 
     def __init__(self, parent, wizard: RegisterUserScreen):
@@ -543,7 +530,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 4 de 5", "Captura facial",
+        _wizard_header(self, t("reg_step4"), t("reg_step4_title"),
                        back_cmd=self.wizard.prev_step,
                        bg="#1A1A2E", text_color=PALETTE["WHITE"])
 
@@ -610,7 +597,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         btn_row.grid_columnconfigure((0, 1), weight=1)
 
         self.btn_retry = ctk.CTkButton(
-            btn_row, text="Repetir pose",
+            btn_row, text=t("reg_repeat_pose"),
             font=ctk.CTkFont(size=15, weight="bold"),
             fg_color="#444444", hover_color="#333333",
             text_color=PALETTE["WHITE"], height=60, corner_radius=12,
@@ -619,7 +606,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self.btn_retry.grid(row=0, column=0, padx=(12, 6), pady=15, sticky="ew")
 
         self.btn_save = ctk.CTkButton(
-            btn_row, text="Registrar",
+            btn_row, text=t("reg_register"),
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE.get("SUCCESS", "#27ae60"), hover_color="#1e8449",
             text_color=PALETTE["WHITE"], height=60, corner_radius=12,
@@ -652,7 +639,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         captured = len(self._captured_poses)
         total = len(self.CAPTURE_POSES)
         self.lbl_status.configure(
-            text=f"Pose {captured + 1}/{total}:  {pose['instruccion']}",
+            text=f"Pose {captured + 1}/{total}:  {t(pose['instruccion_key'])}",
             text_color=PALETTE["WHITE"],
         )
         self.lbl_progress.configure(text="Mantén el rostro estable...", text_color=PALETTE["ACCENT"])
@@ -686,17 +673,17 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
     def stop_camera(self) -> None:
         self._camera_running = False
-        # Liberar cámara primero para que detect_faces_in_frame() retorne
-        # de inmediato y el hilo salga sin bloquear el UI thread.
+        # Esperar a que el hilo termine antes de liberar la cámara
+        # para evitar destruir el hardware mientras el hilo lo está usando.
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=3.0)
+        self._camera_thread = None
         if self._face_mgr is not None:
             try:
                 self._face_mgr.release()
             except Exception:
                 pass
             self._face_mgr = None
-        if self._camera_thread and self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=1.0)
-        self._camera_thread = None
 
     # ── Camera loop (hilo worker) ─────────────────────────────────────────────
 
@@ -843,7 +830,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 text_color="#A5D6A7",
             )
             self.lbl_progress.configure(
-                text=f"Siguiente: {next_pose['instruccion']}",
+                text=f"Siguiente: {t(next_pose['instruccion_key'])}",
                 text_color="#81D4FA",
             )
             self._advance_pending = True
@@ -998,44 +985,27 @@ class _Step4FaceCapture(ctk.CTkFrame):
             for p in self._captured_poses
         ]
 
-        reregister_id = getattr(self.wizard, "_reregister_user_id", None)
+        try:
+            user_id = user_service.create_user_with_encodings(d, poses)
+        except sqlite3.IntegrityError as exc:
+            logger.error("IntegrityError al guardar usuario: %s", exc)
+            self.btn_save.configure(state="normal")
+            self.lbl_status.configure(
+                text="Error: matrícula o correo ya existe",
+                text_color=PALETTE["DANGER"],
+            )
+            return
+        except Exception as exc:
+            logger.error("Error insertando usuario: %s", exc)
+            self.btn_save.configure(state="normal")
+            self.lbl_status.configure(
+                text=f"Error al registrar: {str(exc)[:60]}",
+                text_color=PALETTE["DANGER"],
+            )
+            return
 
-        if reregister_id is not None:
-            # Modo re-registro: reemplazar encodings del usuario existente
-            try:
-                user_service.update_face_encodings(reregister_id, poses)
-            except Exception as exc:
-                logger.error("Error actualizando encodings: %s", exc)
-                self.btn_save.configure(state="normal")
-                self.lbl_status.configure(
-                    text=f"Error al actualizar: {str(exc)[:60]}",
-                    text_color=PALETTE["DANGER"],
-                )
-                return
-            self.stop_camera()
-            self.wizard.next_step({"saved_user_id": reregister_id, "saved_nombre": d.get("nombre", ""), "reregister": True})
-        else:
-            # Modo normal: crear usuario nuevo con encodings
-            try:
-                user_id = user_service.create_user_with_encodings(d, poses)
-            except sqlite3.IntegrityError as exc:
-                logger.error("IntegrityError al guardar usuario: %s", exc)
-                self.btn_save.configure(state="normal")
-                self.lbl_status.configure(
-                    text="Error: matrícula o correo ya existe",
-                    text_color=PALETTE["DANGER"],
-                )
-                return
-            except Exception as exc:
-                logger.error("Error insertando usuario: %s", exc)
-                self.btn_save.configure(state="normal")
-                self.lbl_status.configure(
-                    text=f"Error al registrar: {str(exc)[:60]}",
-                    text_color=PALETTE["DANGER"],
-                )
-                return
-            self.stop_camera()
-            self.wizard.next_step({"saved_user_id": user_id, "saved_nombre": d["nombre"]})
+        self.stop_camera()
+        self.wizard.next_step({"saved_user_id": user_id, "saved_nombre": d["nombre"]})
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
@@ -1091,33 +1061,24 @@ class _Step5Confirm(ctk.CTkFrame):
         )
         self.lbl_msg.pack(pady=8)
 
-        self.lbl_sub = ctk.CTkLabel(
-            center, text="El usuario fue registrado exitosamente.",
-            font=ctk.CTkFont(size=14),
-            text_color=PALETTE["MUTED"],
-            fg_color="transparent")
-        self.lbl_sub.pack(pady=4)
+        ctk.CTkLabel(center, text=t("reg_registered_ok"),
+                     font=ctk.CTkFont(size=14),
+                     text_color=PALETTE["MUTED"],
+                     fg_color="transparent").pack(pady=4)
 
-        _big_btn(center, "Volver al inicio", self.wizard.finish)
+        _big_btn(center, t("reg_finish"), self.wizard.finish)
 
-        self.btn_register_other = ctk.CTkButton(
-            center, text="+  Registrar otro usuario",
+        ctk.CTkButton(
+            center, text=t("reg_another"),
             font=ctk.CTkFont(size=15),
             fg_color=PALETTE["CARD"], hover_color=PALETTE["BORDER"],
             text_color=PALETTE["TEXT"], height=50, corner_radius=12,
             command=lambda: self.wizard.on_show(),
-        )
-        self.btn_register_other.pack(fill="x", padx=24, pady=(6, 0))
+        ).pack(fill="x", padx=24, pady=(6, 0))
 
     def on_enter(self, data: dict) -> None:
         nombre = data.get("saved_nombre", "")
         self.lbl_msg.configure(text=f"¡Listo, {nombre}!")
-        if data.get("reregister"):
-            self.lbl_sub.configure(text="El rostro fue actualizado exitosamente.")
-            self.btn_register_other.pack_forget()
-        else:
-            self.lbl_sub.configure(text="El usuario fue registrado exitosamente.")
-            self.btn_register_other.pack(fill="x", padx=24, pady=(6, 0))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

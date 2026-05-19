@@ -15,6 +15,7 @@ from tkinter import messagebox
 from tkinter import ttk
 from database.connection import fetch_all
 from services import user_service
+from core.i18n import t, register_observer, unregister_observer
 from ui.admin_app import PALETTE
 from auth.session import (
     can_create_users,
@@ -50,7 +51,31 @@ class UsersCatalogScreen(ctk.CTkFrame):
         self.controller = controller
         self._search_var = tk.StringVar()
         self._rows: list[dict] = []
+        self._lang_reg: list = []
+        register_observer(self._on_lang_change)
         self._build_ui()
+
+    def _reg(self, widget, key: str, **kwargs) -> None:
+        self._lang_reg.append((widget, key, kwargs))
+        widget.configure(text=t(key, **kwargs))
+
+    def _on_lang_change(self) -> None:
+        for widget, key, kwargs in self._lang_reg:
+            try:
+                if widget.winfo_exists():
+                    widget.configure(text=t(key, **kwargs))
+            except Exception:
+                pass
+        # Refresh placeholder
+        try:
+            if hasattr(self, '_search_entry') and self._search_entry.winfo_exists():
+                self._search_entry.configure(placeholder_text=t("users_search"))
+        except Exception:
+            pass
+
+    def destroy(self) -> None:
+        unregister_observer(self._on_lang_change)
+        super().destroy()
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -69,11 +94,13 @@ class UsersCatalogScreen(ctk.CTkFrame):
             command=self._go_back,
         ).pack(side="left", padx=8)
 
-        ctk.CTkLabel(
-            hdr, text="Usuarios",
+        lbl_title = ctk.CTkLabel(
+            hdr, text=t("users_title"),
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
-        ).pack(side="left", padx=4)
+        )
+        lbl_title.pack(side="left", padx=4)
+        self._lang_reg.append((lbl_title, "users_title", {}))
 
         can_register = can_create_users()
         ctk.CTkButton(
@@ -95,14 +122,15 @@ class UsersCatalogScreen(ctk.CTkFrame):
                      text_color=PALETTE["MUTED"],
                      font=ctk.CTkFont(size=18)).pack(side="left", padx=10)
 
-        entry = ctk.CTkEntry(
+        self._search_entry = ctk.CTkEntry(
             search_frame, textvariable=self._search_var,
-            placeholder_text="Buscar por nombre o matrícula…",
+            placeholder_text=t("users_search"),
             fg_color="transparent", border_width=0,
             text_color=PALETTE["TEXT"],
             font=ctk.CTkFont(size=15),
         )
-        entry.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        self._search_entry.pack(side="left", fill="both", expand=True, padx=(0, 10))
+        entry = self._search_entry
         self._search_var.trace_add("write", lambda *_: self._filter())
 
         # Lista
@@ -124,7 +152,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
         if not rows:
             ctk.CTkLabel(
                 self._list_frame,
-                text="Sin resultados",
+                text=t("users_no_results"),
                 font=ctk.CTkFont(size=16),
                 text_color=PALETTE["MUTED"],
                 fg_color="transparent",
@@ -179,7 +207,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
         ).grid(row=0, column=0, rowspan=2, padx=(0, 10))
 
         # Nombre + indicador inactivo
-        name_text = full_name + (" [INACTIVO]" if is_inactive else "")
+        name_text = full_name + (" " + t("common_inactive") if is_inactive else "")
         ctk.CTkLabel(
             inner, text=name_text,
             font=ctk.CTkFont(size=15, weight="bold"),
@@ -311,20 +339,20 @@ class UserDetailOverlay(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="Detalle de Usuario",
+            hdr, text=t("users_detail_title"),
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
 
         self.btn_edit = ctk.CTkButton(
-            hdr, text="Editar", width=90, height=40,
+            hdr, text=t("users_edit"), width=90, height=40,
             font=ctk.CTkFont(size=14),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], command=self._toggle_edit if self._can_edit else None,
         )
         self.btn_edit.pack(side="right", padx=8)
         if not self._can_edit:
-            self.btn_edit.configure(text="Solo lectura", fg_color=PALETTE["BORDER"])
+            self.btn_edit.configure(text=t("users_read_only"), fg_color=PALETTE["BORDER"])
 
         # Scroll area con formulario
         self._scroll = ctk.CTkScrollableFrame(
@@ -336,12 +364,12 @@ class UserDetailOverlay(ctk.CTkFrame):
         # Campos definidos
         self._field_widgets: dict[str, ctk.CTkEntry | ctk.CTkOptionMenu] = {}
         fields = [
-            ("nombre",    f"Nombre  (máx. {MAX_NOMBRE} car.)"),
-            ("apPaterno", f"Apellido Paterno  (máx. {MAX_APELLIDO} car.)"),
-            ("apMaterno", f"Apellido Materno  (máx. {MAX_APELLIDO} car.)"),
-            ("matricula", "Matrícula  (5-10 dígitos)"),
-            ("emailInst", f"Correo institucional  (máx. {MAX_EMAIL} car.)"),
-            ("tel",       "Teléfono  (opcional, 10-15 dígitos)"),
+            ("nombre",    f"{t('users_field_nombre')}  (máx. {MAX_NOMBRE} car.)"),
+            ("apPaterno", f"{t('users_field_apPaterno')}  (máx. {MAX_APELLIDO} car.)"),
+            ("apMaterno", f"{t('users_field_apMaterno')}  (máx. {MAX_APELLIDO} car.)"),
+            ("matricula", f"{t('users_field_matricula')}  (5-10 dígitos)"),
+            ("emailInst", f"{t('users_field_email')}  (máx. {MAX_EMAIL} car.)"),
+            ("tel",       f"{t('users_field_tel')}  (opcional, 10-15 dígitos)"),
         ]
         for key, label in fields:
             self._vars[key] = tk.StringVar()
@@ -351,19 +379,19 @@ class UserDetailOverlay(ctk.CTkFrame):
         # Selectores
         self._vars["tipo"]   = tk.StringVar()
         self._vars["unidad"] = tk.StringVar()
-        self._make_selector("Tipo de usuario", "tipo",
-                            [t["nombreTipoUsuario"] for t in self._tipos])
-        self._make_selector("Unidad académica", "unidad",
+        self._make_selector(t("users_field_tipo"), "tipo",
+                            [tp["nombreTipoUsuario"] for tp in self._tipos])
+        self._make_selector(t("users_field_unidad"), "unidad",
                             [u["nombreUnidadAcademica"] for u in self._unidades])
 
         # Estado
         self._vars["estado"] = tk.StringVar()
-        self._make_selector("Estado", "estado",
+        self._make_selector(t("users_field_estado"), "estado",
                             ["activo", "inactivo", "suspendido"])
 
         # Face badge
         self.face_badge = ctk.CTkLabel(
-            self._scroll, text="Sin rostro registrado",
+            self._scroll, text=t("users_no_face"),
             font=ctk.CTkFont(size=13),
             text_color=PALETTE["MUTED"], fg_color="transparent",
         )
@@ -382,28 +410,16 @@ class UserDetailOverlay(ctk.CTkFrame):
         # Botones de acción (mismo patrón visual que panel de Área)
         self.btn_save = ctk.CTkButton(
             self._scroll,
-            text="Guardar cambios",
+            text=t("users_save"),
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"], height=52, corner_radius=12,
             command=self._save,
         )
 
-        self.btn_reregister_face = ctk.CTkButton(
-            self._scroll,
-            text="Re-registrar rostro",
-            font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color="#1a5276", hover_color="#154360",
-            text_color=PALETTE["WHITE"], height=52, corner_radius=12,
-            command=self._reregister_face,
-        )
-        self.btn_reregister_face.pack(fill="x", padx=4, pady=(0, 8))
-        if not self._can_edit:
-            self.btn_reregister_face.pack_forget()
-
         self.btn_delete = ctk.CTkButton(
             self._scroll,
-            text="Inhabilitar",
+            text=t("users_disable"),
             font=ctk.CTkFont(size=16, weight="bold"),
             fg_color=PALETTE["DANGER"], hover_color="#922b21",
             text_color=PALETTE["WHITE"], height=52, corner_radius=12,
@@ -415,7 +431,7 @@ class UserDetailOverlay(ctk.CTkFrame):
 
         self.btn_delete_permanent = ctk.CTkButton(
             self._scroll,
-            text="Eliminar permanentemente",
+            text=t("users_delete_perm"),
             font=ctk.CTkFont(size=14, weight="bold"),
             fg_color="#6d1a1a", hover_color="#4a0f0f",
             text_color=PALETTE["WHITE"], height=48, corner_radius=12,
@@ -495,20 +511,20 @@ class UserDetailOverlay(ctk.CTkFrame):
         is_target_superadmin = target_role == ROLE_SUPERADMIN
         is_self = get_current_user_id() == self.user_id
         self.btn_delete.configure(
-            text="Habilitar" if is_inactive else "Inhabilitar",
+            text=t("users_enable") if is_inactive else t("users_disable"),
             fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
             hover_color="#1e8449" if is_inactive else "#922b21",
         )
         if is_target_superadmin and not is_inactive:
             self.btn_delete.configure(
-                text="Protegido",
+                text=t("users_protected"),
                 state="disabled",
                 fg_color=PALETTE["BORDER"],
                 hover_color=PALETTE["BORDER"],
             )
         elif is_self and not is_inactive:
             self.btn_delete.configure(
-                text="Tu cuenta",
+                text=t("users_your_account"),
                 state="disabled",
                 fg_color=PALETTE["BORDER"],
                 hover_color=PALETTE["BORDER"],
@@ -526,8 +542,7 @@ class UserDetailOverlay(ctk.CTkFrame):
 
         n = user_service.count_face_encodings(self.user_id)
         self.face_badge.configure(
-            text=f"[OK] {n} perfil(es) facial(es) registrado(s)"
-                 if n else "(!) Sin rostro registrado",
+            text=t("users_face_ok", n=n) if n else t("users_no_face"),
             text_color=PALETTE["ACCENT"] if n else PALETTE["WARN"] if "WARN" in PALETTE else "#d4a034",
         )
 
@@ -710,40 +725,13 @@ class UserDetailOverlay(ctk.CTkFrame):
             w.configure(state=state)
         btn_color = PALETTE["ACCENT_HOVER"] if active else PALETTE["BORDER"]
         self.btn_edit.configure(
-            text="Cancelar" if active else "Editar",
+            text=t("users_cancel") if active else t("users_edit"),
             fg_color=btn_color,
         )
         if active:
             self.btn_save.pack(fill="x", padx=4, pady=(16, 8), before=self.btn_delete)
         else:
             self.btn_save.pack_forget()
-
-    def _reregister_face(self) -> None:
-        """Navega al flujo de captura facial para actualizar el rostro del usuario."""
-        if not self._can_edit:
-            return
-        nombre_var = self._vars.get("nombre", None)
-        nombre_str = nombre_var.get().strip() if nombre_var else ""
-        _ConfirmDialog(
-            self,
-            message=(
-                f"¿Actualizar el rostro de {nombre_str or 'este usuario'}?\n\n"
-                "Se capturarán 3 nuevas poses y los perfiles\n"
-                "faciales anteriores serán reemplazados."
-            ),
-            on_confirm=self._do_reregister_face,
-        )
-
-    def _do_reregister_face(self) -> None:
-        nombre_var = self._vars.get("nombre", None)
-        nombre_str = nombre_var.get().strip() if nombre_var else ""
-        from ui.admin.register_user import RegisterUserScreen
-        reg_screen = self.controller._frames.get(RegisterUserScreen)
-        if reg_screen is None:
-            return
-        self._close()
-        reg_screen.start_reregister(self.user_id, nombre_str)
-        self.controller.show_frame(RegisterUserScreen)
 
     def _close(self) -> None:
         if not self.winfo_exists():
@@ -782,14 +770,14 @@ class _ConfirmDialog(ctk.CTkFrame):
         btn_row.pack_propagate(False)
 
         ctk.CTkButton(
-            btn_row, text="Cancelar", height=52,
+            btn_row, text=t("users_cancel"), height=52,
             fg_color=PALETTE["BORDER"], hover_color=PALETTE["MUTED"],
             text_color=PALETTE["TEXT"],
             command=self.destroy,
         ).pack(side="left", expand=True, fill="x", padx=(0, 6))
 
         ctk.CTkButton(
-            btn_row, text="Confirmar", height=52,
+            btn_row, text=t("users_confirm"), height=52,
             fg_color=PALETTE["DANGER"], hover_color="#922b21",
             text_color=PALETTE["WHITE"],
             command=lambda: (on_confirm(), self.destroy()),

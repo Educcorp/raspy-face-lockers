@@ -6,19 +6,45 @@ import tkinter as tk
 import customtkinter as ctk
 
 from auth.session import authenticate_admin_user, set_current_user
+from core.i18n import t, register_observer, unregister_observer
 from ui.admin_app import PALETTE, get_icon
+from ui.components.language_button import LanguageToggleButton
 
 
 class LoginScreen(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.controller = controller
+        self._lang_reg: list = []
 
         self._matricula_var = tk.StringVar()
         self._pin_var = tk.StringVar()
         self._show_pin_var = tk.BooleanVar(value=False)
 
+        register_observer(self._on_lang_change)
         self._build_ui()
+
+    def _reg(self, widget, key: str, **kwargs) -> None:
+        self._lang_reg.append((widget, key, kwargs))
+        widget.configure(text=t(key, **kwargs))
+
+    def _on_lang_change(self) -> None:
+        for widget, key, kwargs in self._lang_reg:
+            try:
+                if widget.winfo_exists():
+                    widget.configure(text=t(key, **kwargs))
+            except Exception:
+                pass
+        # Also refresh placeholder text for entries
+        try:
+            if self.entry_matricula.winfo_exists():
+                self.entry_matricula.configure(placeholder_text=t("login_placeholder_mat"))
+        except Exception:
+            pass
+
+    def destroy(self) -> None:
+        unregister_observer(self._on_lang_change)
+        super().destroy()
 
     def _build_ui(self) -> None:
         self.grid_rowconfigure(0, weight=1)
@@ -75,23 +101,35 @@ class LoginScreen(ctk.CTkFrame):
             fg_color="transparent",
         ).pack(anchor="w", pady=(16, 0))
 
-        ctk.CTkLabel(
+        lbl_title = ctk.CTkLabel(
             top_inner,
-            text="Acceso administrativo",
+            text=t("login_title"),
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
-        ).pack(anchor="w", pady=(2, 4))
+        )
+        lbl_title.pack(anchor="w", pady=(2, 4))
+        self._lang_reg.append((lbl_title, "login_title", {}))
 
-        ctk.CTkLabel(
+        lbl_subtitle = ctk.CTkLabel(
             top_inner,
-            text="Inicia sesión como Administrador o Superadmin para gestionar el sistema.",
+            text=t("login_subtitle"),
             font=ctk.CTkFont(size=12),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
             justify="left",
             wraplength=300,
-        ).pack(anchor="w")
+        )
+        lbl_subtitle.pack(anchor="w")
+        self._lang_reg.append((lbl_subtitle, "login_subtitle", {}))
+
+        # ── Botón de idioma (esquina superior derecha) ────────────────────────
+        LanguageToggleButton(
+            top,
+            text_color=PALETTE["TEXT"],
+            border_color=PALETTE["BORDER"],
+            hover_color=PALETTE["BORDER"],
+        ).place(in_=hero, relx=0.965, rely=0.75, anchor="e")
 
         mode = getattr(self.controller, "_mode", "light")
         theme_icon = "moon" if mode == "light" else "sun"
@@ -130,23 +168,27 @@ class LoginScreen(ctk.CTkFrame):
             width=86,
         ).pack(pady=(18, 14))
 
-        ctk.CTkLabel(
+        lbl_hello = ctk.CTkLabel(
             card,
-            text="Hola!!",
+            text=t("login_hello"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
-        ).pack()
+        )
+        lbl_hello.pack()
+        self._lang_reg.append((lbl_hello, "login_hello", {}))
 
-        ctk.CTkLabel(
+        lbl_desc = ctk.CTkLabel(
             card,
-            text="Ingresa para administrar usuarios, catálogos y asignaciones.",
+            text=t("login_description"),
             font=ctk.CTkFont(size=15, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
             wraplength=340,
             justify="center",
-        ).pack(pady=(8, 18))
+        )
+        lbl_desc.pack(pady=(8, 18))
+        self._lang_reg.append((lbl_desc, "login_description", {}))
 
         form = ctk.CTkFrame(
             card,
@@ -159,13 +201,15 @@ class LoginScreen(ctk.CTkFrame):
 
         input_font = ctk.CTkFont(size=16, weight="normal")
 
-        ctk.CTkLabel(
+        lbl_mat = ctk.CTkLabel(
             form,
-            text="Matrícula",
+            text=t("login_matricula"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=14, pady=(12, 0))
+        )
+        lbl_mat.pack(anchor="w", padx=14, pady=(12, 0))
+        self._lang_reg.append((lbl_mat, "login_matricula", {}))
 
         self._user_icon = get_icon("user", size=17, color=PALETTE["TEXT"])
         matricula_row = self._build_icon_input(form, self._user_icon, pady=(4, 8))
@@ -179,18 +223,20 @@ class LoginScreen(ctk.CTkFrame):
             border_width=0,
             text_color=PALETTE["TEXT"],
             placeholder_text_color=PALETTE["MUTED"],
-            placeholder_text="Ej. 20260001",
+            placeholder_text=t("login_placeholder_mat"),
             height=38,
         )
         self.entry_matricula.grid(row=0, column=2, sticky="nsew", padx=(8, 8), pady=3)
 
-        ctk.CTkLabel(
+        lbl_pin_label = ctk.CTkLabel(
             form,
-            text="PIN",
+            text=t("login_pin"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=14, pady=(4, 0))
+        )
+        lbl_pin_label.pack(anchor="w", padx=14, pady=(4, 0))
+        self._lang_reg.append((lbl_pin_label, "login_pin", {}))
 
         self._lock_icon = get_icon("lock", size=18, color=PALETTE["TEXT"])
         pin_row = self._build_icon_input(form, self._lock_icon, pady=(4, 12))
@@ -234,9 +280,9 @@ class LoginScreen(ctk.CTkFrame):
         )
         self.lbl_error.pack(pady=(2, 8))
 
-        ctk.CTkButton(
+        btn_enter = ctk.CTkButton(
             card,
-            text="Ingresar",
+            text=t("login_enter_btn"),
             font=ctk.CTkFont(size=17, weight="bold"),
             fg_color=PALETTE["ACCENT"],
             hover_color=PALETTE["ACCENT_HOVER"],
@@ -244,32 +290,21 @@ class LoginScreen(ctk.CTkFrame):
             height=56,
             corner_radius=16,
             command=self._login,
-        ).pack(fill="x", padx=24, pady=(4, 8))
+        )
+        btn_enter.pack(fill="x", padx=24, pady=(4, 8))
+        self._lang_reg.append((btn_enter, "login_enter_btn", {}))
 
-        ctk.CTkLabel(
+        lbl_note = ctk.CTkLabel(
             card,
-            text="Solo cuentas con rol Administrador o Superadmin pueden ingresar.",
+            text=t("login_note"),
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
             wraplength=320,
             justify="center",
-        ).pack(pady=(0, 4))
-
-        # Botón volver al locker: solo cuando se accede desde la pantalla física
-        self._btn_back_locker = ctk.CTkButton(
-            card,
-            text="← Volver al locker",
-            font=ctk.CTkFont(size=13),
-            fg_color="transparent",
-            hover_color=PALETTE["BORDER"],
-            text_color=PALETTE["MUTED"],
-            height=36,
-            corner_radius=10,
-            command=self._go_back_locker,
         )
-        if hasattr(self.controller, "ensure_admin_frames"):
-            self._btn_back_locker.pack(fill="x", padx=24, pady=(0, 8))
+        lbl_note.pack(pady=(0, 4))
+        self._lang_reg.append((lbl_note, "login_note", {}))
 
         self.entry_matricula.bind("<Return>", lambda _e: self._login())
         self.entry_pin.bind("<Return>", lambda _e: self._login())
@@ -322,12 +357,12 @@ class LoginScreen(ctk.CTkFrame):
         pin = self._pin_var.get().strip()
 
         if not matricula or not pin:
-            self.lbl_error.configure(text="Ingresa matrícula y PIN")
+            self.lbl_error.configure(text=t("login_err_empty"))
             return
 
         user = authenticate_admin_user(matricula, pin)
         if not user:
-            self.lbl_error.configure(text="Credenciales inválidas o cuenta inactiva")
+            self.lbl_error.configure(text=t("login_err_invalid"))
             return
 
         set_current_user(user)
@@ -337,20 +372,3 @@ class LoginScreen(ctk.CTkFrame):
         self._pin_toggle.configure(image=self._eye_closed_icon)
         self.lbl_error.configure(text="")
         self.controller.on_login_success()
-
-    def _go_back_locker(self) -> None:
-        """Regresa a la pantalla de standby del locker sin iniciar sesión."""
-        self._matricula_var.set("")
-        self._pin_var.set("")
-        self.lbl_error.configure(text="")
-        from ui.locker_screen.standby_screen import StandbyScreen
-        self.controller.show_frame(StandbyScreen)
-
-    def on_show(self, **_kwargs) -> None:
-        """Limpia los campos cada vez que se muestra la pantalla."""
-        self._matricula_var.set("")
-        self._pin_var.set("")
-        self._show_pin_var.set(False)
-        self.entry_pin.configure(show="*")
-        self._pin_toggle.configure(image=self._eye_closed_icon)
-        self.lbl_error.configure(text="")

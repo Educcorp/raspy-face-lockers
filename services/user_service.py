@@ -101,6 +101,33 @@ def delete_user_permanent(user_id: int) -> None:
     logger.info("✓ Usuario id=%s eliminado definitivamente", user_id)
 
 
+def update_face_encodings(user_id: int, poses: list[dict]) -> None:
+    """
+    Reemplaza los encodings faciales de un usuario existente en una transacción.
+    Borra los encodings anteriores e inserta los nuevos.
+
+    poses: lista de {"tipoParte": str, "embedding": np.ndarray, "modelo": str}
+    """
+    with db_session() as conn:
+        conn.execute("DELETE FROM encoding WHERE idUsuario=?", (user_id,))
+        for pose in poses:
+            vec = pose["embedding"].astype(np.float32, copy=False)
+            vec_bytes = vec.tobytes()
+            vec_hash = hashlib.sha256(
+                vec_bytes + f"{user_id}_{pose['tipoParte']}".encode()
+            ).hexdigest()
+            conn.execute("""
+                INSERT INTO encoding
+                    (idUsuario, estado, vector, dimension, hashVector,
+                     tipoParte, vectorDtype, modelo, modeloVersion)
+                VALUES (?, 'activo', ?, ?, ?, ?, 'float32', ?, '1.0')
+            """, (
+                user_id, vec_bytes, int(len(vec)),
+                vec_hash, pose["tipoParte"], pose["modelo"],
+            ))
+    logger.info("✓ Encodings actualizados para usuario id=%s (%d poses)", user_id, len(poses))
+
+
 def create_user_with_encodings(data: dict, poses: list[dict]) -> int:
     """
     Inserta un nuevo usuario junto con sus encodings faciales multi-pose.

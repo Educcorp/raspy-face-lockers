@@ -70,6 +70,7 @@ class RegisterUserScreen(ctk.CTkFrame):
         self._step_frames: list[ctk.CTkFrame] = []
         self._current_step = 0  # Initialize to avoid AttributeError
         self._data: dict = {}  # datos recopilados a lo largo del wizard
+        self._reregister_user_id: int | None = None
         self._build_wizard()
 
     # ── Construcción ──────────────────────────────────────────────────────────
@@ -116,11 +117,22 @@ class RegisterUserScreen(ctk.CTkFrame):
         if self._current_step > 0:
             self._goto_step(self._current_step - 1)
 
+    def start_reregister(self, user_id: int, nombre: str) -> None:
+        """Inicia el wizard en modo re-registro de rostro para un usuario existente."""
+        self._reregister_user_id = user_id
+        self._data = {"reregister": True, "nombre": nombre, "user_id": user_id}
+        self._goto_step(3)
+
     def finish(self) -> None:
-        """Vuelve al dashboard y reinicia el wizard."""
+        """Vuelve al catálogo de usuarios o al dashboard según el modo."""
         self._data = {}
-        from ui.admin.dashboard import DashboardScreen
-        self.controller.show_frame(DashboardScreen)
+        if self._reregister_user_id is not None:
+            self._reregister_user_id = None
+            from ui.admin.users_catalog import UsersCatalogScreen
+            self.controller.show_frame(UsersCatalogScreen)
+        else:
+            from ui.admin.dashboard import DashboardScreen
+            self.controller.show_frame(DashboardScreen)
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
@@ -129,6 +141,7 @@ class RegisterUserScreen(ctk.CTkFrame):
             from ui.admin.dashboard import DashboardScreen
             self.controller.show_frame(DashboardScreen)
             return
+        self._reregister_user_id = None
         self._data = {}
         self._goto_step(0)
 
@@ -984,27 +997,44 @@ class _Step4FaceCapture(ctk.CTkFrame):
             for p in self._captured_poses
         ]
 
-        try:
-            user_id = user_service.create_user_with_encodings(d, poses)
-        except sqlite3.IntegrityError as exc:
-            logger.error("IntegrityError al guardar usuario: %s", exc)
-            self.btn_save.configure(state="normal")
-            self.lbl_status.configure(
-                text="Error: matrícula o correo ya existe",
-                text_color=PALETTE["DANGER"],
-            )
-            return
-        except Exception as exc:
-            logger.error("Error insertando usuario: %s", exc)
-            self.btn_save.configure(state="normal")
-            self.lbl_status.configure(
-                text=f"Error al registrar: {str(exc)[:60]}",
-                text_color=PALETTE["DANGER"],
-            )
-            return
+        reregister_id = getattr(self.wizard, "_reregister_user_id", None)
 
-        self.stop_camera()
-        self.wizard.next_step({"saved_user_id": user_id, "saved_nombre": d["nombre"]})
+        if reregister_id is not None:
+            # Modo re-registro: reemplazar encodings del usuario existente
+            try:
+                user_service.update_face_encodings(reregister_id, poses)
+            except Exception as exc:
+                logger.error("Error actualizando encodings: %s", exc)
+                self.btn_save.configure(state="normal")
+                self.lbl_status.configure(
+                    text=f"Error al actualizar: {str(exc)[:60]}",
+                    text_color=PALETTE["DANGER"],
+                )
+                return
+            self.stop_camera()
+            self.wizard.next_step({"saved_user_id": reregister_id, "saved_nombre": d.get("nombre", ""), "reregister": True})
+        else:
+            # Modo normal: crear usuario nuevo con encodings
+            try:
+                user_id = user_service.create_user_with_encodings(d, poses)
+            except sqlite3.IntegrityError as exc:
+                logger.error("IntegrityError al guardar usuario: %s", exc)
+                self.btn_save.configure(state="normal")
+                self.lbl_status.configure(
+                    text="Error: matrícula o correo ya existe",
+                    text_color=PALETTE["DANGER"],
+                )
+                return
+            except Exception as exc:
+                logger.error("Error insertando usuario: %s", exc)
+                self.btn_save.configure(state="normal")
+                self.lbl_status.configure(
+                    text=f"Error al registrar: {str(exc)[:60]}",
+                    text_color=PALETTE["DANGER"],
+                )
+                return
+            self.stop_camera()
+            self.wizard.next_step({"saved_user_id": user_id, "saved_nombre": d["nombre"]})
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
@@ -1060,24 +1090,33 @@ class _Step5Confirm(ctk.CTkFrame):
         )
         self.lbl_msg.pack(pady=8)
 
-        ctk.CTkLabel(center, text="El usuario fue registrado exitosamente.",
-                     font=ctk.CTkFont(size=14),
-                     text_color=PALETTE["MUTED"],
-                     fg_color="transparent").pack(pady=4)
+        self.lbl_sub = ctk.CTkLabel(
+            center, text="El usuario fue registrado exitosamente.",
+            font=ctk.CTkFont(size=14),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent")
+        self.lbl_sub.pack(pady=4)
 
         _big_btn(center, "Volver al inicio", self.wizard.finish)
 
-        ctk.CTkButton(
+        self.btn_register_other = ctk.CTkButton(
             center, text="+  Registrar otro usuario",
             font=ctk.CTkFont(size=15),
             fg_color=PALETTE["CARD"], hover_color=PALETTE["BORDER"],
             text_color=PALETTE["TEXT"], height=50, corner_radius=12,
             command=lambda: self.wizard.on_show(),
-        ).pack(fill="x", padx=24, pady=(6, 0))
+        )
+        self.btn_register_other.pack(fill="x", padx=24, pady=(6, 0))
 
     def on_enter(self, data: dict) -> None:
         nombre = data.get("saved_nombre", "")
         self.lbl_msg.configure(text=f"¡Listo, {nombre}!")
+        if data.get("reregister"):
+            self.lbl_sub.configure(text="El rostro fue actualizado exitosamente.")
+            self.btn_register_other.pack_forget()
+        else:
+            self.lbl_sub.configure(text="El usuario fue registrado exitosamente.")
+            self.btn_register_other.pack(fill="x", padx=24, pady=(6, 0))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

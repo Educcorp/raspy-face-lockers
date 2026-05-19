@@ -256,6 +256,21 @@ class LoginScreen(ctk.CTkFrame):
             justify="center",
         ).pack(pady=(0, 4))
 
+        # Botón volver al locker: solo cuando se accede desde la pantalla física
+        self._btn_back_locker = ctk.CTkButton(
+            card,
+            text="← Volver al locker",
+            font=ctk.CTkFont(size=13),
+            fg_color="transparent",
+            hover_color=PALETTE["BORDER"],
+            text_color=PALETTE["MUTED"],
+            height=36,
+            corner_radius=10,
+            command=self._go_back_locker,
+        )
+        if hasattr(self.controller, "ensure_admin_frames"):
+            self._btn_back_locker.pack(fill="x", padx=24, pady=(0, 8))
+
         self.entry_matricula.bind("<Return>", lambda _e: self._login())
         self.entry_pin.bind("<Return>", lambda _e: self._login())
 
@@ -322,3 +337,20 @@ class LoginScreen(ctk.CTkFrame):
         self._pin_toggle.configure(image=self._eye_closed_icon)
         self.lbl_error.configure(text="")
         self.controller.on_login_success()
+
+    def _go_back_locker(self) -> None:
+        """Regresa a la pantalla de standby del locker sin iniciar sesión."""
+        self._matricula_var.set("")
+        self._pin_var.set("")
+        self.lbl_error.configure(text="")
+        from ui.locker_screen.standby_screen import StandbyScreen
+        self.controller.show_frame(StandbyScreen)
+
+    def on_show(self, **_kwargs) -> None:
+        """Limpia los campos cada vez que se muestra la pantalla."""
+        self._matricula_var.set("")
+        self._pin_var.set("")
+        self._show_pin_var.set(False)
+        self.entry_pin.configure(show="*")
+        self._pin_toggle.configure(image=self._eye_closed_icon)
+        self.lbl_error.configure(text="")

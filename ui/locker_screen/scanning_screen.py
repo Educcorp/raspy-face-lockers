@@ -367,6 +367,11 @@ class ScanningScreen(ctk.CTkFrame):
             return
 
         if not self.face_manager.initialized:
+            # Pausa para que el hardware de picamera2 termine de liberar recursos
+            # de cualquier sesión anterior (registro admin, etc.) antes de reiniciar.
+            time.sleep(0.6)
+            if not self._camera_running:
+                return
             logger.warning("Intentando inicializar cámara...")
             init_ok = False
             for attempt in range(1, 4):
@@ -676,10 +681,17 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_admin.place(x=452, y=44, anchor="center")
         self.btn_admin.lift()
 
-        # Esperar a que un hilo anterior haya terminado antes de iniciar uno nuevo.
-        # Esto evita tener dos hilos de cámara activos al mismo tiempo.
+        # Recrear face_manager para obtener la instancia fresca del singleton
+        # global de CameraManager. Sin esto, al volver del panel admin el manager
+        # apunta a un objeto viejo que puede causar que Picamera2 se cuelgue.
+        try:
+            from core.face_recognition import get_face_recognition_manager
+            self.face_manager = get_face_recognition_manager()
+        except Exception as e:
+            logger.error("Error recreando FaceManager en on_show: %s", e)
+
         if self._camera_thread and self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=3.0)
+            self._camera_thread.join(timeout=1.0)
         self._camera_thread = None
 
         if not self._camera_running:
@@ -694,18 +706,17 @@ class ScanningScreen(ctk.CTkFrame):
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
 
-        # Esperar a que el hilo del camera loop termine completamente
-        # antes de liberar la cámara para evitar la condición de carrera.
-        if self._camera_thread and self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=3.0)
-        self._camera_thread = None
-
-        # Liberar la cámara una vez que el hilo ya no la usa.
+        # Liberar la cámara ANTES de joinear: así detect_faces_in_frame()
+        # retorna inmediatamente y el hilo sale sin esperar el timeout completo.
         if self.face_manager and self.face_manager.initialized:
             try:
                 self.face_manager.release()
             except Exception as e:
                 logger.warning("Error liberando cámara en on_hide: %s", e)
+
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=1.0)
+        self._camera_thread = None
 
         if self._return_job:
             self.after_cancel(self._return_job)

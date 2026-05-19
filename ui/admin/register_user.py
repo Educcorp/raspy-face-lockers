@@ -686,17 +686,17 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
     def stop_camera(self) -> None:
         self._camera_running = False
-        # Esperar a que el hilo termine antes de liberar la cámara
-        # para evitar destruir el hardware mientras el hilo lo está usando.
-        if self._camera_thread and self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=3.0)
-        self._camera_thread = None
+        # Liberar cámara primero para que detect_faces_in_frame() retorne
+        # de inmediato y el hilo salga sin bloquear el UI thread.
         if self._face_mgr is not None:
             try:
                 self._face_mgr.release()
             except Exception:
                 pass
             self._face_mgr = None
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=1.0)
+        self._camera_thread = None
 
     # ── Camera loop (hilo worker) ─────────────────────────────────────────────
 

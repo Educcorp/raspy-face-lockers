@@ -417,6 +417,18 @@ class UserDetailOverlay(ctk.CTkFrame):
             command=self._save,
         )
 
+        self.btn_reregister_face = ctk.CTkButton(
+            self._scroll,
+            text=t("users_reregister_face"),
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="#1a5276", hover_color="#154360",
+            text_color=PALETTE["WHITE"], height=52, corner_radius=12,
+            command=self._reregister_face,
+        )
+        self.btn_reregister_face.pack(fill="x", padx=4, pady=(0, 8))
+        if not self._can_edit:
+            self.btn_reregister_face.pack_forget()
+
         self.btn_delete = ctk.CTkButton(
             self._scroll,
             text=t("users_disable"),
@@ -732,6 +744,32 @@ class UserDetailOverlay(ctk.CTkFrame):
             self.btn_save.pack(fill="x", padx=4, pady=(16, 8), before=self.btn_delete)
         else:
             self.btn_save.pack_forget()
+
+    def _reregister_face(self) -> None:
+        if not self._can_edit:
+            return
+        nombre_var = self._vars.get("nombre", None)
+        nombre_str = nombre_var.get().strip() if nombre_var else ""
+        _ConfirmDialog(
+            self,
+            message=(
+                f"¿Actualizar el rostro de {nombre_str or 'este usuario'}?\n\n"
+                "Se capturarán 3 nuevas poses y los perfiles\n"
+                "faciales anteriores serán reemplazados."
+            ),
+            on_confirm=self._do_reregister_face,
+        )
+
+    def _do_reregister_face(self) -> None:
+        nombre_var = self._vars.get("nombre", None)
+        nombre_str = nombre_var.get().strip() if nombre_var else ""
+        from ui.admin.register_user import RegisterUserScreen
+        reg_screen = self.controller._frames.get(RegisterUserScreen)
+        if reg_screen is None:
+            return
+        self._close()
+        reg_screen.start_reregister(self.user_id, nombre_str)
+        self.controller.show_frame(RegisterUserScreen)
 
     def _close(self) -> None:
         if not self.winfo_exists():

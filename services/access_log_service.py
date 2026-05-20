@@ -24,7 +24,8 @@ def register_access(
     locker_assignment_id: FK a asignacion_locker (puede ser None si el usuario
                           no tiene locker asignado o si fue un rechazo sin match).
     permitted: True si el acceso fue concedido, False si fue denegado.
-    motivo: 'facial' | 'pin' | 'sin_asignacion' | 'limite_intentos'
+    motivo: 'facial' | 'no_reconocido' | 'pin' | 'pin_incorrecto' |
+            'limite_intentos_pin' | 'matricula_incorrecta' | 'sin_asignacion'
     """
     try:
         now = datetime.now()

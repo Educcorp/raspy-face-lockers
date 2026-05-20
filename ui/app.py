@@ -103,8 +103,77 @@ class LockerApp(ctk.CTk):
         self._admin_frames_built = True
 
     def toggle_theme(self) -> None:
-        """No-op: la pantalla de locker usa un único tema."""
-        pass
+        """Alterna tema claro/oscuro en el panel admin (las pantallas del locker no cambian)."""
+        from ui.admin_app import PALETTE, LIGHT_PALETTE, DARK_PALETTE, _ICON_CACHE
+        import customtkinter as ctk_mod
+        if self._mode == "light":
+            self._mode = "dark"
+            ctk_mod.set_appearance_mode("dark")
+            PALETTE.update(DARK_PALETTE)
+        else:
+            self._mode = "light"
+            ctk_mod.set_appearance_mode("light")
+            PALETTE.update(LIGHT_PALETTE)
+        _ICON_CACHE.clear()
+        if self._admin_frames_built:
+            self._rebuild_admin_frames()
+
+    def toggle_lang(self) -> None:
+        """Alterna idioma ES/EN y reconstruye todas las pantallas."""
+        from ui.i18n import toggle as i18n_toggle
+        i18n_toggle()
+        self._rebuild_all()
+
+    def _rebuild_admin_frames(self) -> None:
+        """Destruye y recrea solo los frames del panel admin."""
+        from ui.admin.login_screen      import LoginScreen
+        from ui.admin.dashboard         import DashboardScreen
+        from ui.admin.users_catalog     import UsersCatalogScreen
+        from ui.admin.lockers_catalog   import LockersCatalogScreen
+        from ui.admin.areas_catalog     import AreasCatalogScreen
+        from ui.admin.locker_assignment import LockerAssignmentScreen
+        from ui.admin.register_user     import RegisterUserScreen
+        from auth.session import is_authenticated
+
+        admin_classes = (
+            LoginScreen, DashboardScreen, UsersCatalogScreen,
+            LockersCatalogScreen, AreasCatalogScreen,
+            LockerAssignmentScreen, RegisterUserScreen,
+        )
+        for cls in admin_classes:
+            if cls in self._frames:
+                self._frames[cls].destroy()
+                del self._frames[cls]
+
+        self._admin_frames_built = False
+        self.ensure_admin_frames()
+
+        if is_authenticated():
+            self.show_frame(DashboardScreen)
+        else:
+            self.show_frame(LoginScreen)
+
+    def _rebuild_all(self) -> None:
+        """Destruye y recrea todas las pantallas (locker + admin si están construidas)."""
+        from ui.locker_screen.standby_screen  import StandbyScreen
+        from ui.locker_screen.scanning_screen import ScanningScreen
+        from ui.locker_screen.user_display    import UserDisplayScreen
+        from auth.session import is_authenticated
+
+        for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+            if cls in self._frames:
+                self._frames[cls].destroy()
+                del self._frames[cls]
+
+        for FrameClass in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+            frame = FrameClass(parent=self, controller=self)
+            self._frames[FrameClass] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        if self._admin_frames_built:
+            self._rebuild_admin_frames()
+        else:
+            self.show_frame(StandbyScreen)
 
     def on_login_success(self) -> None:
         from ui.admin.dashboard import DashboardScreen

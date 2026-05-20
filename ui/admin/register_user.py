@@ -27,6 +27,7 @@ from PIL import Image, ImageDraw
 from database.connection import fetch_all, fetch_one
 from services import user_service
 from ui.admin_app import PALETTE
+from ui.i18n import t as _t
 from auth.session import can_create_users, filter_assignable_user_types
 from utils.validators import (
     validate_name, validate_matricula, validate_email, validate_tel,
@@ -182,7 +183,7 @@ class _Step1BasicData(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 1 de 5", "Datos básicos",
+        _wizard_header(self, _t("register.step1_label"), _t("register.step1_title"),
                        back_cmd=lambda: self.wizard.controller.show_frame(
                            __import__("ui.admin.dashboard",
                                       fromlist=["DashboardScreen"]).DashboardScreen
@@ -323,7 +324,7 @@ class _Step2TypeUnit(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 2 de 5", "Tipo y unidad",
+        _wizard_header(self, _t("register.step2_label"), _t("register.step2_title"),
                        back_cmd=self.wizard.prev_step)
 
         scroll = _scroll(self)
@@ -413,7 +414,7 @@ class _Step3PIN(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 3 de 5", "Establece un PIN",
+        _wizard_header(self, _t("register.step3_label"), _t("register.step3_title"),
                        back_cmd=self.wizard.prev_step)
 
         # Instrucción
@@ -543,7 +544,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        _wizard_header(self, "Paso 4 de 5", "Captura facial",
+        _wizard_header(self, _t("register.step4_label"), _t("register.step4_title"),
                        back_cmd=self.wizard.prev_step,
                        bg="#1A1A2E", text_color=PALETTE["WHITE"])
 

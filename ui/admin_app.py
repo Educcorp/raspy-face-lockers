@@ -288,6 +288,13 @@ class AdminApp(ctk.CTk):
             self._mode = "light"
             ctk.set_appearance_mode("light")
             PALETTE.update(LIGHT_PALETTE)
+        _ICON_CACHE.clear()
+        self._rebuild_frames()
+
+    def toggle_lang(self) -> None:
+        """Alterna entre español e inglés y reconstruye las pantallas."""
+        from ui.i18n import toggle as i18n_toggle
+        i18n_toggle()
         self._rebuild_frames()
 
     def _rebuild_frames(self) -> None:

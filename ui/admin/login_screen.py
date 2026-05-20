@@ -7,6 +7,7 @@ import customtkinter as ctk
 
 from auth.session import authenticate_admin_user, set_current_user
 from ui.admin_app import PALETTE, get_icon
+from ui.i18n import t, lang_btn_text
 
 
 class LoginScreen(ctk.CTkFrame):
@@ -77,7 +78,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             top_inner,
-            text="Acceso administrativo",
+            text=t("login.admin_access"),
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
@@ -85,7 +86,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             top_inner,
-            text="Inicia sesión como Administrador o Superadmin para gestionar el sistema.",
+            text=t("login.subtitle"),
             font=ctk.CTkFont(size=12),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -110,6 +111,21 @@ class LoginScreen(ctk.CTkFrame):
             command=self.controller.toggle_theme,
         ).place(in_=hero, relx=0.965, rely=0.20, anchor="e")
 
+        ctk.CTkButton(
+            top,
+            text=lang_btn_text(),
+            font=ctk.CTkFont(size=20),
+            width=48,
+            height=36,
+            fg_color=PALETTE["BG"],
+            hover_color=PALETTE["BORDER"],
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            text_color=PALETTE["TEXT"],
+            corner_radius=10,
+            command=self.controller.toggle_lang,
+        ).place(in_=hero, relx=0.78, rely=0.20, anchor="e")
+
         card = ctk.CTkFrame(
             self,
             fg_color=PALETTE["CARD"],
@@ -132,7 +148,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             card,
-            text="Hola!!",
+            text=t("login.greeting"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -140,7 +156,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             card,
-            text="Ingresa para administrar usuarios, catálogos y asignaciones.",
+            text=t("login.instruction"),
             font=ctk.CTkFont(size=15, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
@@ -161,7 +177,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             form,
-            text="Matrícula",
+            text=t("login.matricula_label"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
@@ -179,14 +195,14 @@ class LoginScreen(ctk.CTkFrame):
             border_width=0,
             text_color=PALETTE["TEXT"],
             placeholder_text_color=PALETTE["MUTED"],
-            placeholder_text="Ej. 20260001",
+            placeholder_text=t("login.matricula_placeholder"),
             height=38,
         )
         self.entry_matricula.grid(row=0, column=2, sticky="nsew", padx=(8, 8), pady=3)
 
         ctk.CTkLabel(
             form,
-            text="PIN",
+            text=t("login.pin_label"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
@@ -236,7 +252,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkButton(
             card,
-            text="Ingresar",
+            text=t("login.btn_enter"),
             font=ctk.CTkFont(size=17, weight="bold"),
             fg_color=PALETTE["ACCENT"],
             hover_color=PALETTE["ACCENT_HOVER"],
@@ -248,7 +264,7 @@ class LoginScreen(ctk.CTkFrame):
 
         ctk.CTkLabel(
             card,
-            text="Solo cuentas con rol Administrador o Superadmin pueden ingresar.",
+            text=t("login.note"),
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -259,7 +275,7 @@ class LoginScreen(ctk.CTkFrame):
         # Botón volver al locker: solo cuando se accede desde la pantalla física
         self._btn_back_locker = ctk.CTkButton(
             card,
-            text="← Volver al locker",
+            text=t("login.back_locker"),
             font=ctk.CTkFont(size=13),
             fg_color="transparent",
             hover_color=PALETTE["BORDER"],
@@ -322,12 +338,12 @@ class LoginScreen(ctk.CTkFrame):
         pin = self._pin_var.get().strip()
 
         if not matricula or not pin:
-            self.lbl_error.configure(text="Ingresa matrícula y PIN")
+            self.lbl_error.configure(text=t("login.err_empty"))
             return
 
         user = authenticate_admin_user(matricula, pin)
         if not user:
-            self.lbl_error.configure(text="Credenciales inválidas o cuenta inactiva")
+            self.lbl_error.configure(text=t("login.err_invalid"))
             return
 
         set_current_user(user)

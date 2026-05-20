@@ -16,54 +16,55 @@ Catálogos:
 import customtkinter as ctk
 from database.connection import fetch_one
 from ui.admin_app import PALETTE, get_icon
+from ui.i18n import t, lang_btn_text
 from auth.session import can_create_users, get_current_full_name, get_current_role_label
 
 
-# Catálogos con ícono, nombre, consulta SQL de conteo y pantalla destino
-_CATALOGS = [
-    {
-        "icon":   "USR",
-        "label":  "Usuarios",
-        "hint":   "Gestión de cuentas",
-        "sql":    "SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'",
-        "target": "UsersCatalogScreen",
-    },
-    {
-        "icon":   "LCK",
-        "label":  "Lockers",
-        "hint":   "Inventario físico",
-        "sql":    "SELECT COUNT(*) AS n FROM lockers",
-        "target": "LockersCatalogScreen",
-    },
-    {
-        "icon":   "ZNA",
-        "label":  "Áreas / Zonas",
-        "hint":   "Ubicación por zona",
-        "sql":    "SELECT COUNT(*) AS n FROM area_lockers",
-        "target": "AreasCatalogScreen",
-    },
-    {
-        "icon":   "UND",
-        "label":  "Unidades Acad.",
-        "hint":   "Facultades y escuelas",
-        "sql":    "SELECT COUNT(*) AS n FROM unidad_academica WHERE estado='activo'",
-        "target": "AreasCatalogScreen",   # misma pantalla, tab diferente
-    },
-    {
-        "icon":   "TIP",
-        "label":  "Tipos Usuario",
-        "hint":   "Roles del sistema",
-        "sql":    "SELECT COUNT(*) AS n FROM tipo_usuarios WHERE estado='activo'",
-        "target": "AreasCatalogScreen",
-    },
-    {
-        "icon":   "ASG",
-        "label":  "Asignaciones",
-        "hint":   "Lockers en uso",
-        "sql":    "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'",
-        "target": "LockerAssignmentScreen",
-    },
-]
+def _get_catalogs() -> list[dict]:
+    return [
+        {
+            "icon":   "USR",
+            "label":  t("cat.users.label"),
+            "hint":   t("cat.users.hint"),
+            "sql":    "SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'",
+            "target": "UsersCatalogScreen",
+        },
+        {
+            "icon":   "LCK",
+            "label":  t("cat.lockers.label"),
+            "hint":   t("cat.lockers.hint"),
+            "sql":    "SELECT COUNT(*) AS n FROM lockers",
+            "target": "LockersCatalogScreen",
+        },
+        {
+            "icon":   "ZNA",
+            "label":  t("cat.areas.label"),
+            "hint":   t("cat.areas.hint"),
+            "sql":    "SELECT COUNT(*) AS n FROM area_lockers",
+            "target": "AreasCatalogScreen",
+        },
+        {
+            "icon":   "UND",
+            "label":  t("cat.units.label"),
+            "hint":   t("cat.units.hint"),
+            "sql":    "SELECT COUNT(*) AS n FROM unidad_academica WHERE estado='activo'",
+            "target": "AreasCatalogScreen",
+        },
+        {
+            "icon":   "TIP",
+            "label":  t("cat.types.label"),
+            "hint":   t("cat.types.hint"),
+            "sql":    "SELECT COUNT(*) AS n FROM historial_accesos",
+            "target": "AreasCatalogScreen",
+        },
+        {
+            "icon":   "ASG",
+            "label":  t("cat.assign.label"),
+            "hint":   t("cat.assign.hint"),
+            "sql":    "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'",
+            "target": "LockerAssignmentScreen",
+        },
+    ]
 
 
 class _CatalogCard(ctk.CTkFrame):
@@ -132,7 +133,7 @@ class _CatalogCard(ctk.CTkFrame):
 
         ctk.CTkLabel(
             body,
-            text="Registros activos",
+            text=t("dash.active_records"),
             font=ctk.CTkFont(size=11),
             fg_color="transparent",
             text_color=PALETTE["MUTED"],
@@ -220,7 +221,7 @@ class DashboardScreen(ctk.CTkFrame):
         ).pack(anchor="w", pady=(0, 2))
 
         full_name = get_current_full_name()
-        subtitle = f"Usuario: {full_name}" if full_name else "Usuario: Sesión activa"
+        subtitle = f"{t('dash.user_prefix')} {full_name}" if full_name else f"{t('dash.user_prefix')} {t('dash.session_active')}"
         ctk.CTkLabel(
             identity,
             text=subtitle,
@@ -239,6 +240,21 @@ class DashboardScreen(ctk.CTkFrame):
             width=56,
         ).pack(anchor="w", pady=(6, 0))
 
+        # ── Botón cambio de idioma ────────────────────────────────────────────
+        ctk.CTkButton(
+            header,
+            text=lang_btn_text(),
+            font=ctk.CTkFont(size=22),
+            width=52, height=46,
+            fg_color=PALETTE["BG"],
+            hover_color=PALETTE["BORDER"],
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            text_color=PALETTE["TEXT"],
+            corner_radius=12,
+            command=self.controller.toggle_lang,
+        ).pack(side="right", padx=(6, 4), pady=10)
+
         # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
         _mode = getattr(self.controller, "_mode", "light")
         icon_name = "moon" if _mode == "light" else "sun"
@@ -254,7 +270,7 @@ class DashboardScreen(ctk.CTkFrame):
             border_color=PALETTE["BORDER"],
             corner_radius=12,
             command=self.controller.toggle_theme,
-        ).pack(side="right", padx=(6, 12), pady=10)
+        ).pack(side="right", padx=(6, 2), pady=10)
 
         self._logout_icon = get_icon("logout", size=20, color=PALETTE["TEXT"])
         ctk.CTkButton(
@@ -287,8 +303,9 @@ class DashboardScreen(ctk.CTkFrame):
         summary.grid_columnconfigure(1, weight=1)
         summary.grid_rowconfigure(0, weight=1)
 
-        total_catalogs = len(_CATALOGS)
-        total_records = sum(self._get_count(cat["sql"]) for cat in _CATALOGS)
+        _catalogs = _get_catalogs()
+        total_catalogs = len(_catalogs)
+        total_records = sum(self._get_count(cat["sql"]) for cat in _catalogs)
 
         left_metric = ctk.CTkFrame(
             summary,
@@ -309,7 +326,7 @@ class DashboardScreen(ctk.CTkFrame):
         ).pack(anchor="w", padx=10, pady=(5, 0))
         ctk.CTkLabel(
             left_metric,
-            text="Módulos disponibles",
+            text=t("dash.modules_available"),
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -334,7 +351,7 @@ class DashboardScreen(ctk.CTkFrame):
         ).pack(anchor="w", padx=10, pady=(5, 0))
         ctk.CTkLabel(
             right_metric,
-            text="Registros activos totales",
+            text=t("dash.total_records"),
             font=ctk.CTkFont(size=11),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -344,7 +361,7 @@ class DashboardScreen(ctk.CTkFrame):
         can_register = can_create_users()
         reg_btn = ctk.CTkButton(
             self,
-            text="+  Registrar Usuario",
+            text=t("dash.register_user_btn"),
             font=ctk.CTkFont(size=18, weight="bold"),
             fg_color=PALETTE["ACCENT"] if can_register else PALETTE["BORDER"],
             hover_color=PALETTE.get("ACCENT_HOVER", PALETTE["ACCENT"]) if can_register else PALETTE["BORDER"],
@@ -357,7 +374,7 @@ class DashboardScreen(ctk.CTkFrame):
 
         # ── Sección catálogos ─────────────────────────────────────────────────
         ctk.CTkLabel(
-            self, text="Catálogos",
+            self, text=t("dash.catalogs_section"),
             font=ctk.CTkFont(size=13, weight="bold"),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -372,7 +389,7 @@ class DashboardScreen(ctk.CTkFrame):
         for row in range(3):
             grid_frame.grid_rowconfigure(row, weight=1, uniform="row")
 
-        for idx, cat in enumerate(_CATALOGS):
+        for idx, cat in enumerate(_catalogs):
             row, col = divmod(idx, 2)
             count = self._get_count(cat["sql"])
             target_name = cat["target"]
@@ -422,7 +439,7 @@ class DashboardScreen(ctk.CTkFrame):
     def _confirm_logout(self) -> None:
         _LogoutConfirmDialog(
             self,
-            message="Estás a punto de cerrar sesión. ¿Deseas continuar?",
+            message=t("logout.message"),
             on_confirm=self.controller.logout,
         )
 
@@ -430,7 +447,7 @@ class DashboardScreen(ctk.CTkFrame):
 
     def on_show(self, **_kwargs) -> None:
         """Recarga los contadores cada vez que se vuelve al dashboard."""
-        for idx, cat in enumerate(_CATALOGS):
+        for idx, cat in enumerate(_get_catalogs()):
             count = self._get_count(cat["sql"])
             self._cards[idx].set_count(count)
 
@@ -475,7 +492,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text="Cerrar sesión",
+            text=t("logout.dialog_title"),
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
@@ -493,7 +510,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text="Si eliges No, continuarás con la sesión activa.",
+            text=t("logout.note"),
             font=ctk.CTkFont(size=12),
             text_color=PALETTE["MUTED"],
             fg_color="transparent",
@@ -509,7 +526,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_row,
-            text="No",
+            text=t("logout.no"),
             height=48,
             fg_color=PALETTE["BORDER"],
             hover_color=PALETTE["MUTED"],
@@ -530,7 +547,7 @@ class _LogoutConfirmDialog(ctk.CTkFrame):
 
         ctk.CTkButton(
             btn_row,
-            text="Sí",
+            text=t("logout.yes"),
             height=48,
             fg_color=PALETTE["DANGER"],
             hover_color="#922b21",

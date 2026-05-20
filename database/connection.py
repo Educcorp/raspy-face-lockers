@@ -62,6 +62,18 @@ def _run_init_script(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _apply_incremental_migrations(conn: sqlite3.Connection) -> None:
+    """Aplica cambios de esquema incrementales que no están en init_db.sql."""
+    try:
+        conn.execute(
+            "ALTER TABLE area_lockers ADD COLUMN idUnidadAcademica INTEGER "
+            "REFERENCES unidad_academica(idUnidadAcademica)"
+        )
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # la columna ya existe
+
+
 def _ensure_database_ready() -> None:
     global _DB_READY
     if _DB_READY:
@@ -74,6 +86,7 @@ def _ensure_database_ready() -> None:
     try:
         if not _has_minimum_schema(conn):
             _run_init_script(conn)
+        _apply_incremental_migrations(conn)
     finally:
         conn.close()
 

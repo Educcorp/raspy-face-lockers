@@ -6,6 +6,7 @@ Después de DISPLAY_SECONDS segundos vuelve automáticamente a StandbyScreen.
 """
 
 import customtkinter as ctk
+from ui.i18n import t
 
 
 class UserDisplayScreen(ctk.CTkFrame):
@@ -55,7 +56,7 @@ class UserDisplayScreen(ctk.CTkFrame):
         # ── Bienvenida ────────────────────────────────────────────────────────
         lbl_welcome = ctk.CTkLabel(
             self,
-            text="Acceso concedido",
+            text=t("display.access_granted"),
             font=ctk.CTkFont(size=22),
             text_color=self.MUTED,
             fg_color="transparent",
@@ -75,7 +76,7 @@ class UserDisplayScreen(ctk.CTkFrame):
         # ── Número de casillero ───────────────────────────────────────────────
         self.lbl_locker = ctk.CTkLabel(
             self,
-            text="Casillero  —",
+            text=f'{t("display.locker")}  —',
             font=ctk.CTkFont(size=30),
             text_color=self.PRIMARY,
             fg_color="transparent",
@@ -116,7 +117,7 @@ class UserDisplayScreen(ctk.CTkFrame):
         """
         self.lbl_nombre.configure(text=user_data.get("nombre", "—"))
         self.lbl_locker.configure(
-            text=f"Casillero  {user_data.get('locker_numero', '—')}"
+            text=f'{t("display.locker")}  {user_data.get("locker_numero", "—")}'
         )
         self.lbl_fecha.configure(text=user_data.get("fecha", "—"))
 
@@ -135,7 +136,7 @@ class UserDisplayScreen(ctk.CTkFrame):
             return
 
         self.lbl_countdown.configure(
-            text=f"Volviendo al inicio en {seconds} s…"
+            text=t("display.return_in", s=seconds)
         )
         self._return_job = self.after(
             1000, self._start_countdown, seconds - 1

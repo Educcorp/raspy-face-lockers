@@ -12,6 +12,7 @@ import threading
 import logging
 import os
 from PIL import Image
+from ui.i18n import t, lang_btn_text
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ class StandbyScreen(ctk.CTkFrame):
         # ── Instrucción principal ─────────────────────────────────────────────
         lbl_instruction = ctk.CTkLabel(
             self,
-            text="Acerca tu rostro a la cámara",
+            text=t("standby.instruction"),
             font=ctk.CTkFont(size=22),
             text_color=self.MUTED,
             fg_color="transparent",
@@ -105,10 +106,13 @@ class StandbyScreen(ctk.CTkFrame):
         self.lbl_dot.grid(row=4, column=0)
         self._animate_dots()
 
-        # ── Botón Iniciar escaneo ─────────────────────────────────────────
-        btn_start = ctk.CTkButton(
-            self,
-            text="Iniciar escaneo",
+        # ── Botones en fila inferior ──────────────────────────────────────────
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.grid(row=5, column=0, pady=(0, 30))
+
+        ctk.CTkButton(
+            btn_row,
+            text=t("standby.start_scan"),
             font=ctk.CTkFont(size=19, weight="bold"),
             fg_color="transparent",
             bg_color="transparent",
@@ -116,11 +120,24 @@ class StandbyScreen(ctk.CTkFrame):
             text_color="#FFFFFF",
             border_width=2,
             border_color="#FFFFFF",
-            width=300, height=56,
+            width=260, height=56,
             corner_radius=16,
             command=self._go_scanning,
-        )
-        btn_start.grid(row=5, column=0, pady=(0, 30))
+        ).pack(side="left", padx=(0, 12))
+
+        ctk.CTkButton(
+            btn_row,
+            text=lang_btn_text(),
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="transparent",
+            hover_color="#CCCCCC",
+            text_color="#FFFFFF",
+            border_width=2,
+            border_color="#FFFFFF",
+            width=80, height=56,
+            corner_radius=16,
+            command=self.controller.toggle_lang,
+        ).pack(side="left")
 
     # ── Lógica ────────────────────────────────────────────────────────────────
 

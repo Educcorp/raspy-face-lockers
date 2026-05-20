@@ -14,6 +14,7 @@ import tkinter as tk
 from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
+from ui.i18n import t
 from auth.session import can_edit_catalogs, is_superadmin, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
 from utils.validators import (
     validate_area_nombre, validate_unidad_nombre, validate_zona,
@@ -97,7 +98,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="Catálogos",
+            hdr, text=t("areas.title"),
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
@@ -119,9 +120,9 @@ class AreasCatalogScreen(ctk.CTkFrame):
 
         self._tabs = {}
         tab_defs = [
-            ("areas",    "Áreas"),
-            ("unidades", "Unidades"),
-            ("tipos",    "Tipos Usr."),
+            ("areas",    t("areas.tab.areas")),
+            ("unidades", t("areas.tab.units")),
+            ("tipos",    t("areas.tab.types")),
         ]
         tab_bar.grid_columnconfigure((0, 1, 2), weight=1)
         for col, (key, label) in enumerate(tab_defs):

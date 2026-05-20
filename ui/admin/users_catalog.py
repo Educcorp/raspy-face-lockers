@@ -16,6 +16,7 @@ from tkinter import ttk
 from database.connection import fetch_all
 from services import user_service
 from ui.admin_app import PALETTE
+from ui.i18n import t
 from auth.session import (
     can_create_users,
     can_edit_catalogs,
@@ -70,7 +71,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="Usuarios",
+            hdr, text=t("users.title"),
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
@@ -97,7 +98,7 @@ class UsersCatalogScreen(ctk.CTkFrame):
 
         entry = ctk.CTkEntry(
             search_frame, textvariable=self._search_var,
-            placeholder_text="Buscar por nombre o matrícula…",
+            placeholder_text=t("users.search_placeholder"),
             fg_color="transparent", border_width=0,
             text_color=PALETTE["TEXT"],
             font=ctk.CTkFont(size=15),

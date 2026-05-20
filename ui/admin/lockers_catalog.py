@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
+from ui.i18n import t
 from auth.session import can_edit_catalogs, is_superadmin
 
 # Lockers 1-4 son predeterminados del sistema — no se pueden modificar ni eliminar
@@ -50,7 +51,7 @@ class LockersCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text="Lockers",
+            hdr, text=t("lockers.title"),
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
@@ -64,7 +65,7 @@ class LockersCatalogScreen(ctk.CTkFrame):
                      font=ctk.CTkFont(size=18)).pack(side="left", padx=10)
         entry = ctk.CTkEntry(
             sf, textvariable=self._search_var,
-            placeholder_text="Buscar por área o ID…",
+            placeholder_text=t("lockers.search_placeholder"),
             fg_color="transparent", border_width=0,
             text_color=PALETTE["TEXT"], font=ctk.CTkFont(size=15),
         )

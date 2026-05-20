@@ -244,8 +244,8 @@ class DashboardScreen(ctk.CTkFrame):
         ctk.CTkButton(
             header,
             text=lang_btn_text(),
-            font=ctk.CTkFont(size=13, weight="bold"),
-            width=64, height=46,
+            font=ctk.CTkFont(size=22),
+            width=52, height=46,
             fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,

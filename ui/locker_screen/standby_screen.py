@@ -128,13 +128,13 @@ class StandbyScreen(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row,
             text=lang_btn_text(),
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(size=26),
             fg_color="transparent",
             hover_color="#CCCCCC",
             text_color="#FFFFFF",
             border_width=2,
             border_color="#FFFFFF",
-            width=80, height=56,
+            width=72, height=56,
             corner_radius=16,
             command=self.controller.toggle_lang,
         ).pack(side="left")

@@ -120,6 +120,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Ingresa tu PIN de 4 dígitos",
         "en": "Enter your 4-digit PIN",
     },
+    "pin.hello_name": {
+        "es": "Hola, {name}",
+        "en": "Welcome, {name}",
+    },
     "pin.cancel": {
         "es": "Cancelar",
         "en": "Cancel",
@@ -481,5 +485,5 @@ def toggle() -> None:
 
 
 def lang_btn_text() -> str:
-    """Texto del botón de cambio (muestra el idioma al que se cambiará)."""
-    return "🇺🇸 EN" if _lang == "es" else "🇲🇽 ES"
+    """Ícono del botón de cambio de idioma (bandera del idioma destino)."""
+    return "🇺🇸" if _lang == "es" else "🇲🇽"

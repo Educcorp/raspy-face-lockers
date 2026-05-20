@@ -1128,7 +1128,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._pin_code = ""
         self.lbl_pin_step.configure(text=t("pin.step2"))
         self.lbl_pin_title.configure(
-            text=f"Hola, {full_name}", text_color=self.PRIMARY
+            text=t("pin.hello_name", name=full_name), text_color=self.PRIMARY
         )
         self.lbl_pin_instruction.configure(text=t("pin.instruction_pin"))
         self._update_pin_display()

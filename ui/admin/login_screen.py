@@ -114,8 +114,8 @@ class LoginScreen(ctk.CTkFrame):
         ctk.CTkButton(
             top,
             text=lang_btn_text(),
-            font=ctk.CTkFont(size=12, weight="bold"),
-            width=58,
+            font=ctk.CTkFont(size=20),
+            width=48,
             height=36,
             fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],

@@ -389,6 +389,7 @@ class UserDetailOverlay(ctk.CTkFrame):
             command=self._save,
         )
 
+<<<<<<< HEAD
         self.btn_reregister_face = ctk.CTkButton(
             self._scroll,
 <<<<<<< HEAD
@@ -405,6 +406,8 @@ class UserDetailOverlay(ctk.CTkFrame):
         if not self._can_edit:
             self.btn_reregister_face.pack_forget()
 
+=======
+>>>>>>> parent of c7d6c56 (Update users_catalog.py)
         self.btn_delete = ctk.CTkButton(
             self._scroll,
             text="Inhabilitar",
@@ -722,6 +725,7 @@ class UserDetailOverlay(ctk.CTkFrame):
         else:
             self.btn_save.pack_forget()
 
+<<<<<<< HEAD
     def _reregister_face(self) -> None:
 <<<<<<< HEAD
 =======
@@ -752,6 +756,8 @@ class UserDetailOverlay(ctk.CTkFrame):
         reg_screen.start_reregister(self.user_id, nombre_str)
         self.controller.show_frame(RegisterUserScreen)
 
+=======
+>>>>>>> parent of c7d6c56 (Update users_catalog.py)
     def _close(self) -> None:
         if not self.winfo_exists():
             return

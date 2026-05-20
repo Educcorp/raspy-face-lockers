@@ -1116,6 +1116,9 @@ class ScanningScreen(ctk.CTkFrame):
         user = user_service.get_user_by_matricula(self._pin_matricula)
         if user is None:
             self.lbl_pin_error.configure(text=t("pin.err_matricula_not_found"))
+            access_log_service.register_access(
+                None, permitted=False, motivo="matricula_incorrecta"
+            )
             return
 
         self._found_user = user
@@ -1148,9 +1151,15 @@ class ScanningScreen(ctk.CTkFrame):
             self._pin_fail_count += 1
             remaining = self.PIN_MAX_FAILS - self._pin_fail_count
             if self._pin_fail_count >= self.PIN_MAX_FAILS:
+                access_log_service.register_access(
+                    None, permitted=False, motivo="limite_intentos_pin"
+                )
                 self._hide_pin_overlay()
                 self.after(200, self._show_lock_screen)
                 return
+            access_log_service.register_access(
+                None, permitted=False, motivo="pin_incorrecto"
+            )
             s = "s" if remaining != 1 else ""
             self.lbl_pin_error.configure(
                 text=f"{t('scan.matricula_label')} o PIN incorrecto  ({remaining} intento{s} restante)"
@@ -1273,6 +1282,7 @@ class ScanningScreen(ctk.CTkFrame):
             access_log_service.register_access(
                 closest.get("idLockerAsignado") if closest else None,
                 permitted=False,
+                motivo="no_reconocido",
             )
             return None
 

@@ -15,11 +15,10 @@ from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
 from ui.i18n import t
-from auth.session import can_edit_catalogs, is_superadmin, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
+from auth.session import can_edit_catalogs, is_superadmin
 from utils.validators import (
-    validate_area_nombre, validate_unidad_nombre, validate_zona,
-    validate_tipo_nombre, limit_var,
-    MAX_AREA_NOMBRE, MAX_UNIDAD_NOMBRE, MAX_ZONA, MAX_TIPO_NOMBRE,
+    validate_area_nombre, validate_unidad_nombre, limit_var,
+    MAX_AREA_NOMBRE, MAX_UNIDAD_NOMBRE,
 )
 
 
@@ -69,6 +68,62 @@ def _catalog_row(parent, primary_text: str, sub_text: str,
 
     for w in [row_frame, inner] + inner.winfo_children():
         w.bind("<Button-1>", lambda e: on_click())
+    return row_frame
+
+
+_MOTIVO_LABELS: dict[str, str] = {
+    "facial":               "Facial",
+    "no_reconocido":        "Rostro no reconocido",
+    "pin":                  "PIN",
+    "pin_incorrecto":       "PIN incorrecto",
+    "limite_intentos_pin":  "Exceso de intentos PIN",
+    "matricula_incorrecta": "Matrícula incorrecta",
+    "sin_asignacion":       "Sin asignación de locker",
+}
+
+
+def _historial_row(parent, r: dict) -> ctk.CTkFrame:
+    concedido = (r.get("accesoPermitido") or "no").strip().lower() == "si"
+    dot_color = "#27ae60" if concedido else PALETTE["DANGER"]
+
+    fecha = r.get("fechaHoraAcceso", "")
+    if fecha and "T" in fecha:
+        fecha = fecha.replace("T", "  ")
+
+    usuario = (r.get("nombreCompleto") or "").strip() or t("hist.unknown_user")
+    matricula = r.get("matricula")
+    usuario_label = f"{usuario}  ({t('common.matr_prefix')} {matricula})" if matricula else usuario
+
+    locker_num = r.get("idLocker")
+    locker_label = f"Locker {locker_num}" if locker_num else "—"
+
+    motivo_raw = (r.get("motivo") or "").strip()
+    motivo_label = _MOTIVO_LABELS.get(motivo_raw, motivo_raw or "—")
+    resultado = t("hist.granted") if concedido else t("hist.denied")
+
+    row_frame = ctk.CTkFrame(parent, fg_color=PALETTE["CARD"], corner_radius=12,
+                             border_width=1, border_color=PALETTE["BORDER"])
+    row_frame.pack(fill="x", padx=4, pady=4)
+
+    inner = ctk.CTkFrame(row_frame, fg_color="transparent")
+    inner.pack(fill="x", padx=14, pady=10)
+    inner.grid_columnconfigure(1, weight=1)
+
+    ctk.CTkLabel(inner, text="●", font=ctk.CTkFont(size=14),
+                 text_color=dot_color, fg_color="transparent").grid(
+                     row=0, column=0, rowspan=2, padx=(0, 10))
+
+    top_line = f"{resultado}  ·  {locker_label}  ·  {motivo_label}"
+    ctk.CTkLabel(inner, text=top_line,
+                 font=ctk.CTkFont(size=15, weight="bold"),
+                 text_color=dot_color, fg_color="transparent",
+                 anchor="w").grid(row=0, column=1, sticky="ew")
+
+    bottom_line = f"{usuario_label}  ·  {fecha}"
+    ctk.CTkLabel(inner, text=bottom_line, font=ctk.CTkFont(size=12),
+                 text_color=PALETTE["MUTED"], fg_color="transparent",
+                 anchor="w").grid(row=1, column=1, sticky="ew")
+
     return row_frame
 
 
@@ -122,7 +177,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
         tab_defs = [
             ("areas",    t("areas.tab.areas")),
             ("unidades", t("areas.tab.units")),
-            ("tipos",    t("areas.tab.types")),
+            ("historial", t("areas.tab.history")),
         ]
         tab_bar.grid_columnconfigure((0, 1, 2), weight=1)
         for col, (key, label) in enumerate(tab_defs):
@@ -157,6 +212,11 @@ class AreasCatalogScreen(ctk.CTkFrame):
             else:
                 btn.configure(fg_color=PALETTE["CARD"],
                               text_color=PALETTE["MUTED"])
+        # Ocultar "+" en historial (no se agregan registros manualmente)
+        if key == "historial":
+            self.btn_add.pack_forget()
+        else:
+            self.btn_add.pack(side="right", padx=8)
         self._load()
 
     def _load(self) -> None:
@@ -168,15 +228,17 @@ class AreasCatalogScreen(ctk.CTkFrame):
         elif self._active_tab == "unidades":
             self._load_unidades()
         else:
-            self._load_tipos()
+            self._load_historial()
 
     # ── Áreas ─────────────────────────────────────────────────────────────────
 
     def _load_areas(self) -> None:
         rows = fetch_all(
-            "SELECT a.*, u.nombre||' '||u.apPaterno AS encargado "
+            "SELECT a.*, u.nombre||' '||u.apPaterno AS encargado, "
+            "ua.nombreUnidadAcademica AS nombreUnidad "
             "FROM area_lockers a "
             "LEFT JOIN usuarios u ON u.idUsuario = a.idUsuario "
+            "LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = a.idUnidadAcademica "
             "ORDER BY a.nombreArea"
         )
         if not rows:
@@ -186,10 +248,11 @@ class AreasCatalogScreen(ctk.CTkFrame):
                          fg_color="transparent").pack(pady=40)
             return
         for r in rows:
+            unidad_label = r.get("nombreUnidad") or "—"
             _catalog_row(
                 self._list_frame,
                 primary_text=r["nombreArea"],
-                sub_text=f"{t('areas.supervisor')} {r.get('encargado', '—') or '—'}  ·  ID {r['idArea']}",
+                sub_text=f"{t('areas.field_unidad')}: {unidad_label}  ·  ID {r['idArea']}",
                 on_click=lambda row=r: AreaFormOverlay(self, row, on_close=self._load),
                 estado=r.get("estado", "activo"),
             )
@@ -210,31 +273,23 @@ class AreasCatalogScreen(ctk.CTkFrame):
             _catalog_row(
                 self._list_frame,
                 r["nombreUnidadAcademica"],
-                f"Zona: {r.get('zona', '—') or '—'}  ·  {r['estado']}",
+                f"{r['estado']}  ·  ID {r['idUnidadAcademica']}",
                 on_click=lambda row=r: UnidadFormOverlay(self, row, on_close=self._load),
                 estado=r.get("estado", "activo"),
             )
 
-    # ── Tipos de usuario ──────────────────────────────────────────────────────
+    # ── Historial de accesos ──────────────────────────────────────────────────
 
-    def _load_tipos(self) -> None:
-        rows = fetch_all(
-            "SELECT * FROM tipo_usuarios ORDER BY nombreTipoUsuario"
-        )
+    def _load_historial(self) -> None:
+        rows = fetch_all("SELECT * FROM v_historial_detalle LIMIT 150")
         if not rows:
-            ctk.CTkLabel(self._list_frame, text=t("areas.no_types"),
+            ctk.CTkLabel(self._list_frame, text=t("hist.no_records"),
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
             return
         for r in rows:
-            _catalog_row(
-                self._list_frame,
-                r["nombreTipoUsuario"],
-                f"Estado: {r['estado']}  ·  ID {r['idTipoUsuario']}",
-                on_click=lambda row=r: TipoFormOverlay(self, row, on_close=self._load),
-                estado=r.get("estado", "activo"),
-            )
+            _historial_row(self._list_frame, r)
 
     # ── Añadir ────────────────────────────────────────────────────────────────
 
@@ -245,8 +300,6 @@ class AreasCatalogScreen(ctk.CTkFrame):
             AreaFormOverlay(self, None, on_close=self._load)
         elif self._active_tab == "unidades":
             UnidadFormOverlay(self, None, on_close=self._load)
-        else:
-            TipoFormOverlay(self, None, on_close=self._load)
 
     # ── Navegación ────────────────────────────────────────────────────────────
 
@@ -382,16 +435,39 @@ class AreaFormOverlay(_BaseFormOverlay):
         super().__init__(parent, t("areas.edit_area") if is_edit else t("areas.new_area"),
                          on_close=on_close)
         self._row = row
+
+        # Cargar unidades activas para el dropdown
+        unidades = fetch_all(
+            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica "
+            "WHERE estado='activo' ORDER BY nombreUnidadAcademica"
+        )
+        _no_unit = t("areas.no_unidad")
+        self._unidad_opts = [_no_unit] + [u["nombreUnidadAcademica"] for u in unidades]
+        self._unidad_map = {_no_unit: None}
+        self._unidad_map.update({u["nombreUnidadAcademica"]: u["idUnidadAcademica"] for u in unidades})
+
         self._nombre_var = tk.StringVar()
         limit_var(self._nombre_var, MAX_AREA_NOMBRE)
         self.e_nombre = self._field(t("areas.field_area_name", n=MAX_AREA_NOMBRE))
         self.e_nombre.configure(textvariable=self._nombre_var)
+
+        self._unidad_var = tk.StringVar(value=_no_unit)
+        self._selector(t("areas.field_unidad"), self._unidad_var, self._unidad_opts)
+
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
         self._selector(t("common.status"), self._estado_var, ["activo", "inactivo"])
+
         if is_edit:
             self._nombre_var.set(row.get("nombreArea", ""))
+            current_uid = row.get("idUnidadAcademica")
+            if current_uid:
+                for label, uid in self._unidad_map.items():
+                    if uid == current_uid:
+                        self._unidad_var.set(label)
+                        break
+
         self._save_btn(self._save)
         if is_edit:
             _is_enable = row.get("estado", "activo") == "inactivo"
@@ -417,18 +493,20 @@ class AreaFormOverlay(_BaseFormOverlay):
             self._show_err(f"Ya existe un área con el nombre '{nombre}'")
             return
 
+        unidad_id = self._unidad_map.get(self._unidad_var.get())
         self._clear_err()
         if self._row:
             execute(
-                "UPDATE area_lockers SET nombreArea=?, estado=?, "
+                "UPDATE area_lockers SET nombreArea=?, idUnidadAcademica=?, estado=?, "
                 "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
                 "modificadoPor=1 WHERE idArea=?",
-                (nombre, self._estado_var.get(), self._row["idArea"])
+                (nombre, unidad_id, self._estado_var.get(), self._row["idArea"])
             )
         else:
             execute(
-                "INSERT INTO area_lockers (nombreArea, estado, creadoPor) VALUES (?, ?, 1)",
-                (nombre, self._estado_var.get())
+                "INSERT INTO area_lockers (nombreArea, idUnidadAcademica, estado, creadoPor) "
+                "VALUES (?, ?, ?, 1)",
+                (nombre, unidad_id, self._estado_var.get())
             )
         self._close()
 
@@ -476,14 +554,10 @@ class UnidadFormOverlay(_BaseFormOverlay):
                          on_close=on_close)
         self._row = row
         self._nombre_var = tk.StringVar()
-        self._zona_var   = tk.StringVar()
         limit_var(self._nombre_var, MAX_UNIDAD_NOMBRE)
-        limit_var(self._zona_var, MAX_ZONA)
 
         self.e_nombre = self._field(t("areas.field_unit_name", n=MAX_UNIDAD_NOMBRE))
         self.e_nombre.configure(textvariable=self._nombre_var)
-        self.e_zona = self._field(t("areas.field_zone", n=MAX_ZONA))
-        self.e_zona.configure(textvariable=self._zona_var)
 
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
@@ -492,7 +566,6 @@ class UnidadFormOverlay(_BaseFormOverlay):
 
         if is_edit:
             self._nombre_var.set(row.get("nombreUnidadAcademica", ""))
-            self._zona_var.set(row.get("zona", "") or "")
 
         self._save_btn(self._save)
         if is_edit:
@@ -502,18 +575,10 @@ class UnidadFormOverlay(_BaseFormOverlay):
 
     def _save(self) -> None:
         nombre = self._nombre_var.get().strip()
-        zona   = self._zona_var.get().strip() or None
-
         err = validate_unidad_nombre(nombre)
         if err:
             self._show_err(err)
             return
-
-        if zona:
-            err = validate_zona(zona)
-            if err:
-                self._show_err(err)
-                return
 
         # Unicidad: nombre de unidad
         current_id = self._row["idUnidadAcademica"] if self._row else None
@@ -530,16 +595,16 @@ class UnidadFormOverlay(_BaseFormOverlay):
         self._clear_err()
         if self._row:
             execute(
-                "UPDATE unidad_academica SET nombreUnidadAcademica=?, zona=?, "
+                "UPDATE unidad_academica SET nombreUnidadAcademica=?, "
                 "estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
                 "modificadoPor=1 WHERE idUnidadAcademica=?",
-                (nombre, zona, self._estado_var.get(), self._row["idUnidadAcademica"])
+                (nombre, self._estado_var.get(), self._row["idUnidadAcademica"])
             )
         else:
             execute(
-                "INSERT INTO unidad_academica (nombreUnidadAcademica, zona, estado, creadoPor) "
-                "VALUES (?, ?, ?, 1)",
-                (nombre, zona, self._estado_var.get())
+                "INSERT INTO unidad_academica (nombreUnidadAcademica, estado, creadoPor) "
+                "VALUES (?, ?, 1)",
+                (nombre, self._estado_var.get())
             )
         self._close()
 
@@ -580,131 +645,3 @@ class UnidadFormOverlay(_BaseFormOverlay):
         self._close()
 
 
-# ── Tipo de usuario ───────────────────────────────────────────────────────────
-
-class TipoFormOverlay(_BaseFormOverlay):
-    def __init__(self, parent, row: dict | None, on_close=None):
-        is_edit = row is not None
-        super().__init__(parent,
-                         t("areas.edit_type") if is_edit else t("areas.new_type"),
-                         on_close=on_close)
-        self._row = row
-        self._nombre_var = tk.StringVar()
-        limit_var(self._nombre_var, MAX_TIPO_NOMBRE)
-        self.e_nombre = self._field(t("areas.field_type_name", n=MAX_TIPO_NOMBRE))
-        self.e_nombre.configure(textvariable=self._nombre_var)
-        self._estado_var = tk.StringVar(
-            value=row.get("estado", "activo") if row else "activo"
-        )
-        self._selector(t("common.status"), self._estado_var, ["activo", "inactivo"])
-
-        if is_edit:
-            self._nombre_var.set(row.get("nombreTipoUsuario", ""))
-
-        self._save_btn(self._save)
-        if is_edit:
-            _is_enable = row.get("estado", "activo") == "inactivo"
-            self._delete_btn(self._toggle_status, text=t("common.enable") if _is_enable else t("common.disable"), is_enable=_is_enable)
-            current_role = normalize_user_type_name(row.get("nombreTipoUsuario"))
-            if current_role not in {ROLE_SUPERADMIN, ROLE_ADMIN}:
-                self._delete_btn_permanent(self._confirm_delete_tipo)
-
-    def _save(self) -> None:
-        nombre = self._nombre_var.get().strip()
-        err = validate_tipo_nombre(nombre)
-        if err:
-            self._show_err(err)
-            return
-        current_name = (self._row.get("nombreTipoUsuario") if self._row else "") or ""
-        current_role = normalize_user_type_name(current_name)
-        if self._row and current_role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
-            if nombre.lower() != current_name.lower():
-                messagebox.showwarning(
-                    "Acción no permitida",
-                    "No se puede renombrar un tipo de usuario crítico (Superadmin/Admin).",
-                )
-                return
-            if self._estado_var.get() != "activo":
-                messagebox.showwarning(
-                    "Acción no permitida",
-                    "No se puede deshabilitar un tipo de usuario crítico (Superadmin/Admin).",
-                )
-                return
-
-        # Unicidad: nombre de tipo de usuario
-        current_id = self._row["idTipoUsuario"] if self._row else None
-        dup = fetch_one(
-            "SELECT 1 FROM tipo_usuarios WHERE nombreTipoUsuario=? AND idTipoUsuario!=? LIMIT 1"
-            if current_id else
-            "SELECT 1 FROM tipo_usuarios WHERE nombreTipoUsuario=? LIMIT 1",
-            (nombre, current_id) if current_id else (nombre,),
-        )
-        if dup:
-            self._show_err(f"Ya existe un tipo de usuario con el nombre '{nombre}'")
-            return
-
-        self._clear_err()
-        if self._row:
-            execute(
-                "UPDATE tipo_usuarios SET nombreTipoUsuario=?, estado=?, "
-                "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-                "modificadoPor=1 WHERE idTipoUsuario=?",
-                (nombre, self._estado_var.get(), self._row["idTipoUsuario"])
-            )
-        else:
-            execute(
-                "INSERT INTO tipo_usuarios (nombreTipoUsuario, estado, creadoPor) "
-                "VALUES (?, ?, 1)",
-                (nombre, self._estado_var.get())
-            )
-        self._close()
-
-    def _toggle_status(self) -> None:
-        current_role = normalize_user_type_name(self._row.get("nombreTipoUsuario"))
-        if current_role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
-            messagebox.showwarning(
-                "Acción no permitida",
-                "No se puede deshabilitar un tipo de usuario crítico (Superadmin/Admin).",
-            )
-            return
-        current_state = (self._row.get("estado") or "activo").strip().lower()
-        new_state = "activo" if current_state == "inactivo" else "inactivo"
-        execute(
-            "UPDATE tipo_usuarios SET estado=?, "
-            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-            "modificadoPor=1 WHERE idTipoUsuario=?",
-            (new_state, self._row["idTipoUsuario"])
-        )
-        self._close()
-
-    def _confirm_delete_tipo(self) -> None:
-        tid = self._row["idTipoUsuario"]
-        current_role = normalize_user_type_name(self._row.get("nombreTipoUsuario"))
-        if current_role in {ROLE_SUPERADMIN, ROLE_ADMIN}:
-            messagebox.showwarning(
-                "Acción no permitida",
-                "No se puede eliminar un tipo de usuario crítico (Superadmin/Admin).",
-            )
-            return
-        ur = fetch_one(
-            "SELECT COUNT(*) AS n FROM usuarios WHERE idTipoUsuario=? AND estado != 'eliminado'",
-            (tid,),
-        )
-        if ur and ur["n"] > 0:
-            messagebox.showwarning(
-                "No permitido",
-                f"Hay {ur['n']} usuario(s) activos con este tipo. Reasígnalos antes de eliminar.",
-            )
-            return
-        nombre = self._row.get("nombreTipoUsuario", "")
-        if not messagebox.askyesno(
-            "Eliminar tipo",
-            f"¿Eliminar permanentemente el tipo '{nombre}'?\n\nEsta acción no se puede deshacer.",
-        ):
-            return
-        try:
-            execute("DELETE FROM tipo_usuarios WHERE idTipoUsuario=?", (tid,))
-        except Exception:
-            messagebox.showerror("Error", "No se pudo eliminar el tipo. Puede haber dependencias.")
-            return
-        self._close()

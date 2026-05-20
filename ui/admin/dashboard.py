@@ -54,7 +54,7 @@ def _get_catalogs() -> list[dict]:
             "icon":   "TIP",
             "label":  t("cat.types.label"),
             "hint":   t("cat.types.hint"),
-            "sql":    "SELECT COUNT(*) AS n FROM tipo_usuarios WHERE estado='activo'",
+            "sql":    "SELECT COUNT(*) AS n FROM historial_accesos",
             "target": "AreasCatalogScreen",
         },
         {

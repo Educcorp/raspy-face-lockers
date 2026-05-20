@@ -265,8 +265,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "cat.areas.hint":       {"es": "Ubicación por zona", "en": "Location by zone"},
     "cat.units.label":      {"es": "Unidades Acad.",   "en": "Acad. Units"},
     "cat.units.hint":       {"es": "Facultades y escuelas", "en": "Faculties and schools"},
-    "cat.types.label":      {"es": "Tipos Usuario",    "en": "User Types"},
-    "cat.types.hint":       {"es": "Roles del sistema", "en": "System roles"},
+    "cat.types.label":      {"es": "Historial Acceso", "en": "Access History"},
+    "cat.types.hint":       {"es": "Accesos registrados", "en": "Registered accesses"},
     "cat.assign.label":     {"es": "Asignaciones",     "en": "Assignments"},
     "cat.assign.hint":      {"es": "Lockers en uso",   "en": "Lockers in use"},
     # Diálogo de cierre de sesión
@@ -324,10 +324,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Unidades",
         "en": "Units",
     },
-    "areas.tab.types": {
-        "es": "Tipos Usr.",
-        "en": "User Types",
+    "areas.tab.history": {
+        "es": "Historial",
+        "en": "History",
     },
+
+    # ── Admin: Historial de accesos ──────────────────────────────────────────
+    "hist.no_records":    {"es": "Sin registros de acceso",  "en": "No access records"},
+    "hist.granted":       {"es": "Concedido",                "en": "Granted"},
+    "hist.denied":        {"es": "Denegado",                 "en": "Denied"},
+    "hist.unknown_user":  {"es": "Sin asignación",           "en": "No assignment"},
 
     # ── Admin: LockerAssignmentScreen ────────────────────────────────────────
     "assignment.title": {
@@ -418,8 +424,9 @@ STRINGS: dict[str, dict[str, str]] = {
     # Field labels
     "areas.field_area_name":  {"es": "Nombre del área  (máx. {n} caracteres)",            "en": "Area name  (max. {n} characters)"},
     "areas.field_unit_name":  {"es": "Nombre de la unidad académica  (máx. {n} caracteres)", "en": "Academic unit name  (max. {n} characters)"},
-    "areas.field_zone":       {"es": "Zona  (opcional, máx. {n} caracteres)",              "en": "Zone  (optional, max. {n} characters)"},
     "areas.field_type_name":  {"es": "Nombre del tipo de usuario  (máx. {n} caracteres)", "en": "User type name  (max. {n} characters)"},
+    "areas.field_unidad":     {"es": "Unidad académica",                                   "en": "Academic unit"},
+    "areas.no_unidad":        {"es": "— Sin unidad —",                                    "en": "— No unit —"},
 
     # ── Admin: LockerAssignmentScreen (detallado) ────────────────────────────
     "assignment.assigned_label":  {"es": "Locker asignado (para liberar)", "en": "Assigned locker (to release)"},

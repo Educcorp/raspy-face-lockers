@@ -13,7 +13,6 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
-from core.i18n import t
 from ui.admin_app import PALETTE
 from auth.session import can_edit_catalogs, is_superadmin, normalize_user_type_name, ROLE_SUPERADMIN, ROLE_ADMIN
 from utils.validators import (
@@ -54,7 +53,7 @@ def _catalog_row(parent, primary_text: str, sub_text: str,
                                               padx=(0, 10))
     
     # Nombre + indicador inactivo
-    display_text = primary_text + (" " + t("common_inactive") if is_inactive else "")
+    display_text = primary_text + (" [INACTIVO]" if is_inactive else "")
     ctk.CTkLabel(inner, text=display_text,
                  font=ctk.CTkFont(size=15, weight="bold"),
                  text_color=text_color, fg_color="transparent",
@@ -98,7 +97,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
         ).pack(side="left", padx=8)
 
         ctk.CTkLabel(
-            hdr, text=t("areas_title"),
+            hdr, text="Catálogos",
             font=ctk.CTkFont(size=20, weight="bold"),
             text_color=PALETTE["TEXT"], fg_color="transparent",
         ).pack(side="left", padx=4)
@@ -120,9 +119,9 @@ class AreasCatalogScreen(ctk.CTkFrame):
 
         self._tabs = {}
         tab_defs = [
-            ("areas",    t("areas_tab_areas")),
-            ("unidades", t("areas_tab_units")),
-            ("tipos",    t("areas_tab_types")),
+            ("areas",    "Áreas"),
+            ("unidades", "Unidades"),
+            ("tipos",    "Tipos Usr."),
         ]
         tab_bar.grid_columnconfigure((0, 1, 2), weight=1)
         for col, (key, label) in enumerate(tab_defs):
@@ -180,7 +179,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             "ORDER BY a.nombreArea"
         )
         if not rows:
-            ctk.CTkLabel(self._list_frame, text=t("areas_no_areas"),
+            ctk.CTkLabel(self._list_frame, text="Sin áreas registradas",
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -201,7 +200,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             "SELECT * FROM unidad_academica ORDER BY nombreUnidadAcademica"
         )
         if not rows:
-            ctk.CTkLabel(self._list_frame, text=t("areas_no_units"),
+            ctk.CTkLabel(self._list_frame, text="Sin unidades registradas",
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -222,7 +221,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             "SELECT * FROM tipo_usuarios ORDER BY nombreTipoUsuario"
         )
         if not rows:
-            ctk.CTkLabel(self._list_frame, text=t("areas_no_types"),
+            ctk.CTkLabel(self._list_frame, text="Sin tipos registrados",
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -340,18 +339,16 @@ class _BaseFormOverlay(ctk.CTkFrame):
     def _save_btn(self, command) -> None:
         if not self._can_edit:
             return
-        ctk.CTkButton(self.scroll, text=t("areas_save"),
+        ctk.CTkButton(self.scroll, text="Guardar",
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=16)
 
-    def _delete_btn(self, command, text: str | None = None) -> None:
+    def _delete_btn(self, command, text: str = "Inhabilitar") -> None:
         if not self._can_edit:
             return
-        if text is None:
-            text = t("areas_disable")
-        is_enable_action = text == t("areas_enable") or text == "Habilitar"
+        is_enable_action = text == "Habilitar"
         fg_color = PALETTE["SUCCESS"] if is_enable_action else PALETTE["DANGER"]
         hover_color = "#1e8449" if is_enable_action else "#922b21"
         ctk.CTkButton(self.scroll, text=text,
@@ -363,7 +360,7 @@ class _BaseFormOverlay(ctk.CTkFrame):
     def _delete_btn_permanent(self, command) -> None:
         if not is_superadmin():
             return
-        ctk.CTkButton(self.scroll, text=t("areas_delete"),
+        ctk.CTkButton(self.scroll, text="Eliminar permanentemente",
                       font=ctk.CTkFont(size=14, weight="bold"),
                       fg_color="#6d1a1a", hover_color="#4a0f0f",
                       text_color=PALETTE["WHITE"], height=48, corner_radius=12,
@@ -395,7 +392,7 @@ class AreaFormOverlay(_BaseFormOverlay):
             self._nombre_var.set(row.get("nombreArea", ""))
         self._save_btn(self._save)
         if is_edit:
-            action_text = t("areas_enable") if row.get("estado", "activo") == "inactivo" else t("areas_disable")
+            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
             self._delete_btn(self._toggle_status, text=action_text)
             self._delete_btn_permanent(self._confirm_delete_area)
 
@@ -497,7 +494,7 @@ class UnidadFormOverlay(_BaseFormOverlay):
 
         self._save_btn(self._save)
         if is_edit:
-            action_text = t("areas_enable") if row.get("estado", "activo") == "inactivo" else t("areas_disable")
+            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
             self._delete_btn(self._toggle_status, text=action_text)
             self._delete_btn_permanent(self._confirm_delete_unidad)
 
@@ -604,7 +601,7 @@ class TipoFormOverlay(_BaseFormOverlay):
 
         self._save_btn(self._save)
         if is_edit:
-            action_text = t("areas_enable") if row.get("estado", "activo") == "inactivo" else t("areas_disable")
+            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
             self._delete_btn(self._toggle_status, text=action_text)
             current_role = normalize_user_type_name(row.get("nombreTipoUsuario"))
             if current_role not in {ROLE_SUPERADMIN, ROLE_ADMIN}:

@@ -24,7 +24,6 @@ import random
 from config import FACE_RECOGNITION_CONFIG
 from config import GPIO_CONFIG
 from core.gpio_controller import get_locker_gpio_controller
-from core.i18n import t, register_observer, unregister_observer
 from services import user_service, locker_service, access_log_service
 
 logger = logging.getLogger(__name__)
@@ -71,7 +70,6 @@ class ScanningScreen(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTk, controller) -> None:
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
-        self._lang_reg: list = []  # (widget, key, kwargs)
         self._attempts  = 0
         self._face_detected = False
         self._success_shown = False
@@ -122,31 +120,10 @@ class ScanningScreen(ctk.CTkFrame):
 
         self.gpio_controller = get_locker_gpio_controller()
 
-        register_observer(self._on_lang_change)
         self._build_ui()
         self._build_pin_overlay()
         self._build_lock_overlay()
         self._reset_liveness_state()
-
-    # ── i18n helpers ──────────────────────────────────────────────────────────
-
-    def _reg(self, widget, key: str, **kwargs) -> None:
-        """Registra widget para actualización automática de idioma."""
-        self._lang_reg.append((widget, key, kwargs))
-        widget.configure(text=t(key, **kwargs))
-
-    def _on_lang_change(self) -> None:
-        """Actualiza todos los textos estáticos registrados."""
-        for widget, key, kwargs in self._lang_reg:
-            try:
-                if widget.winfo_exists():
-                    widget.configure(text=t(key, **kwargs))
-            except Exception:
-                pass
-
-    def destroy(self) -> None:
-        unregister_observer(self._on_lang_change)
-        super().destroy()
 
     # ── Construcción de UI ────────────────────────────────────────────────────
 
@@ -164,7 +141,7 @@ class ScanningScreen(ctk.CTkFrame):
         # ── Status label (fondo oscuro para legibilidad sobre cámara) ─────────
         self.lbl_status = ctk.CTkLabel(
             self,
-            text=t("scan_position"),
+            text="POSICIONA TU ROSTRO",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color=self.TEXT_COLOR,
             fg_color="#1A1A2E",
@@ -247,17 +224,6 @@ class ScanningScreen(ctk.CTkFrame):
             command=self._go_admin_login,
         )
         self.btn_admin.place(x=452, y=44, anchor="center")
-
-        # ── Botón de idioma (junto al botón de admin) ─────────────────────────
-        from ui.components.language_button import LanguageToggleButton
-        self._lang_btn = LanguageToggleButton(
-            self,
-            width=100,
-            height=34,
-            text_color="#FFFFFF",
-            border_color="#5B8C5A",
-        )
-        self._lang_btn.place(x=340, y=44, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
         # Contenedor con fondo oscuro para overlay modal
@@ -401,6 +367,11 @@ class ScanningScreen(ctk.CTkFrame):
             return
 
         if not self.face_manager.initialized:
+            # Pausa para que el hardware de picamera2 termine de liberar recursos
+            # de cualquier sesión anterior (registro admin, etc.) antes de reiniciar.
+            time.sleep(0.6)
+            if not self._camera_running:
+                return
             logger.warning("Intentando inicializar cámara...")
             init_ok = False
             for attempt in range(1, 4):
@@ -606,12 +577,12 @@ class ScanningScreen(ctk.CTkFrame):
         # Título de error
         self.canvas.create_text(
             self.WIN_W // 2, 150,
-            text=t("scan_camera_error_title"),
+            text="✗ Error de Cámara",
             font=("Arial", 24, "bold"),
             fill="#FF6B6B",
             justify="center"
         )
-
+        
         # Mensaje de error detallado
         self.canvas.create_text(
             self.WIN_W // 2, 300,
@@ -621,19 +592,19 @@ class ScanningScreen(ctk.CTkFrame):
             justify="center",
             width=360
         )
-
+        
         # Instrucción
         self.canvas.create_text(
             self.WIN_W // 2, 550,
-            text=t("scan_back_to_start"),
+            text="Presiona ← para volver al inicio",
             font=("Arial", 12),
             fill="#CCCCCC",
             justify="center"
         )
-
+        
         # Actualizar status label
         self.lbl_status.configure(
-            text=t("scan_camera_error"),
+            text="✗ Cámara no disponible",
             text_color="#FF6B6B"
         )
         
@@ -660,24 +631,24 @@ class ScanningScreen(ctk.CTkFrame):
                         self.scan_progress_bar.set(pct / 100)
                         if pct >= 100:
                             self.lbl_status.configure(
-                                text=t("scan_identifying"),
+                                text="IDENTIFICANDO...",
                                 text_color="#A5D6A7",
                             )
                         else:
                             self.lbl_status.configure(
-                                text=t("scan_scanning_pct", pct=pct),
+                                text=f"ESCANEANDO...  {pct}%",
                                 text_color="#FFD54F",
                             )
                     else:
                         self.scan_progress_bar.set(0)
                         self.lbl_status.configure(
-                            text=t("scan_move_face"),
+                            text="Mueve ligeramente tu rostro",
                             text_color="#FFD54F",
                         )
                 else:
                     self.scan_progress_bar.set(0)
                     self.lbl_status.configure(
-                        text=t("scan_position_frame"),
+                        text="Posiciona tu rostro en el encuadre",
                         text_color="#FFFFFF",
                     )
         except Exception as e:
@@ -699,7 +670,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._reset_liveness_state()
         self._pin_fail_count = 0
         self._found_user = None
-        self.lbl_status.configure(text=t("scan_starting_camera"), text_color="#FFFFFF")
+        self.lbl_status.configure(text="INICIANDO CÁMARA...", text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.scan_progress_bar.set(0)
         self.overlay_bg.place_forget()
@@ -710,10 +681,17 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_admin.place(x=452, y=44, anchor="center")
         self.btn_admin.lift()
 
-        # Esperar a que un hilo anterior haya terminado antes de iniciar uno nuevo.
-        # Esto evita tener dos hilos de cámara activos al mismo tiempo.
+        # Recrear face_manager para obtener la instancia fresca del singleton
+        # global de CameraManager. Sin esto, al volver del panel admin el manager
+        # apunta a un objeto viejo que puede causar que Picamera2 se cuelgue.
+        try:
+            from core.face_recognition import get_face_recognition_manager
+            self.face_manager = get_face_recognition_manager()
+        except Exception as e:
+            logger.error("Error recreando FaceManager en on_show: %s", e)
+
         if self._camera_thread and self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=3.0)
+            self._camera_thread.join(timeout=1.0)
         self._camera_thread = None
 
         if not self._camera_running:
@@ -721,25 +699,24 @@ class ScanningScreen(ctk.CTkFrame):
             self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self._camera_thread.start()
             self.after(1000, lambda: self.lbl_status.configure(
-                text=t("scan_position"), text_color="#FFFFFF"
+                text="POSICIONA TU ROSTRO", text_color="#FFFFFF"
             ))
 
     def on_hide(self) -> None:
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
 
-        # Esperar a que el hilo del camera loop termine completamente
-        # antes de liberar la cámara para evitar la condición de carrera.
-        if self._camera_thread and self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=3.0)
-        self._camera_thread = None
-
-        # Liberar la cámara una vez que el hilo ya no la usa.
+        # Liberar la cámara ANTES de joinear: así detect_faces_in_frame()
+        # retorna inmediatamente y el hilo sale sin esperar el timeout completo.
         if self.face_manager and self.face_manager.initialized:
             try:
                 self.face_manager.release()
             except Exception as e:
                 logger.warning("Error liberando cámara en on_hide: %s", e)
+
+        if self._camera_thread and self._camera_thread.is_alive():
+            self._camera_thread.join(timeout=1.0)
+        self._camera_thread = None
 
         if self._return_job:
             self.after_cancel(self._return_job)
@@ -755,14 +732,14 @@ class ScanningScreen(ctk.CTkFrame):
         locker_num = user_data.get("locker_numero")   # None si no tiene locker
 
         if locker_num:
-            self.lbl_status.configure(text=t("scan_access_granted"), text_color="#A5D6A7")
-            self.lbl_success_title.configure(text=t("scan_locker_number"))
+            self.lbl_status.configure(text="✓ ACCESO CONCEDIDO", text_color="#A5D6A7")
+            self.lbl_success_title.configure(text="Locker número")
             self.lbl_success_locker.configure(text=str(locker_num))
         else:
             # Usuario registrado en el sistema pero sin locker asignado
-            self.lbl_status.configure(text=t("scan_identity_verified"), text_color="#FFD54F")
-            self.lbl_success_title.configure(text=t("scan_no_locker"))
-            self.lbl_success_locker.configure(text=t("scan_no_locker_assigned"))
+            self.lbl_status.configure(text="IDENTIDAD VERIFICADA", text_color="#FFD54F")
+            self.lbl_success_title.configure(text="Sin locker")
+            self.lbl_success_locker.configure(text="asignado")
 
         self.lbl_attempts.configure(text="")
         self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
@@ -792,11 +769,11 @@ class ScanningScreen(ctk.CTkFrame):
             text=f"Intentos: {self._attempts} / {self.MAX_ATTEMPTS}"
         )
         if self._attempts >= self.MAX_ATTEMPTS:
-            self.lbl_status.configure(text=t("scan_not_recognized"), text_color="#EF9A9A")
+            self.lbl_status.configure(text="✗ No reconocido — usa tu PIN", text_color="#EF9A9A")
             self.after(1200, self._show_pin_overlay)
         else:
             self.lbl_status.configure(
-                text=t("scan_face_attempts", a=self._attempts, m=self.MAX_ATTEMPTS),
+                text=f"Rostro no reconocido ({self._attempts}/{self.MAX_ATTEMPTS})",
                 text_color="#FFCC80",
             )
 
@@ -810,7 +787,7 @@ class ScanningScreen(ctk.CTkFrame):
             self._go_standby()
             return
 
-        self.lbl_countdown.configure(text=t("scan_returning", seconds=seconds))
+        self.lbl_countdown.configure(text=f"Volviendo al inicio en {seconds} s…")
         self._return_job = self.after(1000, self._start_countdown, seconds - 1)
 
     # ── Métodos internos ──────────────────────────────────────────────────────
@@ -1014,7 +991,7 @@ class ScanningScreen(ctk.CTkFrame):
         # Indicador de paso
         self.lbl_pin_step = ctk.CTkLabel(
             self.pin_overlay,
-            text=t("pin_step1"),
+            text="PASO 1 DE 2  ·  IDENTIFÍCATE",
             font=ctk.CTkFont(size=11),
             text_color=self.MUTED,
         )
@@ -1023,7 +1000,7 @@ class ScanningScreen(ctk.CTkFrame):
         # Título dinámico (cambia entre pasos)
         self.lbl_pin_title = ctk.CTkLabel(
             self.pin_overlay,
-            text=t("pin_enter_matricula"),
+            text="Ingresa tu matrícula",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=self.TEXT_COLOR,
         )
@@ -1032,7 +1009,7 @@ class ScanningScreen(ctk.CTkFrame):
         # Subtítulo / instrucción
         self.lbl_pin_instruction = ctk.CTkLabel(
             self.pin_overlay,
-            text=t("pin_matricula_instruction"),
+            text="Escribe tu número de matrícula y presiona  ✓",
             font=ctk.CTkFont(size=13),
             text_color=self.MUTED,
         )
@@ -1105,9 +1082,9 @@ class ScanningScreen(ctk.CTkFrame):
                     command=cmd,
                 ).grid(row=row_idx, column=col_idx, padx=8, pady=8)
 
-        self.btn_pin_cancel = ctk.CTkButton(
+        ctk.CTkButton(
             self.pin_overlay,
-            text=t("pin_cancel"),
+            text="Cancelar",
             font=ctk.CTkFont(size=14),
             fg_color="transparent",
             hover_color="#333355",
@@ -1118,23 +1095,22 @@ class ScanningScreen(ctk.CTkFrame):
             height=44,
             corner_radius=10,
             command=self._go_standby,
-        )
-        self.btn_pin_cancel.pack(pady=(16, 0))
-        self._lang_reg.append((self.btn_pin_cancel, "pin_cancel", {}))
+        ).pack(pady=(16, 0))
 
     def _show_pin_overlay(self) -> None:
         if self._success_shown:
             return
+        self._camera_running = False  # detener reconocimiento mientras se usa el PIN
         self._pin_state = "matricula"
         self._pin_matricula = ""
         self._pin_code = ""
         self._found_user = None
-        self.lbl_pin_step.configure(text=t("pin_step1"))
+        self.lbl_pin_step.configure(text="PASO 1 DE 2  ·  IDENTIFÍCATE")
         self.lbl_pin_title.configure(
-            text=t("pin_enter_matricula"), text_color=self.TEXT_COLOR
+            text="Ingresa tu matrícula", text_color=self.TEXT_COLOR
         )
         self.lbl_pin_instruction.configure(
-            text=t("pin_matricula_instruction")
+            text="Escribe tu número de matrícula y presiona  ✓"
         )
         self.lbl_pin_display.configure(text="")
         self.lbl_pin_error.configure(text="")
@@ -1176,12 +1152,12 @@ class ScanningScreen(ctk.CTkFrame):
     def _validate_matricula(self) -> None:
         """Paso 1: verifica que la matrícula exista en BD antes de pedir PIN."""
         if not self._pin_matricula.strip():
-            self.lbl_pin_error.configure(text=t("pin_enter_matricula_err"))
+            self.lbl_pin_error.configure(text="Ingresa tu matrícula")
             return
 
         user = user_service.get_user_by_matricula(self._pin_matricula)
         if user is None:
-            self.lbl_pin_error.configure(text=t("pin_not_found"))
+            self.lbl_pin_error.configure(text="Matrícula no encontrada")
             return
 
         self._found_user = user
@@ -1192,21 +1168,21 @@ class ScanningScreen(ctk.CTkFrame):
 
         self._pin_state = "pin"
         self._pin_code = ""
-        self.lbl_pin_step.configure(text=t("pin_step2"))
+        self.lbl_pin_step.configure(text="PASO 2 DE 2  ·  VERIFICA TU IDENTIDAD")
         self.lbl_pin_title.configure(
             text=f"Hola, {full_name}", text_color=self.PRIMARY
         )
-        self.lbl_pin_instruction.configure(text=t("pin_enter_pin"))
+        self.lbl_pin_instruction.configure(text="Ingresa tu PIN de 4 dígitos")
         self._update_pin_display()
         self.lbl_pin_error.configure(text="")
 
     def _verify_pin_auth(self) -> None:
         if not self._pin_code.strip():
-            self.lbl_pin_error.configure(text=t("pin_enter_pin_err"))
+            self.lbl_pin_error.configure(text="Ingresa tu PIN")
             return
 
         if self._found_user is None:
-            self.lbl_pin_error.configure(text=t("pin_restart"))
+            self.lbl_pin_error.configure(text="Error: reinicia el proceso")
             return
 
         result = user_service.authenticate_user_by_pin(self._pin_matricula, self._pin_code)
@@ -1218,7 +1194,7 @@ class ScanningScreen(ctk.CTkFrame):
                 self.after(200, self._show_lock_screen)
                 return
             self.lbl_pin_error.configure(
-                text=t("pin_wrong", r=remaining, s="s" if remaining != 1 else "")
+                text=f"Matrícula o PIN incorrecto  ({remaining} intento{'s' if remaining != 1 else ''} restante)"
             )
             self._pin_code = ""
             self._update_pin_display()
@@ -1260,23 +1236,19 @@ class ScanningScreen(ctk.CTkFrame):
             height=self.WIN_H,
         )
 
-        self.lbl_lock_title = ctk.CTkLabel(
+        ctk.CTkLabel(
             self.lock_overlay,
-            text=t("lock_blocked"),
+            text="BLOQUEADO",
             font=ctk.CTkFont(size=48, weight="bold"),
             text_color=self.DANGER,
-        )
-        self.lbl_lock_title.pack(pady=(220, 8))
-        self._lang_reg.append((self.lbl_lock_title, "lock_blocked", {}))
+        ).pack(pady=(220, 8))
 
-        self.lbl_lock_subtitle = ctk.CTkLabel(
+        ctk.CTkLabel(
             self.lock_overlay,
-            text=t("lock_too_many"),
+            text="Demasiados intentos fallidos",
             font=ctk.CTkFont(size=16),
             text_color=self.MUTED,
-        )
-        self.lbl_lock_subtitle.pack(pady=(0, 36))
-        self._lang_reg.append((self.lbl_lock_subtitle, "lock_too_many", {}))
+        ).pack(pady=(0, 36))
 
         self.lbl_lock_countdown = ctk.CTkLabel(
             self.lock_overlay,
@@ -1286,14 +1258,12 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_lock_countdown.pack()
 
-        self.lbl_lock_auto = ctk.CTkLabel(
+        ctk.CTkLabel(
             self.lock_overlay,
-            text=t("lock_auto_unlock"),
+            text="El sistema se desbloqueará automáticamente",
             font=ctk.CTkFont(size=12),
             text_color=self.MUTED,
-        )
-        self.lbl_lock_auto.pack(pady=(12, 0))
-        self._lang_reg.append((self.lbl_lock_auto, "lock_auto_unlock", {}))
+        ).pack(pady=(12, 0))
 
     def _show_lock_screen(self) -> None:
         self._camera_running = False
@@ -1312,7 +1282,7 @@ class ScanningScreen(ctk.CTkFrame):
             self._go_standby()
             return
         self.lbl_lock_countdown.configure(
-            text=t("lock_wait", seconds=seconds, s="s" if seconds != 1 else "")
+            text=f"Espera  {seconds}  segundo{'s' if seconds != 1 else ''}…"
         )
         self.after(1000, self._lock_countdown, seconds - 1)
 

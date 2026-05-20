@@ -10,7 +10,6 @@ import customtkinter as ctk
 
 from auth.session import can_edit_catalogs
 from database.connection import db_session, fetch_all, fetch_one
-from core.i18n import t
 from services import locker_service
 from ui.admin_app import PALETTE
 
@@ -52,7 +51,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			hdr,
-			text=t("assign_title"),
+			text="Asignación de Lockers",
 			font=ctk.CTkFont(size=19, weight="bold"),
 			text_color=PALETTE["TEXT"],
 			fg_color="transparent",
@@ -63,7 +62,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text=t("assign_user"),
+			text="Usuario (alumno, admin o superadmin)",
 			font=ctk.CTkFont(size=12),
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
@@ -72,7 +71,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self.menu_student = ctk.CTkOptionMenu(
 			body,
 			variable=self._student_var,
-			values=[t("assign_no_users")],
+			values=["Sin alumnos activos"],
 			fg_color=PALETTE["CARD"],
 			button_color=PALETTE["ACCENT"],
 			button_hover_color=PALETTE["ACCENT_HOVER"],
@@ -84,7 +83,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text=t("assign_available_locker"),
+			text="Locker disponible",
 			font=ctk.CTkFont(size=12),
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
@@ -93,7 +92,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self.menu_locker = ctk.CTkOptionMenu(
 			body,
 			variable=self._locker_var,
-			values=[t("assign_no_lockers")],
+			values=["Sin lockers disponibles"],
 			fg_color=PALETTE["CARD"],
 			button_color=PALETTE["ACCENT"],
 			button_hover_color=PALETTE["ACCENT_HOVER"],
@@ -105,7 +104,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text=t("assign_assigned_locker"),
+			text="Locker asignado (para liberar)",
 			font=ctk.CTkFont(size=12),
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
@@ -114,7 +113,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self.menu_assigned = ctk.CTkOptionMenu(
 			body,
 			variable=self._assigned_var,
-			values=[t("assign_no_assigned")],
+			values=["Sin asignaciones activas"],
 			fg_color=PALETTE["CARD"],
 			button_color=PALETTE["ACCENT"],
 			button_hover_color=PALETTE["ACCENT_HOVER"],
@@ -130,7 +129,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		self.btn_assign = ctk.CTkButton(
 			actions,
-			text=t("assign_btn"),
+			text="Asignar",
 			font=ctk.CTkFont(size=15, weight="bold"),
 			fg_color=PALETTE["ACCENT"],
 			hover_color=PALETTE["ACCENT_HOVER"],
@@ -143,7 +142,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		self.btn_release = ctk.CTkButton(
 			actions,
-			text=t("assign_release"),
+			text="Liberar locker",
 			font=ctk.CTkFont(size=15, weight="bold"),
 			fg_color=PALETTE["DANGER"],
 			hover_color="#922b21",
@@ -165,7 +164,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text=t("assign_active_list"),
+			text="Asignaciones activas",
 			font=ctk.CTkFont(size=14, weight="bold"),
 			text_color=PALETTE["TEXT"],
 			fg_color="transparent",
@@ -178,7 +177,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		if self._can_edit:
 			ctk.CTkLabel(
 				body,
-				text=t("assign_open_manual"),
+				text="Abrir locker manualmente",
 				font=ctk.CTkFont(size=14, weight="bold"),
 				text_color=PALETTE["TEXT"],
 				fg_color="transparent",
@@ -279,11 +278,11 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		student_labels = [self._student_label(row) for row in self._students]
 		locker_labels = [self._locker_label(row) for row in self._lockers]
 
-		self.menu_student.configure(values=student_labels or [t("assign_no_users")])
-		self.menu_locker.configure(values=locker_labels or [t("assign_no_lockers")])
+		self.menu_student.configure(values=student_labels or ["Sin usuarios activos"])
+		self.menu_locker.configure(values=locker_labels or ["Sin lockers disponibles"])
 
-		self._student_var.set(student_labels[0] if student_labels else t("assign_no_users"))
-		self._locker_var.set(locker_labels[0] if locker_labels else t("assign_no_lockers"))
+		self._student_var.set(student_labels[0] if student_labels else "Sin usuarios activos")
+		self._locker_var.set(locker_labels[0] if locker_labels else "Sin lockers disponibles")
 
 	def _load_assignments(self) -> None:
 		self._assignments = fetch_all(
@@ -305,9 +304,9 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		)
 
 		assignment_labels = [self._assigned_label(row) for row in self._assignments]
-		self.menu_assigned.configure(values=assignment_labels or [t("assign_no_assigned")])
+		self.menu_assigned.configure(values=assignment_labels or ["Sin asignaciones activas"])
 		self._assigned_var.set(
-			assignment_labels[0] if assignment_labels else t("assign_no_assigned")
+			assignment_labels[0] if assignment_labels else "Sin asignaciones activas"
 		)
 
 		for widget in self.assignments_frame.winfo_children():
@@ -316,7 +315,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		if not self._assignments:
 			ctk.CTkLabel(
 				self.assignments_frame,
-				text=t("assign_no_active"),
+				text="No hay asignaciones activas",
 				font=ctk.CTkFont(size=14),
 				text_color=PALETTE["MUTED"],
 				fg_color="transparent",

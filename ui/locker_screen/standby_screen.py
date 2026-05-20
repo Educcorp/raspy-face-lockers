@@ -13,9 +13,6 @@ import logging
 import os
 from PIL import Image
 
-from core.i18n import t, register_observer, unregister_observer
-from ui.components.language_button import LanguageToggleButton
-
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +38,6 @@ class StandbyScreen(ctk.CTkFrame):
         self._monitor_thread: threading.Thread | None = None
         self._monitor_running = False
         self._transitioning = False
-        self._lang_reg: list = []  # (widget, key, kwargs)
 
         try:
             from core.face_recognition import get_face_recognition_manager
@@ -50,28 +46,9 @@ class StandbyScreen(ctk.CTkFrame):
             logger.error(f"No se pudo inicializar face manager en standby: {e}")
             self.face_manager = None
 
-        register_observer(self._on_lang_change)
         self._build_ui()
 
     # ── Construcción de widgets ───────────────────────────────────────────────
-
-    def _reg(self, widget, key: str, **kwargs) -> None:
-        """Registra widget para actualización automática de idioma."""
-        self._lang_reg.append((widget, key, kwargs))
-        widget.configure(text=t(key, **kwargs))
-
-    def _on_lang_change(self) -> None:
-        """Actualiza todos los textos registrados."""
-        for widget, key, kwargs in self._lang_reg:
-            try:
-                if widget.winfo_exists():
-                    widget.configure(text=t(key, **kwargs))
-            except Exception:
-                pass
-
-    def destroy(self) -> None:
-        unregister_observer(self._on_lang_change)
-        super().destroy()
 
     def _build_ui(self) -> None:
         # 6 filas distribuidas verticalmente en 480×800
@@ -110,13 +87,12 @@ class StandbyScreen(ctk.CTkFrame):
         # ── Instrucción principal ─────────────────────────────────────────────
         lbl_instruction = ctk.CTkLabel(
             self,
-            text=t("standby_approach"),
+            text="Acerca tu rostro a la cámara",
             font=ctk.CTkFont(size=22),
             text_color=self.MUTED,
             fg_color="transparent",
         )
         lbl_instruction.grid(row=3, column=0)
-        self._lang_reg.append((lbl_instruction, "standby_approach", {}))
 
         # ── Indicador animado ─────────────────────────────────────────────────
         self.lbl_dot = ctk.CTkLabel(
@@ -132,7 +108,7 @@ class StandbyScreen(ctk.CTkFrame):
         # ── Botón Iniciar escaneo ─────────────────────────────────────────
         btn_start = ctk.CTkButton(
             self,
-            text=t("standby_start_scan"),
+            text="Iniciar escaneo",
             font=ctk.CTkFont(size=19, weight="bold"),
             fg_color="transparent",
             bg_color="transparent",
@@ -145,11 +121,6 @@ class StandbyScreen(ctk.CTkFrame):
             command=self._go_scanning,
         )
         btn_start.grid(row=5, column=0, pady=(0, 30))
-        self._lang_reg.append((btn_start, "standby_start_scan", {}))
-
-        # ── Botón de idioma (esquina superior derecha) ────────────────────────
-        lang_btn = LanguageToggleButton(self)
-        lang_btn.place(relx=1.0, y=8, anchor="ne", x=-8)
 
     # ── Lógica ────────────────────────────────────────────────────────────────
 

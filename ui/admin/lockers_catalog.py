@@ -19,11 +19,19 @@ _DEFAULT_LOCKER_IDS = frozenset({1, 2, 3, 4})
 
 
 def _estado_badge(estado: str) -> tuple[str, str]:
-    return {
-        "activo":        ("●  Activo",       "#27ae60"),
-        "inactivo":      ("●  Inactivo",     PALETTE["MUTED"]),
-        "mantenimiento": ("●  Mantenimiento", "#d4a034"),
-    }.get(estado, ("●  ?", PALETTE["MUTED"]))
+    labels = {
+        "es": {"activo": "Activo", "inactivo": "Inactivo", "mantenimiento": "Mantenimiento"},
+        "en": {"activo": "Active", "inactivo": "Inactive", "mantenimiento": "Maintenance"},
+    }
+    from ui.i18n import get_lang
+    lang = get_lang()
+    label = labels.get(lang, labels["es"]).get(estado, "?")
+    colors = {
+        "activo": "#27ae60",
+        "inactivo": PALETTE["MUTED"],
+        "mantenimiento": "#d4a034",
+    }
+    return f"●  {label}", colors.get(estado, PALETTE["MUTED"])
 
 
 class LockersCatalogScreen(ctk.CTkFrame):
@@ -84,7 +92,7 @@ class LockersCatalogScreen(ctk.CTkFrame):
         for w in self._list_frame.winfo_children():
             w.destroy()
         if not rows:
-            ctk.CTkLabel(self._list_frame, text="Sin resultados",
+            ctk.CTkLabel(self._list_frame, text=t("common.no_results"),
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -120,9 +128,9 @@ class LockersCatalogScreen(ctk.CTkFrame):
                      ).grid(row=0, column=0, rowspan=2, padx=(0, 14))
 
         # Área + indicador inactivo
-        area_text = f"Área: {r.get('area', '—')}"
+        area_text = f"{t('lockers.area_prefix')} {r.get('area', '—')}"
         if is_inactive:
-            area_text += " [INACTIVO]"
+            area_text += f" {t('common.inactive_badge')}"
         ctk.CTkLabel(inner, text=area_text,
                      font=ctk.CTkFont(size=15, weight="bold"),
                      text_color=text_color, fg_color="transparent",
@@ -202,7 +210,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
                       fg_color="transparent", hover_color=PALETTE["BORDER"],
                       text_color=PALETTE["TEXT"], command=self._close,
                       ).pack(side="left", padx=8)
-        ctk.CTkLabel(hdr, text="Detalle de Locker",
+        ctk.CTkLabel(hdr, text=t("lockers.detail_title"),
                      font=ctk.CTkFont(size=18, weight="bold"),
                      text_color=PALETTE["TEXT"],
                      fg_color="transparent").pack(side="left", padx=4)
@@ -212,8 +220,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
         fields = [
             ("idLocker", "ID Locker"),
-            ("area", "Área"),
-            ("unidad", "Unidad académica"),
+            ("area",     t("lockers.field_area")),
+            ("unidad",   t("lockers.field_unit")),
         ]
         self._labels: dict[str, ctk.CTkLabel] = {}
         for key, label in fields:
@@ -229,7 +237,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             self._labels[key] = lbl
 
         # Estado selector
-        ctk.CTkLabel(scroll, text="Estado", font=ctk.CTkFont(size=12),
+        ctk.CTkLabel(scroll, text=t("common.status"), font=ctk.CTkFont(size=12),
                      text_color=PALETTE["MUTED"],
                      fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
         self._estado_var = tk.StringVar()
@@ -246,7 +254,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             self._estado_menu.configure(state="disabled")
 
         # Asignación actual
-        ctk.CTkLabel(scroll, text="Asignación actual",
+        ctk.CTkLabel(scroll, text=t("lockers.current_assignment"),
                      font=ctk.CTkFont(size=12), text_color=PALETTE["MUTED"],
                      fg_color="transparent").pack(anchor="w", padx=4, pady=(12, 2))
         self.lbl_asign = ctk.CTkLabel(scroll, text="—",
@@ -263,7 +271,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             self._estado_menu.configure(state="disabled")
             ctk.CTkLabel(
                 scroll,
-                text="Locker de sistema — protegido",
+                text=t("lockers.system_protected"),
                 font=ctk.CTkFont(size=13, weight="bold"),
                 text_color="#D4A34A",
                 fg_color=PALETTE["CARD"],
@@ -272,7 +280,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             ).pack(fill="x", padx=4, pady=(16, 4))
             ctk.CTkLabel(
                 scroll,
-                text="Los lockers 1-4 son predeterminados del sistema\ny no pueden modificarse ni eliminarse.",
+                text=t("lockers.system_warning"),
                 font=ctk.CTkFont(size=12),
                 text_color=PALETTE["MUTED"],
                 fg_color="transparent",
@@ -281,7 +289,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
         elif self._can_edit:
             ctk.CTkButton(
                 scroll,
-                text="Guardar estado",
+                text=t("lockers.save_status"),
                 font=ctk.CTkFont(size=15, weight="bold"),
                 fg_color=PALETTE["ACCENT"],
                 hover_color=PALETTE["ACCENT_HOVER"],
@@ -293,7 +301,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
             self.btn_toggle = ctk.CTkButton(
                 scroll,
-                text="Inhabilitar",
+                text=t("common.disable"),
                 font=ctk.CTkFont(size=15, weight="bold"),
                 fg_color=PALETTE["DANGER"],
                 hover_color="#922b21",
@@ -307,7 +315,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             if is_superadmin():
                 ctk.CTkButton(
                     scroll,
-                    text="Eliminar locker",
+                    text=t("lockers.delete_btn"),
                     font=ctk.CTkFont(size=15, weight="bold"),
                     fg_color="#8B1A1A",
                     hover_color="#6B0000",
@@ -348,7 +356,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             self.lbl_asign.configure(
                 text=f"[OK] {asign['usuario']}  ({asign['asignEstado']})")
         else:
-            self.lbl_asign.configure(text="Sin asignación activa")
+            self.lbl_asign.configure(text=t("lockers.no_assignment"))
 
     def _save(self) -> None:
         if not self._can_edit:
@@ -379,7 +387,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
         current_state = (self._estado_var.get() or "activo").strip().lower()
         is_inactive = current_state == "inactivo"
         self.btn_toggle.configure(
-            text="Habilitar" if is_inactive else "Inhabilitar",
+            text=t("common.enable") if is_inactive else t("common.disable"),
             fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
             hover_color="#1e8449" if is_inactive else "#922b21",
         )

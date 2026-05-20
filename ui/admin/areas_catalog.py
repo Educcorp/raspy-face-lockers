@@ -180,7 +180,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             "ORDER BY a.nombreArea"
         )
         if not rows:
-            ctk.CTkLabel(self._list_frame, text="Sin áreas registradas",
+            ctk.CTkLabel(self._list_frame, text=t("areas.no_areas"),
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -189,7 +189,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             _catalog_row(
                 self._list_frame,
                 primary_text=r["nombreArea"],
-                sub_text=f"Encargado: {r.get('encargado', '—') or '—'}  ·  ID {r['idArea']}",
+                sub_text=f"{t('areas.supervisor')} {r.get('encargado', '—') or '—'}  ·  ID {r['idArea']}",
                 on_click=lambda row=r: AreaFormOverlay(self, row, on_close=self._load),
                 estado=r.get("estado", "activo"),
             )
@@ -201,7 +201,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             "SELECT * FROM unidad_academica ORDER BY nombreUnidadAcademica"
         )
         if not rows:
-            ctk.CTkLabel(self._list_frame, text="Sin unidades registradas",
+            ctk.CTkLabel(self._list_frame, text=t("areas.no_units"),
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -222,7 +222,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             "SELECT * FROM tipo_usuarios ORDER BY nombreTipoUsuario"
         )
         if not rows:
-            ctk.CTkLabel(self._list_frame, text="Sin tipos registrados",
+            ctk.CTkLabel(self._list_frame, text=t("areas.no_types"),
                          font=ctk.CTkFont(size=16),
                          text_color=PALETTE["MUTED"],
                          fg_color="transparent").pack(pady=40)
@@ -340,19 +340,20 @@ class _BaseFormOverlay(ctk.CTkFrame):
     def _save_btn(self, command) -> None:
         if not self._can_edit:
             return
-        ctk.CTkButton(self.scroll, text="Guardar",
+        ctk.CTkButton(self.scroll, text=t("common.save"),
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
                       command=command).pack(fill="x", padx=4, pady=16)
 
-    def _delete_btn(self, command, text: str = "Inhabilitar") -> None:
+    def _delete_btn(self, command, text: str = "", is_enable: bool = False) -> None:
         if not self._can_edit:
             return
-        is_enable_action = text == "Habilitar"
+        btn_text = text if text else t("common.disable")
+        is_enable_action = is_enable
         fg_color = PALETTE["SUCCESS"] if is_enable_action else PALETTE["DANGER"]
         hover_color = "#1e8449" if is_enable_action else "#922b21"
-        ctk.CTkButton(self.scroll, text=text,
+        ctk.CTkButton(self.scroll, text=btn_text,
                       font=ctk.CTkFont(size=16, weight="bold"),
                       fg_color=fg_color, hover_color=hover_color,
                       text_color=PALETTE["WHITE"], height=52, corner_radius=12,
@@ -361,7 +362,7 @@ class _BaseFormOverlay(ctk.CTkFrame):
     def _delete_btn_permanent(self, command) -> None:
         if not is_superadmin():
             return
-        ctk.CTkButton(self.scroll, text="Eliminar permanentemente",
+        ctk.CTkButton(self.scroll, text=t("common.delete_permanent"),
                       font=ctk.CTkFont(size=14, weight="bold"),
                       fg_color="#6d1a1a", hover_color="#4a0f0f",
                       text_color=PALETTE["WHITE"], height=48, corner_radius=12,
@@ -378,23 +379,23 @@ class _BaseFormOverlay(ctk.CTkFrame):
 class AreaFormOverlay(_BaseFormOverlay):
     def __init__(self, parent, row: dict | None, on_close=None):
         is_edit = row is not None
-        super().__init__(parent, "Editar Área" if is_edit else "Nueva Área",
+        super().__init__(parent, t("areas.edit_area") if is_edit else t("areas.new_area"),
                          on_close=on_close)
         self._row = row
         self._nombre_var = tk.StringVar()
         limit_var(self._nombre_var, MAX_AREA_NOMBRE)
-        self.e_nombre = self._field(f"Nombre del área  (máx. {MAX_AREA_NOMBRE} caracteres)")
+        self.e_nombre = self._field(t("areas.field_area_name", n=MAX_AREA_NOMBRE))
         self.e_nombre.configure(textvariable=self._nombre_var)
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
-        self._selector("Estado", self._estado_var, ["activo", "inactivo"])
+        self._selector(t("common.status"), self._estado_var, ["activo", "inactivo"])
         if is_edit:
             self._nombre_var.set(row.get("nombreArea", ""))
         self._save_btn(self._save)
         if is_edit:
-            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
-            self._delete_btn(self._toggle_status, text=action_text)
+            _is_enable = row.get("estado", "activo") == "inactivo"
+            self._delete_btn(self._toggle_status, text=t("common.enable") if _is_enable else t("common.disable"), is_enable=_is_enable)
             self._delete_btn_permanent(self._confirm_delete_area)
 
     def _save(self) -> None:
@@ -471,7 +472,7 @@ class UnidadFormOverlay(_BaseFormOverlay):
     def __init__(self, parent, row: dict | None, on_close=None):
         is_edit = row is not None
         super().__init__(parent,
-                         "Editar Unidad" if is_edit else "Nueva Unidad",
+                         t("areas.edit_unit") if is_edit else t("areas.new_unit"),
                          on_close=on_close)
         self._row = row
         self._nombre_var = tk.StringVar()
@@ -479,15 +480,15 @@ class UnidadFormOverlay(_BaseFormOverlay):
         limit_var(self._nombre_var, MAX_UNIDAD_NOMBRE)
         limit_var(self._zona_var, MAX_ZONA)
 
-        self.e_nombre = self._field(f"Nombre de la unidad académica  (máx. {MAX_UNIDAD_NOMBRE} caracteres)")
+        self.e_nombre = self._field(t("areas.field_unit_name", n=MAX_UNIDAD_NOMBRE))
         self.e_nombre.configure(textvariable=self._nombre_var)
-        self.e_zona = self._field(f"Zona  (opcional, máx. {MAX_ZONA} caracteres)")
+        self.e_zona = self._field(t("areas.field_zone", n=MAX_ZONA))
         self.e_zona.configure(textvariable=self._zona_var)
 
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
-        self._selector("Estado", self._estado_var, ["activo", "inactivo"])
+        self._selector(t("common.status"), self._estado_var, ["activo", "inactivo"])
 
         if is_edit:
             self._nombre_var.set(row.get("nombreUnidadAcademica", ""))
@@ -495,8 +496,8 @@ class UnidadFormOverlay(_BaseFormOverlay):
 
         self._save_btn(self._save)
         if is_edit:
-            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
-            self._delete_btn(self._toggle_status, text=action_text)
+            _is_enable = row.get("estado", "activo") == "inactivo"
+            self._delete_btn(self._toggle_status, text=t("common.enable") if _is_enable else t("common.disable"), is_enable=_is_enable)
             self._delete_btn_permanent(self._confirm_delete_unidad)
 
     def _save(self) -> None:
@@ -585,25 +586,25 @@ class TipoFormOverlay(_BaseFormOverlay):
     def __init__(self, parent, row: dict | None, on_close=None):
         is_edit = row is not None
         super().__init__(parent,
-                         "Editar Tipo" if is_edit else "Nuevo Tipo de Usuario",
+                         t("areas.edit_type") if is_edit else t("areas.new_type"),
                          on_close=on_close)
         self._row = row
         self._nombre_var = tk.StringVar()
         limit_var(self._nombre_var, MAX_TIPO_NOMBRE)
-        self.e_nombre = self._field(f"Nombre del tipo de usuario  (máx. {MAX_TIPO_NOMBRE} caracteres)")
+        self.e_nombre = self._field(t("areas.field_type_name", n=MAX_TIPO_NOMBRE))
         self.e_nombre.configure(textvariable=self._nombre_var)
         self._estado_var = tk.StringVar(
             value=row.get("estado", "activo") if row else "activo"
         )
-        self._selector("Estado", self._estado_var, ["activo", "inactivo"])
+        self._selector(t("common.status"), self._estado_var, ["activo", "inactivo"])
 
         if is_edit:
             self._nombre_var.set(row.get("nombreTipoUsuario", ""))
 
         self._save_btn(self._save)
         if is_edit:
-            action_text = "Habilitar" if row.get("estado", "activo") == "inactivo" else "Inhabilitar"
-            self._delete_btn(self._toggle_status, text=action_text)
+            _is_enable = row.get("estado", "activo") == "inactivo"
+            self._delete_btn(self._toggle_status, text=t("common.enable") if _is_enable else t("common.disable"), is_enable=_is_enable)
             current_role = normalize_user_type_name(row.get("nombreTipoUsuario"))
             if current_role not in {ROLE_SUPERADMIN, ROLE_ADMIN}:
                 self._delete_btn_permanent(self._confirm_delete_tipo)

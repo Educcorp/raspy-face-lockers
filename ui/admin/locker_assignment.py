@@ -105,7 +105,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text="Locker asignado (para liberar)",
+			text=t("assignment.assigned_label"),
 			font=ctk.CTkFont(size=12),
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
@@ -114,7 +114,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self.menu_assigned = ctk.CTkOptionMenu(
 			body,
 			variable=self._assigned_var,
-			values=["Sin asignaciones activas"],
+			values=[t("assignment.no_active")],
 			fg_color=PALETTE["CARD"],
 			button_color=PALETTE["ACCENT"],
 			button_hover_color=PALETTE["ACCENT_HOVER"],
@@ -130,7 +130,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		self.btn_assign = ctk.CTkButton(
 			actions,
-			text="Asignar",
+			text=t("assignment.btn_assign"),
 			font=ctk.CTkFont(size=15, weight="bold"),
 			fg_color=PALETTE["ACCENT"],
 			hover_color=PALETTE["ACCENT_HOVER"],
@@ -143,7 +143,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		self.btn_release = ctk.CTkButton(
 			actions,
-			text="Liberar locker",
+			text=t("assignment.btn_release"),
 			font=ctk.CTkFont(size=15, weight="bold"),
 			fg_color=PALETTE["DANGER"],
 			hover_color="#922b21",
@@ -165,7 +165,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		ctk.CTkLabel(
 			body,
-			text="Asignaciones activas",
+			text=t("assignment.active_section"),
 			font=ctk.CTkFont(size=14, weight="bold"),
 			text_color=PALETTE["TEXT"],
 			fg_color="transparent",
@@ -178,7 +178,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		if self._can_edit:
 			ctk.CTkLabel(
 				body,
-				text="Abrir locker manualmente",
+				text=t("assignment.manual_open"),
 				font=ctk.CTkFont(size=14, weight="bold"),
 				text_color=PALETTE["TEXT"],
 				fg_color="transparent",
@@ -205,7 +205,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			self.menu_assigned.configure(state="disabled")
 			self.btn_assign.configure(state="disabled")
 			self.btn_release.configure(state="disabled")
-			self.lbl_feedback.configure(text="Tu rol no permite editar asignaciones")
+			self.lbl_feedback.configure(text=t("assignment.no_permission"))
 
 	def _go_back(self) -> None:
 		from ui.admin.dashboard import DashboardScreen
@@ -221,7 +221,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		return f"{full_name} · Matr. {row.get('matricula')}"
 
 	def _locker_label(self, row: dict) -> str:
-		area = row.get("nombreArea") or "Sin área"
+		area = row.get("nombreArea") or t("areas.no_area")
 		return f"Locker {row.get('idLocker')} · {area}"
 
 	def _assigned_label(self, row: dict) -> str:
@@ -279,11 +279,11 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		student_labels = [self._student_label(row) for row in self._students]
 		locker_labels = [self._locker_label(row) for row in self._lockers]
 
-		self.menu_student.configure(values=student_labels or ["Sin usuarios activos"])
-		self.menu_locker.configure(values=locker_labels or ["Sin lockers disponibles"])
+		self.menu_student.configure(values=student_labels or [t("assignment.no_users")])
+		self.menu_locker.configure(values=locker_labels or [t("assignment.no_lockers")])
 
-		self._student_var.set(student_labels[0] if student_labels else "Sin usuarios activos")
-		self._locker_var.set(locker_labels[0] if locker_labels else "Sin lockers disponibles")
+		self._student_var.set(student_labels[0] if student_labels else t("assignment.no_users"))
+		self._locker_var.set(locker_labels[0] if locker_labels else t("assignment.no_lockers"))
 
 	def _load_assignments(self) -> None:
 		self._assignments = fetch_all(
@@ -305,9 +305,9 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		)
 
 		assignment_labels = [self._assigned_label(row) for row in self._assignments]
-		self.menu_assigned.configure(values=assignment_labels or ["Sin asignaciones activas"])
+		self.menu_assigned.configure(values=assignment_labels or [t("assignment.no_active")])
 		self._assigned_var.set(
-			assignment_labels[0] if assignment_labels else "Sin asignaciones activas"
+			assignment_labels[0] if assignment_labels else t("assignment.no_active")
 		)
 
 		for widget in self.assignments_frame.winfo_children():
@@ -316,7 +316,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		if not self._assignments:
 			ctk.CTkLabel(
 				self.assignments_frame,
-				text="No hay asignaciones activas",
+				text=t("assignment.no_active_list"),
 				font=ctk.CTkFont(size=14),
 				text_color=PALETTE["MUTED"],
 				fg_color="transparent",
@@ -348,7 +348,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 			ctk.CTkLabel(
 				card,
-				text=f"Matr. {row.get('matricula')}  ·  Desde {row.get('fechaHoraReg')}",
+				text=f"{t('common.matr_prefix')} {row.get('matricula')}  ·  {t('common.since')} {row.get('fechaHoraReg')}",
 				font=ctk.CTkFont(size=12),
 				text_color=PALETTE["MUTED"],
 				fg_color="transparent",
@@ -415,7 +415,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		locker = self._selected_locker()
 		if not student or not locker:
 			self.lbl_feedback.configure(
-				text="Selecciona alumno y locker disponibles",
+				text=t("assignment.err_select"),
 				text_color=PALETTE["DANGER"],
 			)
 			return
@@ -429,7 +429,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		)
 		if existing_for_user and existing_for_user.get("idLocker") == locker_id:
 			self.lbl_feedback.configure(
-				text="Ese alumno ya tiene asignado ese locker",
+				text=t("assignment.err_already"),
 				text_color=PALETTE["WARN"],
 			)
 			return
@@ -453,7 +453,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			return
 
 		self.lbl_feedback.configure(
-			text=f"Locker {locker_id} asignado correctamente",
+			text=t("assignment.ok_assigned", n=locker_id),
 			text_color=PALETTE["SUCCESS"],
 		)
 		self._refresh_data()
@@ -465,7 +465,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		assignment = self._selected_assignment()
 		if not assignment:
 			self.lbl_feedback.configure(
-				text="Selecciona un locker asignado para liberar",
+				text=t("assignment.err_select_release"),
 				text_color=PALETTE["DANGER"],
 			)
 			return
@@ -493,12 +493,12 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 		if updated:
 			self.lbl_feedback.configure(
-				text=f"Locker {locker_id} liberado correctamente",
+				text=t("assignment.ok_released", n=locker_id),
 				text_color=PALETTE["SUCCESS"],
 			)
 		else:
 			self.lbl_feedback.configure(
-				text="Ese locker ya no tenía una asignación activa",
+				text=t("assignment.already_free"),
 				text_color=PALETTE["WARN"],
 			)
 
@@ -537,11 +537,11 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 				b.configure(state="disabled", fg_color=PALETTE["BORDER"])
 				if self.lbl_manual_feedback:
 					self.lbl_manual_feedback.configure(
-						text=f"Abriendo Locker {l}…", text_color=PALETTE["MUTED"]
+						text=t("assignment.opening", n=l), text_color=PALETTE["MUTED"]
 					)
 				def _task(l=l, b=b):
 					ok = locker_service.open_locker(l, seconds=3.0)
-					msg = f"Locker {l} abierto" if ok else f"No se pudo abrir Locker {l}"
+					msg = t("assignment.opened_ok", n=l) if ok else t("assignment.open_failed", n=l)
 					color = PALETTE.get("SUCCESS", "#27ae60") if ok else PALETTE["DANGER"]
 					def _done(m=msg, c=color, b=b):
 						if b.winfo_exists():

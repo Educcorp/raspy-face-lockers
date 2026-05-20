@@ -380,7 +380,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "users.no_face":           {"es": "Sin rostro registrado",   "en": "No face registered"},
     "users.no_face_warning":   {"es": "(!) Sin rostro registrado", "en": "(!) No face registered"},
     "users.face_count":        {"es": "[OK] {n} perfil(es) facial(es) registrado(s)", "en": "[OK] {n} facial profile(s) registered"},
-    "users.reregister_face":   {"es": "Re-registrar rostro",     "en": "Re-register face"},
+    "users.reregister_face":   {"es": "Actualizar rostro",     "en": "Update face"},
     "users.protected":         {"es": "Protegido",               "en": "Protected"},
     "users.your_account":      {"es": "Tu cuenta",               "en": "Your account"},
     "users.err_matricula_taken": {"es": "La matrícula {mat} ya pertenece a otro usuario", "en": "ID {mat} already belongs to another user"},

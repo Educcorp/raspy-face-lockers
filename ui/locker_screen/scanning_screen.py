@@ -111,8 +111,10 @@ class ScanningScreen(ctk.CTkFrame):
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
+        self._detect_thread: Optional[threading.Thread] = None
         self._camera_running = False
         self._camera_frame: Optional[np.ndarray] = None
+        self._latest_frame_for_detect: Optional[np.ndarray] = None  # canal entre hilos
         self._detected_faces = []
         self._photo_image: Optional[tkinter.PhotoImage] = None
 
@@ -401,131 +403,145 @@ class ScanningScreen(ctk.CTkFrame):
                 return
 
         logger.info("✓ Camera loop iniciado correctamente")
-        frame_count = 0
-        # Detección HOG cada 2 frames: el resto del tiempo reutiliza las caras
-        # conocidas para mostrar video fluido sin perder latencia de detección.
-        DETECT_EVERY = 2
+
+        # Hilo de detección independiente: HOG+Haar corre en background
+        # para que la captura y el display nunca se bloqueen.
+        self._detect_thread = threading.Thread(
+            target=self._detection_loop, daemon=True
+        )
+        self._detect_thread.start()
 
         try:
             while self._camera_running:
-                # ── Captura (bloquea ~33 ms hasta el próximo frame de picamera2) ──
+                # ── Captura (bloquea ~33 ms al ritmo de la cámara) ───────────────
                 frame = self.face_manager.get_frame()
                 if frame is None:
-                    time.sleep(0.01)
+                    time.sleep(0.005)
                     continue
 
-                frame_count += 1
-                self._frame_counter += 1
                 self._camera_frame = frame
+                self._frame_counter += 1
+                # Publicar para el hilo de detección (el hilo consume el más reciente)
+                self._latest_frame_for_detect = frame
 
-                # ── Detección HOG: solo cada DETECT_EVERY frames ─────────────────
-                if frame_count % DETECT_EVERY == 1 or not self._detected_faces:
-                    all_faces = self.face_manager.manager.detect_faces(frame)
-                    faces = _filter_close_faces(all_faces, frame)
-                    self._detected_faces = faces
-                    self._face_detected = len(faces) > 0
-                else:
-                    faces = self._detected_faces  # usar caras del frame anterior
-
-                # ── Display: enviar al hilo principal solo si no hay uno pendiente ─
-                if not self._display_pending and not self._success_shown:
+                # ── Display: siempre al ritmo completo de la cámara ──────────────
+                if not self._display_pending:
                     self._display_pending = True
                     try:
-                        self._update_camera_display(frame, faces)
+                        self._update_camera_display(frame, self._detected_faces)
                     except Exception as e:
                         self._display_pending = False
                         logger.error("Display error: %s", e)
-                elif self._success_shown:
-                    # Pantalla de éxito activa: mostrar frame para que no congele
-                    if not self._display_pending:
-                        self._display_pending = True
-                        try:
-                            self._update_camera_display(frame, faces)
-                        except Exception:
-                            self._display_pending = False
-
-                if self._success_shown:
-                    continue
-
-                now = time.time()
-
-                if faces:
-                    self._last_close_face_ts = now
-                    primary_face = _largest_face(faces)
-                    face_box = primary_face.get("box") if primary_face else None
-
-                    face_switched = False
-                    if face_box and self._last_seen_face_box:
-                        prev = self._last_seen_face_box
-                        prev_cx = prev[0] + prev[2] * 0.5
-                        prev_cy = prev[1] + prev[3] * 0.5
-                        curr_cx = face_box[0] + face_box[2] * 0.5
-                        curr_cy = face_box[1] + face_box[3] * 0.5
-                        dist = np.sqrt((curr_cx - prev_cx) ** 2 + (curr_cy - prev_cy) ** 2)
-                        if dist / max(frame.shape[1], 1) > 0.15:
-                            face_switched = True
-
-                    if face_switched:
-                        self._stable_face_frames = 0
-                        self._face_first_seen_ts = 0.0
-                        self._scan_progress_pct = 0
-                        self._reset_liveness_state()
-
-                    if self._stable_face_frames == 0:
-                        self._face_first_seen_ts = now
-                    self._stable_face_frames += 1
-                    self._last_seen_face_box = face_box
-                    if self._last_seen_face_box:
-                        self._update_liveness(frame, self._last_seen_face_box)
-                else:
-                    self._stable_face_frames = 0
-                    self._last_seen_face_box = None
-                    self._face_first_seen_ts = 0.0
-                    self._scan_progress_pct = 0
-                    self._reset_liveness_state()
-
-                    if now - self._last_close_face_ts >= self.AUTO_RETURN_SECONDS:
-                        logger.info("Sin cara cercana %.0f s → standby", self.AUTO_RETURN_SECONDS)
-                        self._camera_running = False
-                        self._auto_return_started_ts = time.time()
-                        self.after(0, self._finalize_auto_return)
-                        return
-
-                if self._face_first_seen_ts > 0:
-                    scan_elapsed = now - self._face_first_seen_ts
-                    self._scan_progress_pct = min(100, int(scan_elapsed / self.MIN_SCAN_SECONDS * 100))
-                else:
-                    scan_elapsed = 0.0
-                    self._scan_progress_pct = 0
-
-                enough_frames   = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
-                enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
-                cooldown_ok     = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
-                scan_time_ok    = scan_elapsed >= self.MIN_SCAN_SECONDS
-
-                if faces and enough_frames and enough_stability and cooldown_ok and self._liveness_passed and scan_time_ok:
-                    self._last_recognition_ts = now
-                    try:
-                        user_data = self._recognize_current_face(frame, faces)
-                        if user_data:
-                            self.after(0, self.on_face_match, user_data)
-                        else:
-                            self.after(0, self.on_face_no_match)
-                    except Exception as err:
-                        logger.error("Error en reconocimiento: %s", err)
-                        self.after(0, self.on_face_no_match)
-
-                if frame_count % 60 == 0:
-                    logger.debug("Camera loop: %d frames, %d rostros", frame_count, len(faces))
 
         except Exception as e:
             logger.error(f"Error en camera loop: {e}")
             self.after(0, self._show_camera_error, f"Error crítico: {str(e)}")
         finally:
             # NO liberar la cámara aquí: on_hide() lo hace después de que
-            # el hilo termina, evitando la condición de carrera donde este
-            # finally destruye la cámara que ya re-inicializó un hilo nuevo.
-            logger.info(f"Camera loop finalizado. Total: {frame_count}")
+            # el hilo termina, evitando la condición de carrera.
+            logger.info("Camera loop finalizado.")
+
+    def _detection_loop(self) -> None:
+        """
+        Hilo de detección independiente.
+        Corre HOG+Haar y toda la lógica de liveness/reconocimiento en background,
+        sin bloquear nunca el hilo de captura/display.
+        """
+        last_frame_id: int = -1
+        detect_count: int  = 0
+
+        while self._camera_running:
+            frame = self._latest_frame_for_detect
+            if frame is None or id(frame) == last_frame_id:
+                time.sleep(0.005)
+                continue
+
+            last_frame_id = id(frame)
+            detect_count += 1
+
+            # ── Detección (HOG + Haar si es necesario) ───────────────────────
+            try:
+                all_faces = self.face_manager.manager.detect_faces(frame)
+            except Exception as err:
+                logger.debug("Detection error: %s", err)
+                all_faces = []
+
+            faces = _filter_close_faces(all_faces, frame)
+            self._detected_faces = faces
+            self._face_detected  = len(faces) > 0
+
+            if self._success_shown:
+                continue
+
+            now = time.time()
+
+            if faces:
+                self._last_close_face_ts = now
+                primary_face = _largest_face(faces)
+                face_box = primary_face.get("box") if primary_face else None
+
+                face_switched = False
+                if face_box and self._last_seen_face_box:
+                    prev = self._last_seen_face_box
+                    prev_cx = prev[0] + prev[2] * 0.5
+                    prev_cy = prev[1] + prev[3] * 0.5
+                    curr_cx = face_box[0] + face_box[2] * 0.5
+                    curr_cy = face_box[1] + face_box[3] * 0.5
+                    dist = np.sqrt((curr_cx - prev_cx) ** 2 + (curr_cy - prev_cy) ** 2)
+                    if dist / max(frame.shape[1], 1) > 0.15:
+                        face_switched = True
+
+                if face_switched:
+                    self._stable_face_frames = 0
+                    self._face_first_seen_ts = 0.0
+                    self._scan_progress_pct  = 0
+                    self._reset_liveness_state()
+
+                if self._stable_face_frames == 0:
+                    self._face_first_seen_ts = now
+                self._stable_face_frames += 1
+                self._last_seen_face_box = face_box
+                if face_box:
+                    self._update_liveness(frame, face_box)
+            else:
+                self._stable_face_frames = 0
+                self._last_seen_face_box = None
+                self._face_first_seen_ts = 0.0
+                self._scan_progress_pct  = 0
+                self._reset_liveness_state()
+
+                if now - self._last_close_face_ts >= self.AUTO_RETURN_SECONDS:
+                    logger.info("Sin cara %.0f s → standby", self.AUTO_RETURN_SECONDS)
+                    self._camera_running = False
+                    self._auto_return_started_ts = time.time()
+                    self.after(0, self._finalize_auto_return)
+                    return
+
+            if self._face_first_seen_ts > 0:
+                scan_elapsed = now - self._face_first_seen_ts
+                self._scan_progress_pct = min(100, int(scan_elapsed / self.MIN_SCAN_SECONDS * 100))
+            else:
+                scan_elapsed = 0.0
+                self._scan_progress_pct = 0
+
+            enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
+            cooldown_ok      = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
+            scan_time_ok     = scan_elapsed >= self.MIN_SCAN_SECONDS
+            do_recognize     = detect_count % self.RECOGNITION_INTERVAL_FRAMES == 0
+
+            if faces and do_recognize and enough_stability and cooldown_ok and self._liveness_passed and scan_time_ok:
+                self._last_recognition_ts = now
+                try:
+                    user_data = self._recognize_current_face(frame, faces)
+                    if user_data:
+                        self.after(0, self.on_face_match, user_data)
+                    else:
+                        self.after(0, self.on_face_no_match)
+                except Exception as err:
+                    logger.error("Error en reconocimiento: %s", err)
+                    self.after(0, self.on_face_no_match)
+
+        logger.debug("Detection loop finalizado. Total detecciones: %d", detect_count)
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
         """Dibuja el frame en modo espejo y letterbox (sin zoom), con guía de rostro."""
@@ -714,8 +730,14 @@ class ScanningScreen(ctk.CTkFrame):
             self._camera_thread.join(timeout=1.0)
         self._camera_thread = None
 
+        if self._detect_thread and self._detect_thread.is_alive():
+            self._detect_thread.join(timeout=1.0)
+        self._detect_thread = None
+        self._latest_frame_for_detect = None
+
         if not self._camera_running:
             self._camera_running = True
+            # El hilo de detección lo arranca _camera_loop internamente
             self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self._camera_thread.start()
             self.after(1000, lambda: self.lbl_status.configure(
@@ -725,9 +747,9 @@ class ScanningScreen(ctk.CTkFrame):
     def on_hide(self) -> None:
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
+        self._latest_frame_for_detect = None
 
-        # Liberar la cámara ANTES de joinear: así detect_faces_in_frame()
-        # retorna inmediatamente y el hilo sale sin esperar el timeout completo.
+        # Liberar la cámara antes de joinear para que get_frame() retorne rápido.
         if self.face_manager and self.face_manager.initialized:
             try:
                 self.face_manager.release()
@@ -737,6 +759,10 @@ class ScanningScreen(ctk.CTkFrame):
         if self._camera_thread and self._camera_thread.is_alive():
             self._camera_thread.join(timeout=1.0)
         self._camera_thread = None
+
+        if self._detect_thread and self._detect_thread.is_alive():
+            self._detect_thread.join(timeout=1.0)
+        self._detect_thread = None
 
         if self._return_job:
             self.after_cancel(self._return_job)

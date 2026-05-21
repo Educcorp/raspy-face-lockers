@@ -36,6 +36,15 @@ from utils.validators import (
 
 logger = logging.getLogger(__name__)
 
+
+def _largest_face(faces: list) -> dict | None:
+    """Selecciona el rostro más cercano (caja más grande) de la lista detectada."""
+    if not faces:
+        return None
+    return max(faces, key=lambda f: (
+        (f.get("box") or (0, 0, 0, 0))[2] * (f.get("box") or (0, 0, 0, 0))[3]
+    ))
+
 # cv2 y numpy se importan de forma lazy en _Step4FaceCapture para no bloquear
 # si OpenCV no está instalado en el entorno de desarrollo.
 try:
@@ -773,7 +782,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 self._detected_faces = faces
 
                 if faces:
-                    box = faces[0].get("box")
+                    box = (_largest_face(faces) or {}).get("box")
                     self._current_landmarks = self._face_mgr.get_landmarks(frame, box) or [] if box else []
                 else:
                     self._current_landmarks = []
@@ -801,7 +810,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         import time
         if not faces or self._face_mgr is None:
             return
-        box = faces[0].get("box")
+        box = (_largest_face(faces) or {}).get("box")
         if not box:
             return
 

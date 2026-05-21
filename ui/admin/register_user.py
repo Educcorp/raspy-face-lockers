@@ -494,6 +494,9 @@ class _Step3PIN(ctk.CTkFrame):
         if len(self._pin) < self.MAX_DIGITS:
             self.lbl_err.configure(text=f"Ingresa {self.MAX_DIGITS} dígitos")
             return
+        if any(self._pin[i] == self._pin[i - 1] for i in range(1, len(self._pin))):
+            self.lbl_err.configure(text="El PIN no puede tener numeros repetidos consecutivos")
+            return
         # Hashear PIN con SHA-256
         pin_hash = hashlib.sha256(self._pin.encode()).hexdigest()
         self.lbl_err.configure(text="")

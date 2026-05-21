@@ -717,27 +717,18 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts.configure(
             text=t("scan.attempts", a=self._attempts, m=self.MAX_ATTEMPTS)
         )
-        # Mostrar "ACCESO DENEGADO" brevemente antes del mensaje de intento
-        self.lbl_status.configure(text=t("scan.access_denied"), text_color=self.DANGER)
         self.scan_progress_bar.set(0)
 
         if self._attempts >= self.MAX_ATTEMPTS:
-            # Cara no reconocida — mostrar mensaje y volver a standby (sin PIN)
+            # Tras 3 intentos fallidos, enviar directamente al PIN
             self.lbl_attempts.configure(text="")
-            self.after(1200, lambda: (
-                self.lbl_status.configure(
-                    text=t("scan.not_registered"), text_color=self.DANGER
-                ) if not self._success_shown else None
-            ))
-            self.after(3500, lambda: self._go_standby() if not self._success_shown else None)
+            self.lbl_status.configure(text=t("pin.title_enter_matricula"), text_color="#FFFFFF")
+            self.after(400, lambda: self._show_pin_overlay() if not self._success_shown else None)
         else:
-            attempts_copy = self._attempts
-            self.after(1500, lambda: (
-                self.lbl_status.configure(
-                    text=t("scan.face_not_recognized", a=attempts_copy, m=self.MAX_ATTEMPTS),
-                    text_color="#FFCC80",
-                ) if not self._success_shown else None
-            ))
+            self.lbl_status.configure(
+                text=t("scan.position_face"),
+                text_color="#FFFFFF",
+            )
 
     # ── Countdown ─────────────────────────────────────────────────────────────
 

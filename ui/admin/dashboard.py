@@ -423,12 +423,12 @@ class DashboardScreen(ctk.CTkFrame):
     def _navigate(self, target_name: str | None) -> None:
         if not target_name:
             return
-        from ui.admin import users_catalog, lockers_catalog, areas_catalog, locker_assignment
+        from ui.admin import users_catalog, lockers_catalog, areas_catalog, locker_assignment, access_history
         mapping = {
             "UsersCatalogScreen":   users_catalog.UsersCatalogScreen,
             "LockersCatalogScreen": lockers_catalog.LockersCatalogScreen,
             "AreasCatalogScreen":   areas_catalog.AreasCatalogScreen,
-            "AccessHistoryScreen":  areas_catalog.AccessHistoryScreen,
+            "AccessHistoryScreen":  access_history.AccessHistoryScreen,
             "LockerAssignmentScreen": locker_assignment.LockerAssignmentScreen,
         }
         cls = mapping.get(target_name)

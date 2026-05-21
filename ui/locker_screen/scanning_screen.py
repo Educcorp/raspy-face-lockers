@@ -1060,7 +1060,7 @@ class ScanningScreen(ctk.CTkFrame):
             width=200,
             height=44,
             corner_radius=10,
-            command=self._go_standby,
+            command=self._cancel_pin,
         ).pack(pady=(16, 0))
 
     def _show_pin_overlay(self) -> None:
@@ -1199,6 +1199,12 @@ class ScanningScreen(ctk.CTkFrame):
         }
         self._hide_pin_overlay()
         self.on_face_match(user_data)
+
+    def _cancel_pin(self) -> None:
+        access_log_service.register_access(
+            None, permitted=False, motivo="pin_cancelado"
+        )
+        self._go_standby()
 
     # ── Pantalla de bloqueo tras PIN fallido ──────────────────────────────────
 

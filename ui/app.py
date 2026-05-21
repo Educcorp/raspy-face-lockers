@@ -90,12 +90,13 @@ class LockerApp(ctk.CTk):
         from ui.admin.users_catalog     import UsersCatalogScreen
         from ui.admin.lockers_catalog   import LockersCatalogScreen
         from ui.admin.areas_catalog     import AreasCatalogScreen
+        from ui.admin.access_history    import AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user     import RegisterUserScreen
         for FrameClass in (
             LoginScreen, DashboardScreen, UsersCatalogScreen,
             LockersCatalogScreen, AreasCatalogScreen,
-            LockerAssignmentScreen, RegisterUserScreen,
+            AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
         ):
             frame = FrameClass(parent=self, controller=self)
             self._frames[FrameClass] = frame
@@ -131,6 +132,7 @@ class LockerApp(ctk.CTk):
         from ui.admin.users_catalog     import UsersCatalogScreen
         from ui.admin.lockers_catalog   import LockersCatalogScreen
         from ui.admin.areas_catalog     import AreasCatalogScreen
+        from ui.admin.access_history    import AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user     import RegisterUserScreen
         from auth.session import is_authenticated
@@ -138,7 +140,7 @@ class LockerApp(ctk.CTk):
         admin_classes = (
             LoginScreen, DashboardScreen, UsersCatalogScreen,
             LockersCatalogScreen, AreasCatalogScreen,
-            LockerAssignmentScreen, RegisterUserScreen,
+            AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
         )
         for cls in admin_classes:
             if cls in self._frames:

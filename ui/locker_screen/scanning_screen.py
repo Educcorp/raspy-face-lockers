@@ -63,7 +63,7 @@ class ScanningScreen(ctk.CTkFrame):
     MAX_ATTEMPTS    = 3
     PIN_MAX_FAILS   = 3
     LOCK_SECONDS    = 60
-    DISPLAY_SECONDS = 8
+    DISPLAY_SECONDS = 5
     RECOGNITION_INTERVAL_FRAMES = 5   # intentos de reconocimiento cada 5 frames (~0.33s)
     STABLE_FACE_FRAMES = 12           # rostro estable ~0.8s antes de intentar reconocimiento
     RECOGNITION_COOLDOWN_SECONDS = 3.0  # mínimo 3s entre intentos de reconocimiento

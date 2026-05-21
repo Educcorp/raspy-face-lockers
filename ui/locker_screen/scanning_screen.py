@@ -739,14 +739,25 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts.configure(
             text=t("scan.attempts", a=self._attempts, m=self.MAX_ATTEMPTS)
         )
+        # Mostrar "ACCESO DENEGADO" brevemente antes del mensaje de intento
+        self.lbl_status.configure(text=t("scan.access_denied"), text_color=self.DANGER)
+        self.scan_progress_bar.set(0)
+
         if self._attempts >= self.MAX_ATTEMPTS:
-            self.lbl_status.configure(text=t("scan.not_recognized_use_pin"), text_color="#EF9A9A")
-            self.after(1200, self._show_pin_overlay)
+            self.after(1200, lambda: (
+                self.lbl_status.configure(
+                    text=t("scan.not_recognized_use_pin"), text_color="#EF9A9A"
+                ) if not self._success_shown else None
+            ))
+            self.after(2000, self._show_pin_overlay)
         else:
-            self.lbl_status.configure(
-                text=t("scan.face_not_recognized", a=self._attempts, m=self.MAX_ATTEMPTS),
-                text_color="#FFCC80",
-            )
+            attempts_copy = self._attempts
+            self.after(1500, lambda: (
+                self.lbl_status.configure(
+                    text=t("scan.face_not_recognized", a=attempts_copy, m=self.MAX_ATTEMPTS),
+                    text_color="#FFCC80",
+                ) if not self._success_shown else None
+            ))
 
     # ── Countdown ─────────────────────────────────────────────────────────────
 

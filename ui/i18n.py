@@ -118,6 +118,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Identidad verificada",
         "en": "Identity verified",
     },
+    "scan.unlocked": {
+        "es": "DESBLOQUEADO",
+        "en": "UNLOCKED",
+    },
+    "scan.locker_label": {
+        "es": "Locker",
+        "en": "Locker",
+    },
     "scan.success_no_locker": {
         "es": "Sin locker asignado",
         "en": "No locker assigned",

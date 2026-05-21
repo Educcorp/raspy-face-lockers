@@ -310,6 +310,21 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			assignment_labels[0] if assignment_labels else t("assignment.no_active")
 		)
 
+		# Habilitar/deshabilitar botón Liberar según si hay asignaciones activas
+		if self._can_edit:
+			if self._assignments:
+				self.btn_release.configure(
+					state="normal",
+					fg_color=PALETTE["DANGER"],
+					hover_color="#922b21",
+				)
+			else:
+				self.btn_release.configure(
+					state="disabled",
+					fg_color=PALETTE["MUTED"],
+					hover_color=PALETTE["MUTED"],
+				)
+
 		for widget in self.assignments_frame.winfo_children():
 			widget.destroy()
 

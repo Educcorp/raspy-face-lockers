@@ -229,70 +229,21 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.btn_admin.place(x=452, y=44, anchor="center")
 
-        # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Fondo verde que cubre toda la pantalla
+        # ── Overlay de éxito — fondo verde pantalla completa ─────────────────
         self.overlay_bg = ctk.CTkFrame(
             self,
             fg_color="#5B8C5A",
             corner_radius=0,
-            width=480,
-            height=800,
+            width=self.WIN_W, height=self.WIN_H,
             border_width=0,
         )
 
-        # Recuadro verde — se posiciona más arriba y centrado en on_face_match()
-        self.success_frame = ctk.CTkFrame(
-            self.overlay_bg,
-            fg_color="#5B8C5A",
-            corner_radius=28,
-            width=440,
-            height=340,
-            border_width=0,
-        )
+        # Panel interior centrado (todos los labels viven aquí).
+        # on_face_match() reordena el pack según si hay locker o no.
+        self._success_inner = ctk.CTkFrame(self.overlay_bg, fg_color="transparent")
+        self._success_inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.86)
 
-        # Layout vertical: mensaje arriba, ícono abajo
-        inner = ctk.CTkFrame(self.success_frame, fg_color="transparent")
-        inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.90, relheight=0.88)
-
-        # Mensaje principal (grande y centrado)
-        self.lbl_success_main = ctk.CTkLabel(
-            inner,
-            text="",
-            font=ctk.CTkFont(size=30, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            wraplength=380,
-            justify="center",
-            anchor="center",
-        )
-        self.lbl_success_main.pack(pady=(12, 4))
-
-        # Sub-mensaje (p.ej. "Sin locker asignado")
-        self.lbl_success_sub = ctk.CTkLabel(
-            inner,
-            text="",
-            font=ctk.CTkFont(size=17),
-            text_color="#D4EDDA",
-            fg_color="transparent",
-            wraplength=380,
-            justify="center",
-            anchor="center",
-        )
-        self.lbl_success_sub.pack(pady=(0, 6))
-
-        # Countdown
-        self.lbl_countdown = ctk.CTkLabel(
-            inner,
-            text="",
-            font=ctk.CTkFont(size=13),
-            text_color="#D4EDDA",
-            fg_color="transparent",
-            anchor="center",
-            justify="center",
-        )
-        self.lbl_countdown.pack(pady=(0, 14))
-
-        # Ícono de usuario — debajo del mensaje
+        # Ícono
         _icon_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "..", "..", "assets", "icons", "icon_persona_blanco.png"
@@ -304,20 +255,96 @@ class ScanningScreen(ctk.CTkFrame):
                 self._success_icon = ctk.CTkImage(
                     light_image=_icon_img,
                     dark_image=_icon_img,
-                    size=(110, 110),
+                    size=(80, 80),
                 )
         except Exception as e:
             logger.warning(f"No se pudo cargar icono de éxito: {e}")
 
         self.lbl_success_icon = ctk.CTkLabel(
-            inner,
+            self._success_inner,
             text="" if self._success_icon else "👤",
             image=self._success_icon,
             fg_color="transparent",
-            width=120,
-            height=120,
+            width=84, height=84,
         )
-        self.lbl_success_icon.pack(pady=(0, 4))
+
+        # Nombre del usuario
+        self.lbl_success_name = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+            anchor="center",
+        )
+
+        # Matrícula
+        self.lbl_success_matricula = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=15),
+            text_color="#D4EDDA",
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Estado principal ("DESBLOQUEADO" / "IDENTIDAD VERIFICADA")
+        self.lbl_success_main = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Etiqueta "Locker" (solo cuando tiene locker)
+        self.lbl_success_locker_label = ctk.CTkLabel(
+            self._success_inner,
+            text="Locker",
+            font=ctk.CTkFont(size=16),
+            text_color="#D4EDDA",
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Número de locker — grande para que sea visible
+        self.lbl_success_locker_big = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=88, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Sub-mensaje (solo cuando NO tiene locker)
+        self.lbl_success_sub = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=16),
+            text_color="#D4EDDA",
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+            anchor="center",
+        )
+
+        # Countdown
+        self.lbl_countdown = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=13),
+            text_color="#D4EDDA",
+            fg_color="transparent",
+            anchor="center",
+            justify="center",
+        )
+
+        # Mantener referencia legacy por compatibilidad interna
+        self.success_frame = self._success_inner
 
         # ── Overlay de acceso denegado (fondo completamente rojo) ─────────────
         self.denied_overlay = ctk.CTkFrame(
@@ -775,21 +802,43 @@ class ScanningScreen(ctk.CTkFrame):
         self._camera_running = False
         self._user_data = user_data
 
+        nombre    = user_data.get("nombre", "—")
+        matricula = user_data.get("matricula", "—")
         locker_num = user_data.get("locker_numero")
+
+        # Reordenar labels (pack_forget todos primero, luego pack en orden correcto)
+        for w in self._success_inner.winfo_children():
+            w.pack_forget()
+
+        self.lbl_success_icon.pack(pady=(0, 10))
+
+        self.lbl_success_name.configure(text=nombre)
+        self.lbl_success_name.pack(pady=(0, 2))
+
+        self.lbl_success_matricula.configure(
+            text=f"{t('scan.matricula_label')}  {matricula}"
+        )
+        self.lbl_success_matricula.pack(pady=(0, 16))
 
         if locker_num:
             self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
-            self.lbl_success_main.configure(text=t("scan.success_locker_open", n=locker_num))
-            self.lbl_success_sub.configure(text="")
+            self.lbl_success_main.configure(text=t("scan.unlocked"))
+            self.lbl_success_main.pack(pady=(0, 4))
+            self.lbl_success_locker_label.configure(text=t("scan.locker_label"))
+            self.lbl_success_locker_label.pack(pady=(0, 0))
+            self.lbl_success_locker_big.configure(text=str(locker_num))
+            self.lbl_success_locker_big.pack(pady=(0, 6))
         else:
             self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFD54F")
             self.lbl_success_main.configure(text=t("scan.success_identity"))
+            self.lbl_success_main.pack(pady=(0, 8))
             self.lbl_success_sub.configure(text=t("scan.success_no_locker"))
+            self.lbl_success_sub.pack(pady=(0, 8))
+
+        self.lbl_countdown.pack(pady=(6, 0))
 
         self.lbl_attempts.configure(text="")
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
-        # Recuadro verde centrado, posicionado en el tercio superior de la pantalla
-        self.success_frame.place(relx=0.5, rely=0.40, anchor="center")
         self.btn_admin.place_forget()
         self._start_countdown(self.DISPLAY_SECONDS)
 

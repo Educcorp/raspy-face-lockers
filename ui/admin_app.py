@@ -248,8 +248,33 @@ class AdminApp(ctk.CTk):
         self._frames: dict[type, ctk.CTkFrame] = {}
         self._build_frames()
 
+        # ── Rueda del ratón ───────────────────────────────────────────────────
+        # Linux/RPi usa Button-4 (subir) y Button-5 (bajar).
+        # Windows/Mac usa <MouseWheel> con event.delta.
+        self.bind_all("<Button-4>", self._on_mouse_scroll)
+        self.bind_all("<Button-5>", self._on_mouse_scroll)
+        self.bind_all("<MouseWheel>", self._on_mouse_scroll)
+
         from ui.admin.login_screen import LoginScreen
         self.show_frame(LoginScreen)
+
+    # ── Scroll ────────────────────────────────────────────────────────────────
+
+    def _on_mouse_scroll(self, event) -> None:
+        """Enruta la rueda del ratón al CTkScrollableFrame más cercano al cursor."""
+        widget = event.widget
+        while widget is not None:
+            if isinstance(widget, ctk.CTkScrollableFrame):
+                canvas = widget._parent_canvas
+                if event.num == 4 or (event.delta and event.delta > 0):
+                    canvas.yview_scroll(-1, "units")
+                else:
+                    canvas.yview_scroll(1, "units")
+                return
+            try:
+                widget = widget.master
+            except Exception:
+                break
 
     # ── Construcción / reconstrucción de pantallas ────────────────────────────
 

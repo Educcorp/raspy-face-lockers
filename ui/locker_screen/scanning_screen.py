@@ -314,6 +314,55 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_icon.pack(pady=(0, 4))
 
+        # ── Overlay de acceso denegado (fondo completamente rojo) ─────────────
+        self.denied_overlay = ctk.CTkFrame(
+            self,
+            fg_color="#C0392B",
+            corner_radius=0,
+            width=self.WIN_W,
+            height=self.WIN_H,
+        )
+        denied_inner = ctk.CTkFrame(self.denied_overlay, fg_color="transparent")
+        denied_inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
+
+        ctk.CTkLabel(
+            denied_inner,
+            text="✗",
+            font=ctk.CTkFont(size=80, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+        ).pack(pady=(0, 8))
+
+        ctk.CTkLabel(
+            denied_inner,
+            text=t("scan.denied_title"),
+            font=ctk.CTkFont(size=34, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            wraplength=380,
+            justify="center",
+        ).pack()
+
+        ctk.CTkLabel(
+            denied_inner,
+            text=t("scan.denied_subtitle"),
+            font=ctk.CTkFont(size=20),
+            text_color="#FFCCCC",
+            fg_color="transparent",
+            wraplength=380,
+            justify="center",
+        ).pack(pady=(12, 0))
+
+        ctk.CTkLabel(
+            denied_inner,
+            text=t("scan.denied_use_pin"),
+            font=ctk.CTkFont(size=15),
+            text_color="#FFCCCC",
+            fg_color="transparent",
+            wraplength=360,
+            justify="center",
+        ).pack(pady=(16, 0))
+
     # ── Captura de video en background ────────────────────────────────────────
 
     def _camera_loop(self) -> None:
@@ -636,6 +685,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts.configure(text="")
         self.scan_progress_bar.set(0)
         self.overlay_bg.place_forget()
+        self.denied_overlay.place_forget()
         self._hide_pin_overlay()
         self._hide_lock_overlay()
         self.btn_admin.place(x=452, y=44, anchor="center")
@@ -714,21 +764,29 @@ class ScanningScreen(ctk.CTkFrame):
 
         self._reset_liveness_state()
         self._attempts += 1
-        self.lbl_attempts.configure(
-            text=t("scan.attempts", a=self._attempts, m=self.MAX_ATTEMPTS)
-        )
         self.scan_progress_bar.set(0)
 
         if self._attempts >= self.MAX_ATTEMPTS:
-            # Tras 3 intentos fallidos, enviar directamente al PIN
+            # Mostrar overlay rojo 3 segundos, luego el PIN
             self.lbl_attempts.configure(text="")
-            self.lbl_status.configure(text=t("pin.title_enter_matricula"), text_color="#FFFFFF")
-            self.after(400, lambda: self._show_pin_overlay() if not self._success_shown else None)
+            self.btn_admin.place_forget()
+            self.denied_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+            self.denied_overlay.lift()
+            self.after(3000, self._dismiss_denied_overlay)
         else:
+            self.lbl_attempts.configure(
+                text=t("scan.attempts", a=self._attempts, m=self.MAX_ATTEMPTS)
+            )
             self.lbl_status.configure(
                 text=t("scan.position_face"),
                 text_color="#FFFFFF",
             )
+
+    def _dismiss_denied_overlay(self) -> None:
+        """Cierra el overlay rojo y abre el panel de PIN."""
+        self.denied_overlay.place_forget()
+        if not self._success_shown:
+            self._show_pin_overlay()
 
     # ── Countdown ─────────────────────────────────────────────────────────────
 

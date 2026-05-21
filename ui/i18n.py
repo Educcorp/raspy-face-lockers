@@ -98,6 +98,18 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "✗  Usuario no registrado",
         "en": "✗  User not registered",
     },
+    "scan.denied_title": {
+        "es": "ACCESO DENEGADO",
+        "en": "ACCESS DENIED",
+    },
+    "scan.denied_subtitle": {
+        "es": "Usuario no reconocido",
+        "en": "User not recognized",
+    },
+    "scan.denied_use_pin": {
+        "es": "Intenta con tu matrícula y PIN",
+        "en": "Try with your ID and PIN",
+    },
     "scan.success_locker_open": {
         "es": "✓  Locker {n}  abierto",
         "en": "✓  Locker {n}  opened",

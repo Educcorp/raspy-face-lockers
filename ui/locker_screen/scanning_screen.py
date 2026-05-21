@@ -126,6 +126,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._pin_fail_count: int = 0
         self._pin_matricula_fail_count: int = 0   # intentos de matrícula incorrecta
         self._last_failed_closest: Optional[dict] = None  # candidato más cercano en fallo facial
+        self._display_pending: bool = False               # evita acumular frames en la cola
         self._found_user: Optional[dict] = None
 
         # Inicializar módulo de reconocimiento facial
@@ -401,38 +402,58 @@ class ScanningScreen(ctk.CTkFrame):
 
         logger.info("✓ Camera loop iniciado correctamente")
         frame_count = 0
+        # Detección HOG cada 2 frames: el resto del tiempo reutiliza las caras
+        # conocidas para mostrar video fluido sin perder latencia de detección.
+        DETECT_EVERY = 2
 
         try:
             while self._camera_running:
-                frame, all_faces = self.face_manager.detect_faces_in_frame()
-
+                # ── Captura (bloquea ~33 ms hasta el próximo frame de picamera2) ──
+                frame = self.face_manager.get_frame()
                 if frame is None:
-                    time.sleep(0.05)
+                    time.sleep(0.01)
                     continue
 
-                # Filtrar caras lejanas: solo considerar caras dentro de ~1 metro
-                faces = _filter_close_faces(all_faces, frame)
-
                 frame_count += 1
-                self._camera_frame = frame
-                self._detected_faces = faces
-                self._face_detected = len(faces) > 0
                 self._frame_counter += 1
+                self._camera_frame = frame
+
+                # ── Detección HOG: solo cada DETECT_EVERY frames ─────────────────
+                if frame_count % DETECT_EVERY == 1 or not self._detected_faces:
+                    all_faces = self.face_manager.manager.detect_faces(frame)
+                    faces = _filter_close_faces(all_faces, frame)
+                    self._detected_faces = faces
+                    self._face_detected = len(faces) > 0
+                else:
+                    faces = self._detected_faces  # usar caras del frame anterior
+
+                # ── Display: enviar al hilo principal solo si no hay uno pendiente ─
+                if not self._display_pending and not self._success_shown:
+                    self._display_pending = True
+                    try:
+                        self._update_camera_display(frame, faces)
+                    except Exception as e:
+                        self._display_pending = False
+                        logger.error("Display error: %s", e)
+                elif self._success_shown:
+                    # Pantalla de éxito activa: mostrar frame para que no congele
+                    if not self._display_pending:
+                        self._display_pending = True
+                        try:
+                            self._update_camera_display(frame, faces)
+                        except Exception:
+                            self._display_pending = False
 
                 if self._success_shown:
-                    time.sleep(0.066)
                     continue
 
                 now = time.time()
 
                 if faces:
-                    # Hay cara cercana: reiniciar temporizador de inactividad
                     self._last_close_face_ts = now
-
                     primary_face = _largest_face(faces)
                     face_box = primary_face.get("box") if primary_face else None
 
-                    # Detectar cambio de cara: salto brusco de posición
                     face_switched = False
                     if face_box and self._last_seen_face_box:
                         prev = self._last_seen_face_box
@@ -441,8 +462,7 @@ class ScanningScreen(ctk.CTkFrame):
                         curr_cx = face_box[0] + face_box[2] * 0.5
                         curr_cy = face_box[1] + face_box[3] * 0.5
                         dist = np.sqrt((curr_cx - prev_cx) ** 2 + (curr_cy - prev_cy) ** 2)
-                        frame_w = max(frame.shape[1], 1)
-                        if dist / frame_w > 0.15:
+                        if dist / max(frame.shape[1], 1) > 0.15:
                             face_switched = True
 
                     if face_switched:
@@ -464,20 +484,13 @@ class ScanningScreen(ctk.CTkFrame):
                     self._scan_progress_pct = 0
                     self._reset_liveness_state()
 
-                    # Auto-retorno a standby si no hay cara cercana por demasiado tiempo
                     if now - self._last_close_face_ts >= self.AUTO_RETURN_SECONDS:
-                        logger.info(
-                            "Sin cara cercana durante %.0f s — regresando a standby",
-                            self.AUTO_RETURN_SECONDS,
-                        )
-                        # Marcar como inactivo y esperar a que el hilo de camara salga
-                        # antes de cambiar de pantalla, evitando doble acceso.
+                        logger.info("Sin cara cercana %.0f s → standby", self.AUTO_RETURN_SECONDS)
                         self._camera_running = False
                         self._auto_return_started_ts = time.time()
                         self.after(0, self._finalize_auto_return)
                         return
 
-                # Calcular cuánto tiempo lleva el rostro visible y actualizar progreso
                 if self._face_first_seen_ts > 0:
                     scan_elapsed = now - self._face_first_seen_ts
                     self._scan_progress_pct = min(100, int(scan_elapsed / self.MIN_SCAN_SECONDS * 100))
@@ -485,13 +498,12 @@ class ScanningScreen(ctk.CTkFrame):
                     scan_elapsed = 0.0
                     self._scan_progress_pct = 0
 
-                enough_frames = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
+                enough_frames   = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
                 enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
-                cooldown_ok = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
-                liveness_ok = self._liveness_passed
-                scan_time_ok = scan_elapsed >= self.MIN_SCAN_SECONDS
+                cooldown_ok     = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
+                scan_time_ok    = scan_elapsed >= self.MIN_SCAN_SECONDS
 
-                if faces and enough_frames and enough_stability and cooldown_ok and liveness_ok and scan_time_ok:
+                if faces and enough_frames and enough_stability and cooldown_ok and self._liveness_passed and scan_time_ok:
                     self._last_recognition_ts = now
                     try:
                         user_data = self._recognize_current_face(frame, faces)
@@ -499,19 +511,12 @@ class ScanningScreen(ctk.CTkFrame):
                             self.after(0, self.on_face_match, user_data)
                         else:
                             self.after(0, self.on_face_no_match)
-                    except Exception as recognition_error:
-                        logger.error(f"Error durante autenticación facial: {recognition_error}")
+                    except Exception as err:
+                        logger.error("Error en reconocimiento: %s", err)
                         self.after(0, self.on_face_no_match)
 
-                try:
-                    self._update_camera_display(frame, faces)
-                except Exception as e:
-                    logger.error(f"Error actualizando display: {e}")
-
-                time.sleep(0.066)
-
-                if frame_count % 30 == 0:
-                    logger.info(f"Camera loop: {frame_count} frames, {len(faces)} rostros")
+                if frame_count % 60 == 0:
+                    logger.debug("Camera loop: %d frames, %d rostros", frame_count, len(faces))
 
         except Exception as e:
             logger.error(f"Error en camera loop: {e}")
@@ -626,6 +631,7 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _set_camera_image(self, pil_img: "Image.Image") -> None:
         """Recibe imagen PIL y la muestra en el canvas. Siempre corre en el main thread."""
+        self._display_pending = False   # liberar para el siguiente frame
         try:
             from PIL import ImageTk
             photo = ImageTk.PhotoImage(pil_img)
@@ -1186,8 +1192,12 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _validate_matricula(self) -> None:
         """Paso 1: verifica que la matrícula exista en BD antes de pedir PIN."""
-        if not self._pin_matricula.strip():
+        mat = self._pin_matricula.strip()
+        if not mat:
             self.lbl_pin_error.configure(text=t("pin.err_enter_matricula"))
+            return
+        if len(mat) < 5:
+            self.lbl_pin_error.configure(text=t("pin.err_matricula_too_short"))
             return
 
         user = user_service.get_user_by_matricula(self._pin_matricula)

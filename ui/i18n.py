@@ -168,6 +168,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Matrícula no encontrada",
         "en": "ID number not found",
     },
+    "pin.err_matricula_too_short": {
+        "es": "La matrícula debe tener al menos 5 dígitos",
+        "en": "ID must be at least 5 digits",
+    },
     "pin.err_enter_pin": {
         "es": "Ingresa tu PIN",
         "en": "Enter your PIN",

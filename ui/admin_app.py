@@ -37,6 +37,53 @@ _THEME = os.path.join(
 )
 ctk.set_default_color_theme(_THEME)
 
+# ── Scroll universal para CTkScrollableFrame ──────────────────────────────────
+# CTk 5.x ya maneja <MouseWheel> en Windows/Mac pero NO Button-4/5 de Linux.
+# Este patch añade: (1) rueda del ratón en Linux/RPi, (2) arrastre táctil.
+# Usa check_if_master_is_canvas() (API interna de CTk) para que cada frame
+# solo reaccione a eventos que ocurran DENTRO de él, igual que hace CTk.
+
+def _ctk_sf_add_scroll(sf: ctk.CTkScrollableFrame) -> None:
+    canvas = sf._parent_canvas
+
+    def _linux_wheel(event):
+        if sf.check_if_master_is_canvas(event.widget):
+            if canvas.yview() != (0.0, 1.0):
+                canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
+
+    drag: dict = {"y": None}
+
+    def _drag_start(event):
+        drag["y"] = event.y_root if sf.check_if_master_is_canvas(event.widget) else None
+
+    def _drag_move(event):
+        if drag["y"] is None:
+            return
+        if not sf.check_if_master_is_canvas(event.widget):
+            return
+        dy = drag["y"] - event.y_root
+        drag["y"] = event.y_root
+        if abs(dy) > 3:
+            canvas.yview_scroll(int(dy / 8) or (1 if dy > 0 else -1), "units")
+
+    def _drag_end(event):
+        drag["y"] = None
+
+    sf.bind_all("<Button-4>",       _linux_wheel, add="+")
+    sf.bind_all("<Button-5>",       _linux_wheel, add="+")
+    sf.bind_all("<ButtonPress-1>",  _drag_start,  add="+")
+    sf.bind_all("<B1-Motion>",      _drag_move,   add="+")
+    sf.bind_all("<ButtonRelease-1>",_drag_end,    add="+")
+
+
+_ctk_sf_orig_init = ctk.CTkScrollableFrame.__init__
+
+def _ctk_sf_patched_init(self, *args, **kwargs):
+    _ctk_sf_orig_init(self, *args, **kwargs)
+    _ctk_sf_add_scroll(self)
+
+ctk.CTkScrollableFrame.__init__ = _ctk_sf_patched_init
+
 # ── Paletas ───────────────────────────────────────────────────────────────────
 LIGHT_PALETTE = {
     "BG":          "#F4F1EC",
@@ -246,82 +293,10 @@ class AdminApp(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
 
         self._frames: dict[type, ctk.CTkFrame] = {}
-        self._scroll_bound: set[int] = set()
         self._build_frames()
-
-        # Rueda del ratón global (Linux: Button-4/5; Windows/Mac: MouseWheel)
-        self.bind_all("<Button-4>",   self._on_mouse_scroll)
-        self.bind_all("<Button-5>",   self._on_mouse_scroll)
-        self.bind_all("<MouseWheel>", self._on_mouse_scroll)
 
         from ui.admin.login_screen import LoginScreen
         self.show_frame(LoginScreen)
-
-    # ── Scroll ────────────────────────────────────────────────────────────────
-
-    def _on_mouse_scroll(self, event) -> None:
-        """Rueda del ratón: localiza el CTkScrollableFrame bajo el cursor."""
-        try:
-            x, y = self.winfo_pointerxy()
-            widget = self.winfo_containing(x, y)
-        except Exception:
-            widget = getattr(event, "widget", None)
-        while widget is not None:
-            if isinstance(widget, ctk.CTkScrollableFrame):
-                canvas = widget._parent_canvas
-                if event.num == 4 or (getattr(event, "delta", 0) > 0):
-                    canvas.yview_scroll(-1, "units")
-                else:
-                    canvas.yview_scroll(1, "units")
-                return
-            widget = getattr(widget, "master", None)
-
-    def _attach_scroll(self, sf: ctk.CTkScrollableFrame) -> None:
-        """Vincula rueda + arrastre táctil a un CTkScrollableFrame. Solo una vez."""
-        sf_id = id(sf)
-        if sf_id in self._scroll_bound:
-            return
-        self._scroll_bound.add(sf_id)
-
-        canvas = sf._parent_canvas
-        drag: dict = {"y": None}
-
-        def _wheel(event):
-            if event.num == 4 or (getattr(event, "delta", 0) > 0):
-                canvas.yview_scroll(-1, "units")
-            else:
-                canvas.yview_scroll(1, "units")
-
-        def _drag_start(e):  drag["y"] = e.y_root
-        def _drag_move(e):
-            if drag["y"] is None:
-                return
-            delta = drag["y"] - e.y_root
-            drag["y"] = e.y_root
-            if abs(delta) > 1:
-                canvas.yview_scroll(int(delta / 6) or (1 if delta > 0 else -1), "units")
-        def _drag_end(e):    drag["y"] = None
-
-        for target in (sf, canvas, sf._frame):
-            try:
-                target.bind("<Button-4>",      _wheel,       add="+")
-                target.bind("<Button-5>",      _wheel,       add="+")
-                target.bind("<MouseWheel>",    _wheel,       add="+")
-                target.bind("<ButtonPress-1>", _drag_start,  add="+")
-                target.bind("<B1-Motion>",     _drag_move,   add="+")
-                target.bind("<ButtonRelease-1>",_drag_end,   add="+")
-            except Exception:
-                pass
-
-    def _setup_scroll_tree(self, widget) -> None:
-        """Recorre el árbol de widgets y vincula scroll a todos los CTkScrollableFrames."""
-        try:
-            if isinstance(widget, ctk.CTkScrollableFrame):
-                self._attach_scroll(widget)
-            for child in widget.winfo_children():
-                self._setup_scroll_tree(child)
-        except Exception:
-            pass
 
     # ── Construcción / reconstrucción de pantallas ────────────────────────────
 
@@ -410,8 +385,5 @@ class AdminApp(ctk.CTk):
 
         frame = self._frames[frame_class]
         frame.tkraise()
-        # Vincular scroll a cualquier CTkScrollableFrame nuevo en este frame
-        # (incluye paneles de detalle creados dinámicamente)
-        self._setup_scroll_tree(frame)
         if hasattr(frame, "on_show"):
             frame.on_show(**kwargs)

@@ -94,6 +94,22 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "✗ ACCESO DENEGADO",
         "en": "✗ ACCESS DENIED",
     },
+    "scan.not_registered": {
+        "es": "✗  Usuario no registrado",
+        "en": "✗  User not registered",
+    },
+    "scan.success_locker_open": {
+        "es": "✓  Locker {n}  abierto",
+        "en": "✓  Locker {n}  opened",
+    },
+    "scan.success_identity": {
+        "es": "Identidad verificada",
+        "en": "Identity verified",
+    },
+    "scan.success_no_locker": {
+        "es": "Sin locker asignado",
+        "en": "No locker assigned",
+    },
     "scan.not_recognized_use_pin": {
         "es": "✗ No reconocido — usa tu PIN",
         "en": "✗ Not recognized — use your PIN",

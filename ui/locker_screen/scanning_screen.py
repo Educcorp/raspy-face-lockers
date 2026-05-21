@@ -11,6 +11,7 @@ Un botón de flecha ← en la parte inferior permite volver al standby.
 import customtkinter as ctk
 import threading
 import os
+import time
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -25,6 +26,7 @@ from config import FACE_RECOGNITION_CONFIG
 from config import GPIO_CONFIG
 from ui.i18n import t
 from core.gpio_controller import get_locker_gpio_controller
+from core.face_recognition import filter_close_faces as _filter_close_faces
 from services import user_service, locker_service, access_log_service
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,7 @@ def _largest_face(faces: list) -> dict | None:
     return max(faces, key=lambda f: (
         (f.get("box") or (0, 0, 0, 0))[2] * (f.get("box") or (0, 0, 0, 0))[3]
     ))
+
 
 
 class ScanningScreen(ctk.CTkFrame):
@@ -68,6 +71,7 @@ class ScanningScreen(ctk.CTkFrame):
     LIVENESS_MIN_MOTION = 1.5         # requiere movimiento natural real (no ruido)
     LIVENESS_MIN_BOX_SHIFT = 0.015    # desplazamiento mínimo visible del rostro
     MIN_SCAN_SECONDS = 3.5            # tiempo mínimo de escaneo antes de intentar identificar
+    AUTO_RETURN_SECONDS = 25.0        # segundos sin cara cercana → volver a standby
     LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
     CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
     CHALLENGE_SCALE_IN_THRESHOLD = 0.18  # No usado en modo pasivo
@@ -90,6 +94,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._last_seen_face_box = None
         self._face_first_seen_ts: float = 0.0   # cuando el rostro apareció por primera vez
         self._scan_progress_pct: int = 0         # 0-100, para barra de progreso en UI
+        self._last_close_face_ts: float = 0.0   # última vez que se detectó cara cercana
         self._liveness_passed = False
         self._passive_liveness_ok = False
         self._active_liveness_ok = False
@@ -219,141 +224,99 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_admin.place(x=452, y=44, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Contenedor con fondo oscuro para overlay modal
+        # Fondo blanco que cubre toda la pantalla
         self.overlay_bg = ctk.CTkFrame(
             self,
-            fg_color="#2A2A2E",  # Gris oscuro semi-transparente visualmente
+            fg_color="#FFFFFF",
             corner_radius=0,
             width=480,
             height=800,
             border_width=0,
         )
 
-        # Frame principal del overlay con configuración explícita
+        # Recuadro verde — se posiciona más arriba y centrado en on_face_match()
         self.success_frame = ctk.CTkFrame(
             self.overlay_bg,
             fg_color="#5B8C5A",
-            corner_radius=20,
-            width=430,
-            height=250,
+            corner_radius=28,
+            width=440,
+            height=340,
             border_width=0,
         )
-        # No se muestra aún — se coloca con .place() al detectar éxito
 
-        # Layout principal horizontal: ícono (izquierda) + texto (derecha)
-        success_content = ctk.CTkFrame(self.success_frame, fg_color="transparent", corner_radius=0)
-        success_content.pack(fill="both", expand=True, padx=(40, 16), pady=16)
-        success_content.grid_columnconfigure(0, weight=0)
-        success_content.grid_columnconfigure(1, weight=1)
-        success_content.grid_rowconfigure(0, weight=1)
+        # Layout vertical: mensaje arriba, ícono abajo
+        inner = ctk.CTkFrame(self.success_frame, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.90, relheight=0.88)
 
-        icon_path = os.path.join(
+        # Mensaje principal (grande y centrado)
+        self.lbl_success_main = ctk.CTkLabel(
+            inner,
+            text="",
+            font=ctk.CTkFont(size=30, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            wraplength=380,
+            justify="center",
+            anchor="center",
+        )
+        self.lbl_success_main.pack(pady=(12, 4))
+
+        # Sub-mensaje (p.ej. "Sin locker asignado")
+        self.lbl_success_sub = ctk.CTkLabel(
+            inner,
+            text="",
+            font=ctk.CTkFont(size=17),
+            text_color="#D4EDDA",
+            fg_color="transparent",
+            wraplength=380,
+            justify="center",
+            anchor="center",
+        )
+        self.lbl_success_sub.pack(pady=(0, 6))
+
+        # Countdown
+        self.lbl_countdown = ctk.CTkLabel(
+            inner,
+            text="",
+            font=ctk.CTkFont(size=13),
+            text_color="#D4EDDA",
+            fg_color="transparent",
+            anchor="center",
+            justify="center",
+        )
+        self.lbl_countdown.pack(pady=(0, 14))
+
+        # Ícono de usuario — debajo del mensaje
+        _icon_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "..", "..", "assets", "icons", "icon_persona_blanco.png"
         )
         self._success_icon = None
         try:
-            if os.path.exists(icon_path):
-                icon_img = Image.open(icon_path)
+            if os.path.exists(_icon_path):
+                _icon_img = Image.open(_icon_path)
                 self._success_icon = ctk.CTkImage(
-                    light_image=icon_img,
-                    dark_image=icon_img,
-                    size=(118, 118),
+                    light_image=_icon_img,
+                    dark_image=_icon_img,
+                    size=(110, 110),
                 )
         except Exception as e:
             logger.warning(f"No se pudo cargar icono de éxito: {e}")
 
         self.lbl_success_icon = ctk.CTkLabel(
-            success_content,
-            text="",
+            inner,
+            text="" if self._success_icon else "👤",
             image=self._success_icon,
             fg_color="transparent",
             width=120,
             height=120,
         )
-        self.lbl_success_icon.grid(row=0, column=0, sticky="nw", padx=(22, 12))
-
-        text_content = ctk.CTkFrame(success_content, fg_color="transparent", corner_radius=0)
-        text_content.grid(row=0, column=1, sticky="nsew")
-
-        # Título de locker
-        self.lbl_success_title = ctk.CTkLabel(
-            text_content,
-            text="Locker numero",
-            font=ctk.CTkFont(size=30, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_title.pack(fill="x")
-
-        # Número de locker
-        self.lbl_success_locker = ctk.CTkLabel(
-            text_content,
-            text="00",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_locker.pack(fill="x", pady=(0, 3))
-
-        # Nombre del usuario
-        self.lbl_success_name = ctk.CTkLabel(
-            text_content,
-            text="—",
-            font=ctk.CTkFont(size=15),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_name.pack(fill="x", pady=(0, 2))
-
-        # Matrícula
-        self.lbl_success_matricula = ctk.CTkLabel(
-            text_content,
-            text="Matrícula —",
-            font=ctk.CTkFont(size=15),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_matricula.pack(fill="x", pady=(0, 2))
-
-        # Fecha
-        self.lbl_success_fecha = ctk.CTkLabel(
-            text_content,
-            text="—",
-            font=ctk.CTkFont(size=15),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_fecha.pack(fill="x", pady=(0, 8))
-
-        # Countdown
-        self.lbl_countdown = ctk.CTkLabel(
-            text_content,
-            text="",
-            font=ctk.CTkFont(size=12),
-            text_color="#E6F4E6",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_countdown.pack(fill="x")
+        self.lbl_success_icon.pack(pady=(0, 4))
 
     # ── Captura de video en background ────────────────────────────────────────
 
     def _camera_loop(self) -> None:
         """Thread worker que captura frames y detecta rostros."""
-        import time
-
         if not self.face_manager:
             logger.error("FaceManager no inicializado")
             self.after(0, self._show_camera_error, "Gestor de reconocimiento facial no disponible")
@@ -389,11 +352,14 @@ class ScanningScreen(ctk.CTkFrame):
 
         try:
             while self._camera_running:
-                frame, faces = self.face_manager.detect_faces_in_frame()
+                frame, all_faces = self.face_manager.detect_faces_in_frame()
 
                 if frame is None:
                     time.sleep(0.05)
                     continue
+
+                # Filtrar caras lejanas: solo considerar caras dentro de ~1 metro
+                faces = _filter_close_faces(all_faces, frame)
 
                 frame_count += 1
                 self._camera_frame = frame
@@ -408,6 +374,9 @@ class ScanningScreen(ctk.CTkFrame):
                 now = time.time()
 
                 if faces:
+                    # Hay cara cercana: reiniciar temporizador de inactividad
+                    self._last_close_face_ts = now
+
                     primary_face = _largest_face(faces)
                     face_box = primary_face.get("box") if primary_face else None
 
@@ -442,6 +411,18 @@ class ScanningScreen(ctk.CTkFrame):
                     self._face_first_seen_ts = 0.0
                     self._scan_progress_pct = 0
                     self._reset_liveness_state()
+
+                    # Auto-retorno a standby si no hay cara cercana por demasiado tiempo
+                    if now - self._last_close_face_ts >= self.AUTO_RETURN_SECONDS:
+                        logger.info(
+                            "Sin cara cercana durante %.0f s — regresando a standby",
+                            self.AUTO_RETURN_SECONDS,
+                        )
+                        # Marcar como inactivo ANTES del return para que on_show()
+                        # siempre vea _camera_running = False y arranque hilo nuevo.
+                        self._camera_running = False
+                        self.after(0, self._go_standby)
+                        return
 
                 # Calcular cuánto tiempo lleva el rostro visible y actualizar progreso
                 if self._face_first_seen_ts > 0:
@@ -644,6 +625,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._last_seen_face_box = None
         self._face_first_seen_ts = 0.0
         self._scan_progress_pct = 0
+        self._last_close_face_ts = time.time()  # arrancar temporizador de inactividad
         self._reset_liveness_state()
         self._pin_fail_count = 0
         self._found_user = None
@@ -701,32 +683,25 @@ class ScanningScreen(ctk.CTkFrame):
     def on_face_match(self, user_data: dict) -> None:
         """Muestra el overlay de resultado según si el usuario tiene locker o no."""
         self._success_shown = True
-        self._camera_running = False  # detener cámara — ya no se necesita detectar más
+        self._camera_running = False
         self._user_data = user_data
 
-        locker_num = user_data.get("locker_numero")   # None si no tiene locker
+        locker_num = user_data.get("locker_numero")
 
         if locker_num:
             self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
-            self.lbl_success_title.configure(text=t("scan.locker_number"))
-            self.lbl_success_locker.configure(text=str(locker_num))
+            self.lbl_success_main.configure(text=t("scan.success_locker_open", n=locker_num))
+            self.lbl_success_sub.configure(text="")
         else:
             self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFD54F")
-            self.lbl_success_title.configure(text=t("scan.no_locker"))
-            self.lbl_success_locker.configure(text=t("scan.no_locker_assigned"))
+            self.lbl_success_main.configure(text=t("scan.success_identity"))
+            self.lbl_success_sub.configure(text=t("scan.success_no_locker"))
 
         self.lbl_attempts.configure(text="")
-        self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
-        self.lbl_success_matricula.configure(
-            text=f"{t('scan.matricula_label')}  {user_data.get('matricula', '—')}"
-        )
-        self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
-
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
-        self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
+        # Recuadro verde centrado, posicionado en el tercio superior de la pantalla
+        self.success_frame.place(relx=0.5, rely=0.40, anchor="center")
         self.btn_admin.place_forget()
-
-        # Iniciar countdown
         self._start_countdown(self.DISPLAY_SECONDS)
 
     def on_face_no_match(self) -> None:
@@ -744,12 +719,14 @@ class ScanningScreen(ctk.CTkFrame):
         self.scan_progress_bar.set(0)
 
         if self._attempts >= self.MAX_ATTEMPTS:
+            # Cara no reconocida — mostrar mensaje y volver a standby (sin PIN)
+            self.lbl_attempts.configure(text="")
             self.after(1200, lambda: (
                 self.lbl_status.configure(
-                    text=t("scan.not_recognized_use_pin"), text_color="#EF9A9A"
+                    text=t("scan.not_registered"), text_color=self.DANGER
                 ) if not self._success_shown else None
             ))
-            self.after(2000, self._show_pin_overlay)
+            self.after(3500, lambda: self._go_standby() if not self._success_shown else None)
         else:
             attempts_copy = self._attempts
             self.after(1500, lambda: (

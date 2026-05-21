@@ -13,6 +13,7 @@ import logging
 import os
 from PIL import Image
 from ui.i18n import t, lang_btn_text
+from core.face_recognition import filter_close_faces
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,13 @@ class StandbyScreen(ctk.CTkFrame):
     def on_show(self) -> None:
         """Llamado por LockerApp.show_frame() al traer esta pantalla al frente."""
         self._transitioning = False
+        # Recrear face_manager para apuntar al singleton correcto tras posible liberación
+        # (mismo patrón que ScanningScreen.on_show — evita cámara congelada al volver)
+        try:
+            from core.face_recognition import get_face_recognition_manager
+            self.face_manager = get_face_recognition_manager()
+        except Exception as e:
+            logger.error("Error recreando face_manager en standby: %s", e)
         self._animate_dots()
         self._start_face_monitor()
 
@@ -176,10 +184,13 @@ class StandbyScreen(ctk.CTkFrame):
 
             stable_hits = 0
             while self._monitor_running and not self._transitioning:
-                frame, faces = self.face_manager.detect_faces_in_frame()
+                frame, all_faces = self.face_manager.detect_faces_in_frame()
                 if frame is None:
                     time.sleep(0.15)
                     continue
+
+                # Solo reaccionar a caras cercanas (~1 metro)
+                faces = filter_close_faces(all_faces, frame)
 
                 if faces:
                     stable_hits += 1

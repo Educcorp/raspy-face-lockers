@@ -29,6 +29,7 @@ from services import user_service
 from ui.admin_app import PALETTE
 from ui.i18n import t as _t
 from auth.session import can_create_users, filter_assignable_user_types
+from core.face_recognition import filter_close_faces
 from utils.validators import (
     validate_name, validate_matricula, validate_email, validate_tel,
     limit_var, MAX_NOMBRE, MAX_APELLIDO, MAX_EMAIL, MAX_TEL,
@@ -44,6 +45,10 @@ def _largest_face(faces: list) -> dict | None:
     return max(faces, key=lambda f: (
         (f.get("box") or (0, 0, 0, 0))[2] * (f.get("box") or (0, 0, 0, 0))[3]
     ))
+
+
+def _filter_close_faces(faces: list, frame) -> list:
+    return filter_close_faces(faces, frame)
 
 # cv2 y numpy se importan de forma lazy en _Step4FaceCapture para no bloquear
 # si OpenCV no está instalado en el entorno de desarrollo.
@@ -778,7 +783,8 @@ class _Step4FaceCapture(ctk.CTkFrame):
                     continue
 
                 self._current_frame = frame
-                faces = self._face_mgr.face_detector.detect(frame)
+                all_faces = self._face_mgr.face_detector.detect(frame)
+                faces = _filter_close_faces(all_faces, frame)
                 self._detected_faces = faces
 
                 if faces:

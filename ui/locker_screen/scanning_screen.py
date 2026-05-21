@@ -124,6 +124,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._pin_matricula: str = ""
         self._pin_code: str = ""
         self._pin_fail_count: int = 0
+        self._pin_matricula_fail_count: int = 0   # intentos de matrícula incorrecta
+        self._last_failed_closest: Optional[dict] = None  # candidato más cercano en fallo facial
         self._found_user: Optional[dict] = None
 
         # Inicializar módulo de reconocimiento facial
@@ -680,6 +682,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._auto_return_started_ts = None
         self._reset_liveness_state()
         self._pin_fail_count = 0
+        self._pin_matricula_fail_count = 0
+        self._last_failed_closest = None
         self._found_user = None
         self.lbl_status.configure(text=t("scan.starting_camera"), text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
@@ -767,6 +771,13 @@ class ScanningScreen(ctk.CTkFrame):
         self.scan_progress_bar.set(0)
 
         if self._attempts >= self.MAX_ATTEMPTS:
+            # Registrar un único intento fallido al agotar los 3 intentos
+            access_log_service.register_access(
+                self._last_failed_closest.get("idLockerAsignado") if self._last_failed_closest else None,
+                permitted=False,
+                motivo="no_reconocido",
+            )
+            self._last_failed_closest = None
             # Mostrar overlay rojo 3 segundos, luego el PIN
             self.lbl_attempts.configure(text="")
             self.btn_admin.place_forget()
@@ -1181,10 +1192,21 @@ class ScanningScreen(ctk.CTkFrame):
 
         user = user_service.get_user_by_matricula(self._pin_matricula)
         if user is None:
-            self.lbl_pin_error.configure(text=t("pin.err_matricula_not_found"))
+            self._pin_matricula_fail_count += 1
             access_log_service.register_access(
                 None, permitted=False, motivo="matricula_incorrecta"
             )
+            if self._pin_matricula_fail_count >= 3:
+                # 3 matrículas incorrectas → volver al inicio
+                self._hide_pin_overlay()
+                self._go_standby()
+                return
+            remaining = 3 - self._pin_matricula_fail_count
+            self.lbl_pin_error.configure(
+                text=f"{t('pin.err_matricula_not_found')}  ({remaining} intento{'s' if remaining != 1 else ''} restante)"
+            )
+            self._pin_matricula = ""
+            self._update_pin_display()
             return
 
         self._found_user = user
@@ -1351,11 +1373,8 @@ class ScanningScreen(ctk.CTkFrame):
         matched, closest = user_service.find_best_face_match(probe_vec, probe_model_prefix, candidates)
 
         if matched is None:
-            access_log_service.register_access(
-                closest.get("idLockerAsignado") if closest else None,
-                permitted=False,
-                motivo="no_reconocido",
-            )
+            # Guardar closest para loguearlo una sola vez al agotar los intentos
+            self._last_failed_closest = closest
             return None
 
         locker_id = matched.get("idLocker")

@@ -18,6 +18,7 @@ _HERE = Path(__file__).parent
 _MIGRATIONS_DIR = _HERE / "migrations"
 _PRIMARY_DB_PATH = _MIGRATIONS_DIR / "raspi-face-lockers.db"
 _LEGACY_DB_PATH = _MIGRATIONS_DIR / "raspi-face-lockers .db"  # typo historico
+_BACKUP_DB_PATH = _MIGRATIONS_DIR / "raspi-face-lockers.db.backup"
 _INIT_SQL_PATH = _MIGRATIONS_DIR / "init_db.sql"
 
 DB_PATH = str(_PRIMARY_DB_PATH)
@@ -72,6 +73,80 @@ def _apply_incremental_migrations(conn: sqlite3.Connection) -> None:
         conn.commit()
     except sqlite3.OperationalError:
         pass  # la columna ya existe
+
+    if not _table_exists(conn, "historial_accesos"):
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS historial_accesos (
+                idAcceso INTEGER PRIMARY KEY AUTOINCREMENT,
+                idLockerAsignado INTEGER,
+                fechaHoraAcceso TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+                accesoPermitido TEXT NOT NULL DEFAULT 'si' CHECK(accesoPermitido IN ('si', 'no')),
+                motivo TEXT CHECK(motivo IN (
+                    'facial', 'pin', 'sin_asignacion', 'limite_intentos',
+                    'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
+                    'matricula_incorrecta', 'pin_cancelado'
+                ) OR motivo IS NULL),
+                fechaExpiracion TEXT NOT NULL,
+                CONSTRAINT fk_historial_asignacion
+                    FOREIGN KEY (idLockerAsignado) REFERENCES asignacion_locker(idLockerAsignado)
+                    ON UPDATE CASCADE ON DELETE SET NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_historial_expiracion
+                ON historial_accesos(fechaExpiracion, accesoPermitido);
+            CREATE INDEX IF NOT EXISTS idx_historial_locker
+                ON historial_accesos(idLockerAsignado, fechaHoraAcceso);
+            """
+        )
+        conn.commit()
+
+    conn.executescript(
+        """
+        CREATE VIEW IF NOT EXISTS v_historial_detalle AS
+        SELECT
+            h.idAcceso,
+            u.nombre || ' ' || u.apPaterno AS nombreCompleto,
+            u.matricula,
+            l.idLocker,
+            a.nombreArea,
+            h.fechaHoraAcceso,
+            h.accesoPermitido,
+            h.motivo,
+            h.fechaExpiracion
+        FROM historial_accesos h
+        LEFT JOIN asignacion_locker al ON h.idLockerAsignado = al.idLockerAsignado
+        LEFT JOIN usuarios u ON al.idUsuario = u.idUsuario
+        LEFT JOIN lockers l ON al.idLocker = l.idLocker
+        LEFT JOIN area_lockers a ON l.idArea = a.idArea
+        ORDER BY h.fechaHoraAcceso DESC;
+        """
+    )
+
+    try:
+        row = conn.execute("SELECT COUNT(*) FROM historial_accesos").fetchone()
+        has_rows = row and row[0] > 0
+        backup_path = _BACKUP_DB_PATH if _BACKUP_DB_PATH.exists() else _LEGACY_DB_PATH
+        if not has_rows and backup_path.exists():
+            conn.execute("ATTACH DATABASE ? AS backup_db", (str(backup_path),))
+            try:
+                backup_has_table = conn.execute(
+                    "SELECT name FROM backup_db.sqlite_master WHERE type='table' AND name='historial_accesos'"
+                ).fetchone()
+                if backup_has_table:
+                    conn.execute(
+                        """
+                        INSERT INTO historial_accesos
+                            (idAcceso, idLockerAsignado, fechaHoraAcceso, accesoPermitido, motivo, fechaExpiracion)
+                        SELECT idAcceso, idLockerAsignado, fechaHoraAcceso, accesoPermitido, motivo, fechaExpiracion
+                        FROM backup_db.historial_accesos
+                        """
+                    )
+                    conn.commit()
+            finally:
+                conn.execute("DETACH DATABASE backup_db")
+    except sqlite3.OperationalError:
+        pass
 
 
 def _ensure_database_ready() -> None:

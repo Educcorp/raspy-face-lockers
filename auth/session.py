@@ -146,12 +146,15 @@ def can_edit_catalogs() -> bool:
 def filter_assignable_user_types(rows: list[dict]) -> list[dict]:
 	"""Filtra tipos asignables según rol actual.
 
-	- Superadmin: todos los tipos activos.
+	- Superadmin: todos los tipos activos excepto Superadmin (solo puede haber uno).
 	- Admin: solo tipo Usuario.
 	- Usuario: ninguno.
 	"""
 	if is_superadmin():
-		return rows
+		return [
+			r for r in rows
+			if normalize_user_type_name(r.get("nombreTipoUsuario")) != ROLE_SUPERADMIN
+		]
 	if is_admin():
 		return [
 			r for r in rows

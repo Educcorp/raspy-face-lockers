@@ -289,9 +289,11 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._load_user()
 
     def _load_catalogs(self) -> None:
+        from auth.session import filter_assignable_user_types
         self._tipos = fetch_all(
             "SELECT idTipoUsuario, nombreTipoUsuario FROM tipo_usuarios WHERE estado='activo'"
         )
+        self._tipos = filter_assignable_user_types(self._tipos)
         self._unidades = fetch_all(
             "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica WHERE estado='activo'"
         )
@@ -483,7 +485,11 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._vars["matricula"].set(str(row.get("matricula", "")))
         self._vars["emailInst"].set(row.get("emailInst", ""))
         self._vars["tel"].set(row.get("tel", "") or "")
-        self._vars["tipo"].set(row.get("tipo", ""))
+        tipo_name = row.get("tipo", "")
+        tipo_values = [r["nombreTipoUsuario"] for r in self._tipos]
+        if tipo_name and tipo_name not in tipo_values:
+            self._field_widgets["tipo"].configure(values=[tipo_name] + tipo_values)
+        self._vars["tipo"].set(tipo_name)
         self._vars["unidad"].set(row.get("unidad", ""))
         self._vars["estado"].set(row.get("estado", "activo"))
 
@@ -589,7 +595,15 @@ class UserDetailOverlay(ctk.CTkFrame):
 
         tipo_name   = self._vars["tipo"].get()
         unidad_name = self._vars["unidad"].get()
-        tipo_id   = next((t["idTipoUsuario"]     for t in self._tipos    if t["nombreTipoUsuario"] == tipo_name),   None)
+
+        if normalize_user_type_name(tipo_name) == ROLE_SUPERADMIN:
+            self.lbl_err.configure(
+                text=t("users.err_superadmin_locked"),
+                text_color=PALETTE["DANGER"],
+            )
+            return
+
+        tipo_id   = next((tp["idTipoUsuario"]    for tp in self._tipos    if tp["nombreTipoUsuario"] == tipo_name),   None)
         unidad_id = next((u["idUnidadAcademica"] for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
 
         if not tipo_id or not unidad_id:
@@ -701,8 +715,11 @@ class UserDetailOverlay(ctk.CTkFrame):
             active = False
         self._edit_mode = active
         state = "normal" if active else "disabled"
-        for w in self._field_widgets.values():
-            w.configure(state=state)
+        target_role = normalize_user_type_name((self._user or {}).get("tipo", ""))
+        for key, w in self._field_widgets.items():
+            # El tipo de un superadmin está siempre bloqueado (solo puede haber uno)
+            field_state = "disabled" if (key == "tipo" and target_role == ROLE_SUPERADMIN) else state
+            w.configure(state=field_state)
         btn_color = PALETTE["ACCENT_HOVER"] if active else PALETTE["BORDER"]
         self.btn_edit.configure(
             text=t("common.cancel") if active else t("common.edit"),

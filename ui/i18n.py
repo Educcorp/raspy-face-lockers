@@ -90,6 +90,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Intentos: {a} / {m}",
         "en": "Attempts: {a} / {m}",
     },
+    "scan.access_denied": {
+        "es": "✗ ACCESO DENEGADO",
+        "en": "✗ ACCESS DENIED",
+    },
     "scan.not_recognized_use_pin": {
         "es": "✗ No reconocido — usa tu PIN",
         "en": "✗ Not recognized — use your PIN",
@@ -389,6 +393,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "users.reregister_face":   {"es": "Actualizar rostro",     "en": "Update face"},
     "users.protected":         {"es": "Protegido",               "en": "Protected"},
     "users.your_account":      {"es": "Tu cuenta",               "en": "Your account"},
+    "users.err_superadmin_locked": {"es": "Solo puede existir un Superadmin en el sistema", "en": "Only one Superadmin is allowed in the system"},
     "users.err_matricula_taken": {"es": "La matrícula {mat} ya pertenece a otro usuario", "en": "ID {mat} already belongs to another user"},
     "users.err_email_taken":   {"es": "El correo {email} ya pertenece a otro usuario", "en": "Email {email} already belongs to another user"},
     "users.err_select_type_unit": {"es": "Selecciona un tipo de usuario y unidad académica válidos", "en": "Select a valid user type and academic unit"},

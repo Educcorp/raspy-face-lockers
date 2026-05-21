@@ -30,6 +30,15 @@ from services import user_service, locker_service, access_log_service
 logger = logging.getLogger(__name__)
 
 
+def _largest_face(faces: list) -> dict | None:
+    """Selecciona el rostro más cercano (caja más grande) de la lista detectada."""
+    if not faces:
+        return None
+    return max(faces, key=lambda f: (
+        (f.get("box") or (0, 0, 0, 0))[2] * (f.get("box") or (0, 0, 0, 0))[3]
+    ))
+
+
 class ScanningScreen(ctk.CTkFrame):
     """
     Pantalla activa durante el reconocimiento facial.
@@ -399,11 +408,12 @@ class ScanningScreen(ctk.CTkFrame):
                 now = time.time()
 
                 if faces:
-                    face_box = faces[0].get("box")
+                    primary_face = _largest_face(faces)
+                    face_box = primary_face.get("box") if primary_face else None
 
-                    # Detectar cambio de cara: múltiples caras simultáneas o salto brusco
-                    face_switched = len(faces) > 1
-                    if not face_switched and face_box and self._last_seen_face_box:
+                    # Detectar cambio de cara: salto brusco de posición
+                    face_switched = False
+                    if face_box and self._last_seen_face_box:
                         prev = self._last_seen_face_box
                         prev_cx = prev[0] + prev[2] * 0.5
                         prev_cy = prev[1] + prev[3] * 0.5
@@ -500,9 +510,9 @@ class ScanningScreen(ctk.CTkFrame):
             pil_image = Image.fromarray(canvas_arr, mode="RGB")
             draw = ImageDraw.Draw(pil_image)
 
-            # Calcular cuadro guía (coordenadas en pantalla, ya en espejo)
+            # Calcular cuadro guía usando el rostro más cercano (mayor área)
             if len(faces) > 0:
-                face_box = faces[0].get("box")
+                face_box = (_largest_face(faces) or {}).get("box")
                 if face_box:
                     fx, fy, fw, fh = face_box
                     # Espejo: invertir x en el espacio del frame original
@@ -1258,7 +1268,7 @@ class ScanningScreen(ctk.CTkFrame):
         if not faces or not self.face_manager:
             return None
 
-        face_box = faces[0].get("box")
+        face_box = (_largest_face(faces) or {}).get("box")
         if not face_box:
             return None
 

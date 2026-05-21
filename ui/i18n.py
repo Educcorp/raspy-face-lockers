@@ -385,7 +385,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "users.field_unit":        {"es": "Unidad académica",        "en": "Academic unit"},
     "users.no_face":           {"es": "Sin rostro registrado",   "en": "No face registered"},
     "users.no_face_warning":   {"es": "(!) Sin rostro registrado", "en": "(!) No face registered"},
-    "users.face_count":        {"es": "[OK] {n} perfil(es) facial(es) registrado(s)", "en": "[OK] {n} facial profile(s) registered"},
+    "users.face_count":        {"es": "✓ {n} perfil(es) facial(es) registrado(s)", "en": "✓ {n} facial profile(s) registered"},
     "users.reregister_face":   {"es": "Actualizar rostro",     "en": "Update face"},
     "users.protected":         {"es": "Protegido",               "en": "Protected"},
     "users.your_account":      {"es": "Tu cuenta",               "en": "Your account"},
@@ -492,5 +492,5 @@ def toggle() -> None:
 
 
 def lang_btn_text() -> str:
-    """Ícono del botón de cambio de idioma (bandera del idioma destino)."""
-    return "🇺🇸" if _lang == "es" else "🇲🇽"
+    """Texto del botón de cambio de idioma (idioma destino)."""
+    return "🌐 English" if _lang == "es" else "🌐 Español"

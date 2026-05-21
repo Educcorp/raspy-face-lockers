@@ -1079,7 +1079,7 @@ class _Step5Confirm(ctk.CTkFrame):
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.grid(row=0, column=0)
 
-        ctk.CTkLabel(center, text="[OK]",
+        ctk.CTkLabel(center, text="✓",
                      font=ctk.CTkFont(size=80),
                      fg_color="transparent",
                      text_color="#27ae60").pack(pady=(0, 12))

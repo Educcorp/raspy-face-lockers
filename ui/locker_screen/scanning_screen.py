@@ -225,10 +225,10 @@ class ScanningScreen(ctk.CTkFrame):
         self.btn_admin.place(x=452, y=44, anchor="center")
 
         # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Fondo blanco que cubre toda la pantalla
+        # Fondo verde que cubre toda la pantalla
         self.overlay_bg = ctk.CTkFrame(
             self,
-            fg_color="#FFFFFF",
+            fg_color="#5B8C5A",
             corner_radius=0,
             width=480,
             height=800,

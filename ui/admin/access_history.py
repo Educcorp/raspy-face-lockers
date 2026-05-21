@@ -72,7 +72,16 @@ class AccessHistoryScreen(ctk.CTkFrame):
 			locker_num = row.get("idLocker") or "—"
 			owner = row.get("nombreCompleto") or "Sin asignacion"
 			access_time = row.get("fechaHoraAcceso") or "—"
-			access_time = access_time.replace("T", " ") if isinstance(access_time, str) else access_time
+			date_part = "—"
+			time_part = "—"
+			if isinstance(access_time, str):
+				clean = access_time.replace("T", " ")
+				parts = clean.split()
+				if len(parts) >= 2:
+					date_part = parts[0]
+					time_part = parts[1]
+				elif len(parts) == 1:
+					date_part = parts[0]
 			motivo = self._format_motivo(row.get("motivo"))
 
 			card = ctk.CTkFrame(
@@ -104,7 +113,16 @@ class AccessHistoryScreen(ctk.CTkFrame):
 
 			ctk.CTkLabel(
 				card,
-				text=f"Tiempo: {access_time}",
+				text=f"Fecha: {date_part}",
+				font=ctk.CTkFont(size=12),
+				text_color=PALETTE["MUTED"],
+				fg_color="transparent",
+				anchor="w",
+			).pack(fill="x", padx=12, pady=(2, 0))
+
+			ctk.CTkLabel(
+				card,
+				text=f"Tiempo: {time_part}",
 				font=ctk.CTkFont(size=12),
 				text_color=PALETTE["MUTED"],
 				fg_color="transparent",

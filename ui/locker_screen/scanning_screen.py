@@ -107,6 +107,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_started_at = 0.0
         self._challenge_ref_box = None
         self._blink_closed_seen = False
+        self._auto_return_started_ts: float | None = None
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
@@ -418,10 +419,11 @@ class ScanningScreen(ctk.CTkFrame):
                             "Sin cara cercana durante %.0f s — regresando a standby",
                             self.AUTO_RETURN_SECONDS,
                         )
-                        # Marcar como inactivo ANTES del return para que on_show()
-                        # siempre vea _camera_running = False y arranque hilo nuevo.
+                        # Marcar como inactivo y esperar a que el hilo de camara salga
+                        # antes de cambiar de pantalla, evitando doble acceso.
                         self._camera_running = False
-                        self.after(0, self._go_standby)
+                        self._auto_return_started_ts = time.time()
+                        self.after(0, self._finalize_auto_return)
                         return
 
                 # Calcular cuánto tiempo lleva el rostro visible y actualizar progreso
@@ -626,6 +628,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._face_first_seen_ts = 0.0
         self._scan_progress_pct = 0
         self._last_close_face_ts = time.time()  # arrancar temporizador de inactividad
+        self._auto_return_started_ts = None
         self._reset_liveness_state()
         self._pin_fail_count = 0
         self._found_user = None
@@ -754,6 +757,22 @@ class ScanningScreen(ctk.CTkFrame):
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
+
+    def _finalize_auto_return(self) -> None:
+        if self._camera_thread and self._camera_thread.is_alive():
+            elapsed = 0.0
+            if self._auto_return_started_ts is not None:
+                elapsed = time.time() - self._auto_return_started_ts
+            if elapsed >= 1.5 and self.face_manager and self.face_manager.initialized:
+                try:
+                    self.face_manager.release()
+                except Exception as e:
+                    logger.debug("Auto-return: fallo al liberar camara: %s", e)
+            self.after(120, self._finalize_auto_return)
+            return
+
+        self._auto_return_started_ts = None
+        self._go_standby()
 
     def _go_admin_login(self) -> None:
         # Detener reconocimiento ANTES de construir los frames de admin

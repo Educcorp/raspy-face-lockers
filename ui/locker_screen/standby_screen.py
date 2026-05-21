@@ -170,6 +170,10 @@ class StandbyScreen(ctk.CTkFrame):
         self._monitor_running = False
         if self._monitor_thread:
             self._monitor_thread.join(timeout=1.0)
+            if self._monitor_thread.is_alive():
+                logger.warning("Monitor de rostro no finalizo; liberando camara")
+                self._release_face_manager()
+                self._monitor_thread.join(timeout=1.0)
             self._monitor_thread = None
 
     def _monitor_loop(self) -> None:

@@ -1,10 +1,9 @@
 """
-AreasCatalogScreen – Catálogos de Áreas, Unidades Académicas y Tipos de Usuario.
+AreasCatalogScreen – Catálogos de Áreas y Unidades Académicas.
 
-Una única pantalla con 3 pestañas táctiles:
+Una única pantalla con 2 pestañas táctiles:
   1. Áreas / Zonas      (area_lockers)
   2. Unidades Acad.     (unidad_academica)
-  3. Tipos de Usuario   (tipo_usuarios)
 
 Cada pestaña ofrece lista + CRUD completo.
 """
@@ -71,62 +70,6 @@ def _catalog_row(parent, primary_text: str, sub_text: str,
     return row_frame
 
 
-_MOTIVO_LABELS: dict[str, str] = {
-    "facial":               "Facial",
-    "no_reconocido":        "Rostro no reconocido",
-    "pin":                  "PIN",
-    "pin_incorrecto":       "PIN incorrecto",
-    "limite_intentos_pin":  "Exceso de intentos PIN",
-    "matricula_incorrecta": "Matrícula incorrecta",
-    "sin_asignacion":       "Sin asignación de locker",
-}
-
-
-def _historial_row(parent, r: dict) -> ctk.CTkFrame:
-    concedido = (r.get("accesoPermitido") or "no").strip().lower() == "si"
-    dot_color = "#27ae60" if concedido else PALETTE["DANGER"]
-
-    fecha = r.get("fechaHoraAcceso", "")
-    if fecha and "T" in fecha:
-        fecha = fecha.replace("T", "  ")
-
-    usuario = (r.get("nombreCompleto") or "").strip() or t("hist.unknown_user")
-    matricula = r.get("matricula")
-    usuario_label = f"{usuario}  ({t('common.matr_prefix')} {matricula})" if matricula else usuario
-
-    locker_num = r.get("idLocker")
-    locker_label = f"Locker {locker_num}" if locker_num else "—"
-
-    motivo_raw = (r.get("motivo") or "").strip()
-    motivo_label = _MOTIVO_LABELS.get(motivo_raw, motivo_raw or "—")
-    resultado = t("hist.granted") if concedido else t("hist.denied")
-
-    row_frame = ctk.CTkFrame(parent, fg_color=PALETTE["CARD"], corner_radius=12,
-                             border_width=1, border_color=PALETTE["BORDER"])
-    row_frame.pack(fill="x", padx=4, pady=4)
-
-    inner = ctk.CTkFrame(row_frame, fg_color="transparent")
-    inner.pack(fill="x", padx=14, pady=10)
-    inner.grid_columnconfigure(1, weight=1)
-
-    ctk.CTkLabel(inner, text="●", font=ctk.CTkFont(size=14),
-                 text_color=dot_color, fg_color="transparent").grid(
-                     row=0, column=0, rowspan=2, padx=(0, 10))
-
-    top_line = f"{resultado}  ·  {locker_label}  ·  {motivo_label}"
-    ctk.CTkLabel(inner, text=top_line,
-                 font=ctk.CTkFont(size=15, weight="bold"),
-                 text_color=dot_color, fg_color="transparent",
-                 anchor="w").grid(row=0, column=1, sticky="ew")
-
-    bottom_line = f"{usuario_label}  ·  {fecha}"
-    ctk.CTkLabel(inner, text=bottom_line, font=ctk.CTkFont(size=12),
-                 text_color=PALETTE["MUTED"], fg_color="transparent",
-                 anchor="w").grid(row=1, column=1, sticky="ew")
-
-    return row_frame
-
-
 # ── Pantalla principal ────────────────────────────────────────────────────────
 
 class AreasCatalogScreen(ctk.CTkFrame):
@@ -177,9 +120,8 @@ class AreasCatalogScreen(ctk.CTkFrame):
         tab_defs = [
             ("areas",    t("areas.tab.areas")),
             ("unidades", t("areas.tab.units")),
-            ("historial", t("areas.tab.history")),
         ]
-        tab_bar.grid_columnconfigure((0, 1, 2), weight=1)
+        tab_bar.grid_columnconfigure((0, 1), weight=1)
         for col, (key, label) in enumerate(tab_defs):
             btn = ctk.CTkButton(
                 tab_bar, text=label,
@@ -212,11 +154,6 @@ class AreasCatalogScreen(ctk.CTkFrame):
             else:
                 btn.configure(fg_color=PALETTE["CARD"],
                               text_color=PALETTE["MUTED"])
-        # Ocultar "+" en historial (no se agregan registros manualmente)
-        if key == "historial":
-            self.btn_add.pack_forget()
-        else:
-            self.btn_add.pack(side="right", padx=8)
         self._load()
 
     def _load(self) -> None:
@@ -225,10 +162,8 @@ class AreasCatalogScreen(ctk.CTkFrame):
 
         if self._active_tab == "areas":
             self._load_areas()
-        elif self._active_tab == "unidades":
-            self._load_unidades()
         else:
-            self._load_historial()
+            self._load_unidades()
 
     # ── Áreas ─────────────────────────────────────────────────────────────────
 
@@ -278,19 +213,6 @@ class AreasCatalogScreen(ctk.CTkFrame):
                 estado=r.get("estado", "activo"),
             )
 
-    # ── Historial de accesos ──────────────────────────────────────────────────
-
-    def _load_historial(self) -> None:
-        rows = fetch_all("SELECT * FROM v_historial_detalle LIMIT 150")
-        if not rows:
-            ctk.CTkLabel(self._list_frame, text=t("hist.no_records"),
-                         font=ctk.CTkFont(size=16),
-                         text_color=PALETTE["MUTED"],
-                         fg_color="transparent").pack(pady=40)
-            return
-        for r in rows:
-            _historial_row(self._list_frame, r)
-
     # ── Añadir ────────────────────────────────────────────────────────────────
 
     def _add_item(self) -> None:
@@ -298,7 +220,7 @@ class AreasCatalogScreen(ctk.CTkFrame):
             return
         if self._active_tab == "areas":
             AreaFormOverlay(self, None, on_close=self._load)
-        elif self._active_tab == "unidades":
+        else:
             UnidadFormOverlay(self, None, on_close=self._load)
 
     # ── Navegación ────────────────────────────────────────────────────────────
@@ -645,3 +567,111 @@ class UnidadFormOverlay(_BaseFormOverlay):
         self._close()
 
 
+# ══ Historial de Accesos (pantalla independiente) ═════════════════════════════
+
+_MOTIVO_LABELS: dict[str, str] = {
+    "facial":               "Facial",
+    "no_reconocido":        "Rostro no reconocido",
+    "pin":                  "PIN",
+    "pin_incorrecto":       "PIN incorrecto",
+    "limite_intentos_pin":  "Exceso de intentos PIN",
+    "matricula_incorrecta": "Matrícula incorrecta",
+    "sin_asignacion":       "Sin asignación de locker",
+}
+
+
+class AccessHistoryScreen(ctk.CTkFrame):
+    """Pantalla dedicada al historial de accesos del sistema."""
+
+    def __init__(self, parent, controller):
+        super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
+        self.controller = controller
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        hdr = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], height=64, corner_radius=0)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+
+        ctk.CTkButton(
+            hdr, text="←", width=46, height=46,
+            font=ctk.CTkFont(size=22, weight="bold"),
+            fg_color="transparent", hover_color=PALETTE["BORDER"],
+            text_color=PALETTE["TEXT"],
+            command=self._go_back,
+        ).pack(side="left", padx=8)
+
+        ctk.CTkLabel(
+            hdr, text=t("cat.types.label"),
+            font=ctk.CTkFont(size=20, weight="bold"),
+            text_color=PALETTE["TEXT"], fg_color="transparent",
+        ).pack(side="left", padx=4)
+
+        self._list_frame = ctk.CTkScrollableFrame(
+            self, fg_color=PALETTE["BG"],
+            scrollbar_button_color=PALETTE["BORDER"],
+            scrollbar_button_hover_color=PALETTE["ACCENT"],
+        )
+        self._list_frame.pack(fill="both", expand=True, padx=10, pady=8)
+
+    def _load(self) -> None:
+        for w in self._list_frame.winfo_children():
+            w.destroy()
+        rows = fetch_all("SELECT * FROM v_historial_detalle LIMIT 200")
+        if not rows:
+            ctk.CTkLabel(self._list_frame, text=t("hist.no_records"),
+                         font=ctk.CTkFont(size=16),
+                         text_color=PALETTE["MUTED"],
+                         fg_color="transparent").pack(pady=40)
+            return
+        for r in rows:
+            self._make_row(r)
+
+    def _make_row(self, r: dict) -> None:
+        concedido = (r.get("accesoPermitido") or "no").strip().lower() == "si"
+        dot_color = "#27ae60" if concedido else PALETTE["DANGER"]
+
+        fecha = r.get("fechaHoraAcceso", "")
+        if fecha and "T" in fecha:
+            fecha = fecha.replace("T", "  ")
+
+        usuario = (r.get("nombreCompleto") or "").strip() or t("hist.unknown_user")
+        matricula = r.get("matricula")
+        usuario_label = f"{usuario}  ({t('common.matr_prefix')} {matricula})" if matricula else usuario
+
+        locker_num = r.get("idLocker")
+        locker_label = f"Locker {locker_num}" if locker_num else "—"
+
+        motivo_raw = (r.get("motivo") or "").strip()
+        motivo_label = _MOTIVO_LABELS.get(motivo_raw, motivo_raw or "—")
+        resultado = t("hist.granted") if concedido else t("hist.denied")
+
+        row_frame = ctk.CTkFrame(self._list_frame, fg_color=PALETTE["CARD"],
+                                 corner_radius=12, border_width=1,
+                                 border_color=PALETTE["BORDER"])
+        row_frame.pack(fill="x", padx=4, pady=4)
+
+        inner = ctk.CTkFrame(row_frame, fg_color="transparent")
+        inner.pack(fill="x", padx=14, pady=10)
+        inner.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(inner, text="●", font=ctk.CTkFont(size=14),
+                     text_color=dot_color, fg_color="transparent").grid(
+                         row=0, column=0, rowspan=2, padx=(0, 10))
+
+        ctk.CTkLabel(inner, text=f"{resultado}  ·  {locker_label}  ·  {motivo_label}",
+                     font=ctk.CTkFont(size=15, weight="bold"),
+                     text_color=dot_color, fg_color="transparent",
+                     anchor="w").grid(row=0, column=1, sticky="ew")
+
+        ctk.CTkLabel(inner, text=f"{usuario_label}  ·  {fecha}",
+                     font=ctk.CTkFont(size=12),
+                     text_color=PALETTE["MUTED"], fg_color="transparent",
+                     anchor="w").grid(row=1, column=1, sticky="ew")
+
+    def _go_back(self) -> None:
+        from ui.admin.dashboard import DashboardScreen
+        self.controller.show_frame(DashboardScreen)
+
+    def on_show(self, **_kwargs) -> None:
+        self._load()

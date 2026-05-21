@@ -195,6 +195,9 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self.locker_id = locker_id
         self._on_close = on_close
         self._can_edit = can_edit_catalogs()
+        self._is_default = int(locker_id) in _DEFAULT_LOCKER_IDS
+        self._unidades: list[dict] = []
+        self._areas: list[dict] = []
         self.place(x=0, y=0, relwidth=1, relheight=1)
         self.lift()
         self._build_ui()
@@ -218,40 +221,56 @@ class LockerDetailOverlay(ctk.CTkFrame):
         scroll = ctk.CTkScrollableFrame(self, fg_color=PALETTE["BG"])
         scroll.pack(fill="both", expand=True, padx=14, pady=10)
 
-        fields = [
-            ("idLocker", "ID Locker"),
-            ("area",     t("lockers.field_area")),
-            ("unidad",   t("lockers.field_unit")),
-        ]
-        self._labels: dict[str, ctk.CTkLabel] = {}
-        for key, label in fields:
-            ctk.CTkLabel(scroll, text=label, font=ctk.CTkFont(size=12),
-                         text_color=PALETTE["MUTED"],
-                         fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
-            lbl = ctk.CTkLabel(scroll, text="—",
-                               font=ctk.CTkFont(size=15, weight="bold"),
-                               text_color=PALETTE["TEXT"],
-                               fg_color=PALETTE["CARD"], corner_radius=8,
-                               height=42)
-            lbl.pack(fill="x", padx=4)
-            self._labels[key] = lbl
+        # ID Locker (solo lectura)
+        ctk.CTkLabel(scroll, text="ID Locker", font=ctk.CTkFont(size=12),
+                     text_color=PALETTE["MUTED"],
+                     fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
+        self.lbl_id = ctk.CTkLabel(scroll, text="—",
+                                   font=ctk.CTkFont(size=15, weight="bold"),
+                                   text_color=PALETTE["TEXT"],
+                                   fg_color=PALETTE["CARD"], corner_radius=8, height=42)
+        self.lbl_id.pack(fill="x", padx=4)
 
-        # Estado selector
+        # Unidad académica (editable)
+        ctk.CTkLabel(scroll, text=t("lockers.field_unit"), font=ctk.CTkFont(size=12),
+                     text_color=PALETTE["MUTED"],
+                     fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
+        self._unidad_var = tk.StringVar()
+        self._unidad_var.trace_add("write", lambda *_: self._on_unit_change())
+        self._unidad_menu = ctk.CTkOptionMenu(
+            scroll, variable=self._unidad_var, values=["—"],
+            fg_color=PALETTE["CARD"], button_color=PALETTE["ACCENT"],
+            button_hover_color=PALETTE["ACCENT_HOVER"], text_color=PALETTE["TEXT"],
+            font=ctk.CTkFont(size=15), height=46,
+        )
+        self._unidad_menu.pack(fill="x", padx=4)
+
+        # Área (editable, filtrada por unidad)
+        ctk.CTkLabel(scroll, text=t("lockers.field_area"), font=ctk.CTkFont(size=12),
+                     text_color=PALETTE["MUTED"],
+                     fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
+        self._area_var = tk.StringVar()
+        self._area_menu = ctk.CTkOptionMenu(
+            scroll, variable=self._area_var, values=["—"],
+            fg_color=PALETTE["CARD"], button_color=PALETTE["ACCENT"],
+            button_hover_color=PALETTE["ACCENT_HOVER"], text_color=PALETTE["TEXT"],
+            font=ctk.CTkFont(size=15), height=46,
+        )
+        self._area_menu.pack(fill="x", padx=4)
+
+        # Estado
         ctk.CTkLabel(scroll, text=t("common.status"), font=ctk.CTkFont(size=12),
                      text_color=PALETTE["MUTED"],
                      fg_color="transparent").pack(anchor="w", padx=4, pady=(8, 2))
         self._estado_var = tk.StringVar()
         self._estado_menu = ctk.CTkOptionMenu(
-            scroll,
-            variable=self._estado_var,
+            scroll, variable=self._estado_var,
             values=["activo", "inactivo", "mantenimiento"],
             fg_color=PALETTE["CARD"], button_color=PALETTE["ACCENT"],
             button_hover_color=PALETTE["ACCENT_HOVER"], text_color=PALETTE["TEXT"],
             font=ctk.CTkFont(size=15), height=46,
         )
         self._estado_menu.pack(fill="x", padx=4)
-        if not self._can_edit:
-            self._estado_menu.configure(state="disabled")
 
         # Asignación actual
         ctk.CTkLabel(scroll, text=t("lockers.current_assignment"),
@@ -264,70 +283,67 @@ class LockerDetailOverlay(ctk.CTkFrame):
                                       corner_radius=8, height=42)
         self.lbl_asign.pack(fill="x", padx=4)
 
+        if not self._can_edit:
+            self._unidad_menu.configure(state="disabled")
+            self._area_menu.configure(state="disabled")
+            self._estado_menu.configure(state="disabled")
+
         # Botones
         self.btn_toggle = None
-        if int(self.locker_id) in _DEFAULT_LOCKER_IDS:
-            # Locker de sistema — bloquear toda edición
-            self._estado_menu.configure(state="disabled")
-            ctk.CTkLabel(
-                scroll,
-                text=t("lockers.system_protected"),
-                font=ctk.CTkFont(size=13, weight="bold"),
-                text_color="#D4A34A",
-                fg_color=PALETTE["CARD"],
-                corner_radius=8,
-                height=40,
-            ).pack(fill="x", padx=4, pady=(16, 4))
-            ctk.CTkLabel(
-                scroll,
-                text=t("lockers.system_warning"),
-                font=ctk.CTkFont(size=12),
-                text_color=PALETTE["MUTED"],
-                fg_color="transparent",
-                justify="center",
-            ).pack(pady=(0, 8))
-        elif self._can_edit:
+        if self._can_edit:
             ctk.CTkButton(
-                scroll,
-                text=t("lockers.save_status"),
+                scroll, text=t("common.save_changes"),
                 font=ctk.CTkFont(size=15, weight="bold"),
-                fg_color=PALETTE["ACCENT"],
-                hover_color=PALETTE["ACCENT_HOVER"],
-                text_color=PALETTE["WHITE"],
-                height=50,
-                corner_radius=12,
+                fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+                text_color=PALETTE["WHITE"], height=50, corner_radius=12,
                 command=self._save,
             ).pack(fill="x", padx=4, pady=(16, 8))
 
             self.btn_toggle = ctk.CTkButton(
-                scroll,
-                text=t("common.disable"),
+                scroll, text=t("common.disable"),
                 font=ctk.CTkFont(size=15, weight="bold"),
-                fg_color=PALETTE["DANGER"],
-                hover_color="#922b21",
-                text_color=PALETTE["WHITE"],
-                height=50,
-                corner_radius=12,
+                fg_color=PALETTE["DANGER"], hover_color="#922b21",
+                text_color=PALETTE["WHITE"], height=50, corner_radius=12,
                 command=self._toggle_status,
             )
             self.btn_toggle.pack(fill="x", padx=4, pady=(0, 8))
 
-            if is_superadmin():
+            if self._is_default:
+                ctk.CTkLabel(
+                    scroll, text=t("lockers.system_protected"),
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    text_color="#D4A34A", fg_color=PALETTE["CARD"],
+                    corner_radius=8, height=40,
+                ).pack(fill="x", padx=4, pady=(4, 8))
+            elif is_superadmin():
                 ctk.CTkButton(
-                    scroll,
-                    text=t("lockers.delete_btn"),
+                    scroll, text=t("lockers.delete_btn"),
                     font=ctk.CTkFont(size=15, weight="bold"),
-                    fg_color="#8B1A1A",
-                    hover_color="#6B0000",
-                    text_color=PALETTE["WHITE"],
-                    height=50,
-                    corner_radius=12,
+                    fg_color="#8B1A1A", hover_color="#6B0000",
+                    text_color=PALETTE["WHITE"], height=50, corner_radius=12,
                     command=self._confirm_delete_locker,
                 ).pack(fill="x", padx=4, pady=(0, 8))
 
+    def _on_unit_change(self) -> None:
+        """Recarga las áreas disponibles para la unidad seleccionada."""
+        unit_name = self._unidad_var.get()
+        unit = next((u for u in self._unidades if u["nombreUnidadAcademica"] == unit_name), None)
+        if unit:
+            self._areas = fetch_all(
+                "SELECT idArea, nombreArea FROM area_lockers "
+                "WHERE idUnidadAcademica=? AND estado='activo' ORDER BY nombreArea",
+                (unit["idUnidadAcademica"],),
+            )
+        else:
+            self._areas = []
+        area_names = [a["nombreArea"] for a in self._areas]
+        self._area_menu.configure(values=area_names if area_names else ["—"])
+        if self._area_var.get() not in area_names:
+            self._area_var.set(area_names[0] if area_names else "—")
+
     def _load(self) -> None:
         row = fetch_one("""
-            SELECT l.idLocker, l.estado,
+            SELECT l.idLocker, l.estado, l.idArea, l.idUnidadAcademica,
                    a.nombreArea AS area,
                    ua.nombreUnidadAcademica AS unidad
             FROM lockers l
@@ -338,11 +354,37 @@ class LockerDetailOverlay(ctk.CTkFrame):
         if not row:
             self._close()
             return
-        self._labels["idLocker"].configure(text=str(row["idLocker"]))
-        self._labels["area"].configure(text=row.get("area", "—") or "—")
-        self._labels["unidad"].configure(text=row.get("unidad", "—") or "—")
+
+        self.lbl_id.configure(text=str(row["idLocker"]))
+
+        # Cargar unidades y configurar dropdown
+        self._unidades = fetch_all(
+            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica "
+            "WHERE estado='activo' ORDER BY nombreUnidadAcademica"
+        )
+        unit_names = [u["nombreUnidadAcademica"] for u in self._unidades]
+        self._unidad_menu.configure(values=unit_names if unit_names else ["—"])
+
+        # Establecer unidad → dispara _on_unit_change que carga áreas para esa unidad
+        current_unidad = row.get("unidad") or ""
+        if current_unidad and current_unidad in unit_names:
+            self._unidad_var.set(current_unidad)
+        elif unit_names:
+            self._unidad_var.set(unit_names[0])
+        else:
+            self._unidad_var.set("—")
+        # _on_unit_change ya se ejecutó: self._areas cargadas
+
+        # Establecer área actual
+        current_area = row.get("area") or ""
+        area_names = [a["nombreArea"] for a in self._areas]
+        if current_area and current_area in area_names:
+            self._area_var.set(current_area)
+        elif area_names:
+            self._area_var.set(area_names[0])
+
         self._estado_var.set(row.get("estado", "activo"))
-        if self._can_edit:
+        if self._can_edit and self.btn_toggle:
             self._refresh_toggle_button()
 
         asign = fetch_one("""
@@ -353,15 +395,20 @@ class LockerDetailOverlay(ctk.CTkFrame):
             WHERE al.idLocker=? AND al.estado='activo'
         """, (self.locker_id,))
         if asign:
-            self.lbl_asign.configure(
-                text=f"[OK] {asign['usuario']}  ({asign['asignEstado']})")
+            self.lbl_asign.configure(text=f"✓ {asign['usuario']}  ({asign['asignEstado']})")
         else:
             self.lbl_asign.configure(text=t("lockers.no_assignment"))
 
     def _save(self) -> None:
         if not self._can_edit:
             return
-        new_state = (self._estado_var.get() or "activo").strip().lower()
+        unit_name = self._unidad_var.get()
+        area_name = self._area_var.get()
+        new_state = (self._estado_var.get() or "activo").strip()
+
+        unit = next((u for u in self._unidades if u["nombreUnidadAcademica"] == unit_name), None)
+        area = next((a for a in self._areas if a["nombreArea"] == area_name), None)
+
         if new_state != "activo" and self._has_active_assignment():
             messagebox.showwarning(
                 "Acción no permitida",
@@ -369,8 +416,15 @@ class LockerDetailOverlay(ctk.CTkFrame):
             )
             return
         execute(
-            "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
-            (self._estado_var.get(), self.locker_id),
+            "UPDATE lockers SET idUnidadAcademica=?, idArea=?, estado=?, "
+            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+            "modificadoPor=1 WHERE idLocker=?",
+            (
+                unit["idUnidadAcademica"] if unit else None,
+                area["idArea"] if area else None,
+                new_state,
+                self.locker_id,
+            ),
         )
         self._close()
 
@@ -397,23 +451,13 @@ class LockerDetailOverlay(ctk.CTkFrame):
             return
         current_state = (self._estado_var.get() or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
-        if new_state != "activo" and self._has_active_assignment():
-            messagebox.showwarning(
-                "Acción no permitida",
-                "No puedes deshabilitar un locker con asignación activa. Libéralo primero.",
-            )
-            return
         self._estado_var.set(new_state)
-        execute(
-            "UPDATE lockers SET estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), modificadoPor=1 WHERE idLocker=?",
-            (new_state, self.locker_id),
-        )
-        self._close()
+        self._save()
 
     def _confirm_delete_locker(self) -> None:
         if not is_superadmin():
             return
-        if int(self.locker_id) in _DEFAULT_LOCKER_IDS:
+        if self._is_default:
             messagebox.showwarning("Protegido", "Los lockers predeterminados no pueden eliminarse.")
             return
         if self._has_active_assignment():

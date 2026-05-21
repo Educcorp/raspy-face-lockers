@@ -17,7 +17,7 @@ import customtkinter as ctk
 from database.connection import fetch_one
 from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t, lang_btn_text
-from auth.session import can_create_users, get_current_full_name, get_current_role_label
+from auth.session import can_create_users, get_current_full_name, get_current_role_label, is_authenticated
 
 
 def _get_catalogs() -> list[dict]:
@@ -55,7 +55,7 @@ def _get_catalogs() -> list[dict]:
             "label":  t("cat.types.label"),
             "hint":   t("cat.types.hint"),
             "sql":    "SELECT COUNT(*) AS n FROM historial_accesos",
-            "target": "AreasCatalogScreen",
+            "target": "AccessHistoryScreen",
         },
         {
             "icon":   "ASG",
@@ -210,7 +210,7 @@ class DashboardScreen(ctk.CTkFrame):
         )
         identity.pack(side="left", padx=18, pady=(8, 6))
 
-        ctk.CTkLabel(
+        self.lbl_role = ctk.CTkLabel(
             identity,
             text=get_current_role_label(),
             font=ctk.CTkFont(size=26, weight="bold"),
@@ -218,11 +218,12 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
             height=24,
             anchor="w",
-        ).pack(anchor="w", pady=(0, 2))
+        )
+        self.lbl_role.pack(anchor="w", pady=(0, 2))
 
         full_name = get_current_full_name()
         subtitle = f"{t('dash.user_prefix')} {full_name}" if full_name else f"{t('dash.user_prefix')} {t('dash.session_active')}"
-        ctk.CTkLabel(
+        self.lbl_subtitle = ctk.CTkLabel(
             identity,
             text=subtitle,
             font=ctk.CTkFont(size=12),
@@ -230,7 +231,8 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
             height=14,
             anchor="w",
-        ).pack(anchor="w")
+        )
+        self.lbl_subtitle.pack(anchor="w")
 
         ctk.CTkFrame(
             identity,
@@ -426,6 +428,7 @@ class DashboardScreen(ctk.CTkFrame):
             "UsersCatalogScreen":   users_catalog.UsersCatalogScreen,
             "LockersCatalogScreen": lockers_catalog.LockersCatalogScreen,
             "AreasCatalogScreen":   areas_catalog.AreasCatalogScreen,
+            "AccessHistoryScreen":  areas_catalog.AccessHistoryScreen,
             "LockerAssignmentScreen": locker_assignment.LockerAssignmentScreen,
         }
         cls = mapping.get(target_name)
@@ -446,7 +449,15 @@ class DashboardScreen(ctk.CTkFrame):
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def on_show(self, **_kwargs) -> None:
-        """Recarga los contadores cada vez que se vuelve al dashboard."""
+        """Recarga los contadores y actualiza el encabezado de sesión."""
+        self.lbl_role.configure(text=get_current_role_label())
+        full_name = get_current_full_name()
+        subtitle = (
+            f"{t('dash.user_prefix')} {full_name}"
+            if full_name
+            else f"{t('dash.user_prefix')} {t('dash.session_active')}"
+        )
+        self.lbl_subtitle.configure(text=subtitle)
         for idx, cat in enumerate(_get_catalogs()):
             count = self._get_count(cat["sql"])
             self._cards[idx].set_count(count)

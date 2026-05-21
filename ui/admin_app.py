@@ -259,7 +259,7 @@ class AdminApp(ctk.CTk):
         from ui.admin.login_screen    import LoginScreen
         from ui.admin.users_catalog   import UsersCatalogScreen
         from ui.admin.lockers_catalog import LockersCatalogScreen
-        from ui.admin.areas_catalog   import AreasCatalogScreen
+        from ui.admin.areas_catalog   import AreasCatalogScreen, AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user   import RegisterUserScreen
 
@@ -269,6 +269,7 @@ class AdminApp(ctk.CTk):
             UsersCatalogScreen,
             LockersCatalogScreen,
             AreasCatalogScreen,
+            AccessHistoryScreen,
             LockerAssignmentScreen,
             RegisterUserScreen,
         ):

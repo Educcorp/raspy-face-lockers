@@ -270,7 +270,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "cat.units.label":      {"es": "Unidades Acad.",   "en": "Acad. Units"},
     "cat.units.hint":       {"es": "Facultades y escuelas", "en": "Faculties and schools"},
     "cat.types.label":      {"es": "Historial Acceso", "en": "Access History"},
-    "cat.types.hint":       {"es": "Accesos registrados", "en": "Registered accesses"},
+    "cat.types.hint":       {"es": "Registro de entradas", "en": "Entry log"},
     "cat.assign.label":     {"es": "Asignaciones",     "en": "Assignments"},
     "cat.assign.hint":      {"es": "Lockers en uso",   "en": "Lockers in use"},
     # Diálogo de cierre de sesión
@@ -408,7 +408,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "lockers.current_assignment":{"es": "Asignación actual",     "en": "Current assignment"},
     "lockers.no_assignment":     {"es": "Sin asignación activa", "en": "No active assignment"},
     "lockers.system_protected":  {"es": "Locker de sistema — protegido", "en": "System locker — protected"},
-    "lockers.system_warning":    {"es": "Los lockers 1-4 son predeterminados del sistema\ny no pueden modificarse ni eliminarse.", "en": "Lockers 1-4 are system defaults\nand cannot be modified or deleted."},
+    "lockers.system_warning":    {"es": "Los lockers 1-4 son predeterminados del sistema\ny no pueden eliminarse.", "en": "Lockers 1-4 are system defaults\nand cannot be deleted."},
     "lockers.save_status":       {"es": "Guardar estado",        "en": "Save status"},
     "lockers.delete_btn":        {"es": "Eliminar locker",       "en": "Delete locker"},
     "lockers.inactive_badge":    {"es": "[INACTIVO]",            "en": "[INACTIVE]"},

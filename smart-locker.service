@@ -1,20 +1,32 @@
 [Unit]
 Description=Smart Locker – Sistema de lockers con reconocimiento facial
-After=graphical-session.target network.target
+Documentation=file:///home/raspi/Documents/GitHub/raspy-face-lockers/README.md
+After=graphical-session.target network-online.target
 Wants=graphical-session.target
+Requires=graphical-session.target
 
 [Service]
 Type=simple
 User=raspi
 Group=raspi
 WorkingDirectory=/home/raspi/Documents/GitHub/raspy-face-lockers
+
+# Entorno gráfico — XWayland bajo Labwc (RPi OS Bookworm)
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/raspi/.Xauthority
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=GDK_BACKEND=x11
 Environment=PYTHONPATH=/usr/lib/python3/dist-packages
-ExecStartPre=/bin/sleep 3
+
+ExecStartPre=/bin/sleep 5
 ExecStart=/home/raspi/Documents/GitHub/raspy-face-lockers/kiosk_autostart.sh
+
+# Solo reiniciar si el proceso termina por fallo (no cuando el usuario sale)
 Restart=on-failure
 RestartSec=5
+
+StandardOutput=append:/home/raspi/Documents/GitHub/raspy-face-lockers/logs/kiosk_startup.log
+StandardError=append:/home/raspi/Documents/GitHub/raspy-face-lockers/logs/kiosk_startup.log
 
 [Install]
 WantedBy=graphical-session.target

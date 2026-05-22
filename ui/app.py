@@ -46,14 +46,19 @@ class LockerApp(ctk.CTk):
         self.resizable(False, False)
 
         if self._kiosk_mode:
-            # Sin decoraciones del WM (sin barra de título, sin bordes)
-            self.overrideredirect(True)
-            # Ocupar pantalla completa desde la esquina (0,0)
-            self.geometry(f"{self.WIDTH}x{self.HEIGHT}+0+0")
-            # Impedir el cierre accidental por eventos del WM
+            # IMPORTANTE: NO usar overrideredirect(True) bajo XWayland/Labwc.
+            # override-redirect excluye la ventana de la cadena de foco del
+            # compositor Wayland → teclado y touch dejan de funcionar al arrancar.
+            # attributes("-fullscreen") usa _NET_WM_STATE_FULLSCREEN, que Labwc
+            # maneja correctamente y enruta todos los eventos de input.
+            self.attributes("-fullscreen", True)
+            # Impedir cierre por el WM
             self.protocol("WM_DELETE_WINDOW", lambda: None)
-            # Forzar foco al arrancar (necesario en RPi con X11)
-            self.after(100, self.focus_force)
+            # Evitar que Escape salga del fullscreen (algunas compositors lo hacen)
+            self.bind_all("<Escape>", lambda e: None)
+            # Capturar foco después de que el compositor procese la ventana.
+            # 800 ms de margen para que XWayland registre la ventana fullscreen.
+            self.after(800, self._kiosk_grab_focus)
         else:
             self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
 
@@ -270,6 +275,29 @@ class LockerApp(ctk.CTk):
                 veil.destroy()
 
     # ── Salida del modo kiosco ────────────────────────────────────────────────
+
+    def _kiosk_grab_focus(self) -> None:
+        """
+        Captura el foco de input para la ventana kiosco.
+        Necesario bajo XWayland/Labwc: sin esto el teclado y touch pueden
+        no responder cuando el sistema arranca desde autostart.
+        Se reintenta cada segundo hasta conseguir foco (máx 10 intentos).
+        """
+        try:
+            self.focus_force()
+            self.lift()
+            # Verificar que realmente tenemos foco
+            if self.focus_get() is None:
+                # Reintentar en 1 segundo
+                if not hasattr(self, "_focus_attempts"):
+                    self._focus_attempts = 0
+                self._focus_attempts += 1
+                if self._focus_attempts < 10:
+                    self.after(1000, self._kiosk_grab_focus)
+            else:
+                self._focus_attempts = 0
+        except Exception:
+            pass
 
     def _on_kiosk_exit_key(self, event=None) -> None:
         """Alt+F4 abre el diálogo de confirmación de salida."""

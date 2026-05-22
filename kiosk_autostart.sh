@@ -1,65 +1,104 @@
 #!/bin/bash
-# ── Smart Locker – Arranque automático en modo kiosco ────────────────────────
+# ── Smart Locker – Script de arranque en modo kiosco ─────────────────────────
 #
-# Para activar el autoarranque en Raspberry Pi OS:
+# Compatible con:
+#   • Raspberry Pi OS Bookworm con Labwc (Wayland) + XWayland  ← caso actual
+#   • Raspberry Pi OS Bullseye con LXDE (X11 puro)
 #
-#   cp smart-locker.desktop ~/.config/autostart/smart-locker.desktop
-#   chmod +x kiosk_autostart.sh
-#
-# Para instalar como servicio de systemd (arranque sin escritorio):
-#
-#   sudo cp smart-locker.service /etc/systemd/system/
-#   sudo systemctl enable smart-locker.service
-#   sudo systemctl start  smart-locker.service
+# El script garantiza que el entorno gráfico esté listo antes de lanzar
+# la aplicación Tkinter (que necesita DISPLAY=:0 vía XWayland).
 # ─────────────────────────────────────────────────────────────────────────────
 
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$PROJECT_DIR"
+LOG="$PROJECT_DIR/logs/kiosk_startup.log"
+mkdir -p "$PROJECT_DIR/logs"
 
-# Esperar a que el entorno gráfico X11 esté disponible
+exec >> "$LOG" 2>&1
+echo "=== $(date) — Arranque kiosco ==="
+echo "SESSION_TYPE=$XDG_SESSION_TYPE  DISPLAY=$DISPLAY  WAYLAND=$WAYLAND_DISPLAY"
+
+# ── 1. Variables de entorno para XWayland / X11 ───────────────────────────────
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
+# Tkinter necesita X11. En sesiones Wayland usa XWayland.
+# GDK_BACKEND=x11 garantiza que GTK (usado internamente por algunas deps) tampoco
+# intente conectarse a Wayland directamente.
+export GDK_BACKEND=x11
+export QT_QPA_PLATFORM=xcb
+
+# ── 2. Esperar a que Wayland esté completamente listo ────────────────────────
+# En RPi OS Bookworm con Labwc, XWayland se inicia on-demand cuando el primer
+# cliente X11 se conecta. Esperamos primero a que el socket Wayland exista.
+echo "Esperando sesión Wayland ($WAYLAND_DISPLAY) ..."
 MAX_WAIT=30
-WAITED=0
-while [ -z "$DISPLAY" ] || ! xdpyinfo -display "$DISPLAY" > /dev/null 2>&1; do
-    if [ $WAITED -ge $MAX_WAIT ]; then
-        echo "[kiosk] ERROR: X11 no disponible tras ${MAX_WAIT}s"
+for i in $(seq 1 $MAX_WAIT); do
+    if [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+        echo "Wayland listo tras ${i}s"
+        break
+    fi
+    if [ $i -eq $MAX_WAIT ]; then
+        echo "ERROR: Wayland no disponible tras ${MAX_WAIT}s — abortando"
         exit 1
     fi
-    export DISPLAY=:0
     sleep 1
-    WAITED=$((WAITED + 1))
 done
 
-echo "[kiosk] X11 listo en DISPLAY=$DISPLAY"
+# Pausa adicional para que Labwc termine de inicializarse y levante XWayland
+sleep 3
 
-# Ocultar el cursor del ratón en modo kiosco (requiere: sudo apt install unclutter)
+# ── 3. Esperar a que XWayland (DISPLAY=:0) esté disponible ───────────────────
+echo "Esperando XWayland en DISPLAY=$DISPLAY ..."
+MAX_WAIT=30
+for i in $(seq 1 $MAX_WAIT); do
+    if xdpyinfo -display "$DISPLAY" > /dev/null 2>&1; then
+        echo "XWayland listo tras ${i}s"
+        break
+    fi
+    if [ $i -eq $MAX_WAIT ]; then
+        # XWayland puede necesitar que un cliente X11 lo despierte — intentar con xset
+        DISPLAY="$DISPLAY" xset q > /dev/null 2>&1 || true
+        sleep 2
+        if ! xdpyinfo -display "$DISPLAY" > /dev/null 2>&1; then
+            echo "ERROR: XWayland no disponible tras ${MAX_WAIT}s"
+            exit 1
+        fi
+    fi
+    sleep 1
+done
+
+# ── 3. Ocultar cursor (mejora la experiencia kiosco táctil) ──────────────────
 if command -v unclutter > /dev/null 2>&1; then
-    unclutter -idle 0.1 -root &
+    unclutter -idle 0.5 -root &
+    echo "unclutter iniciado"
 fi
 
-# Elegir intérprete Python:
-# picamera2 requiere Python del sistema en RPi — intentar primero el del venv
-PYTHON_VENV="$PROJECT_DIR/venv/bin/python3"
-PYTHON_SYS="/usr/bin/python3"
+# ── 4. Elegir Python: priorizar el que tiene picamera2 ───────────────────────
+VENV_PY="$PROJECT_DIR/venv/bin/python3"
+SYS_PY="/usr/bin/python3"
 
-# Verificar si el venv tiene picamera2 o si está en el sistema
-if "$PYTHON_VENV" -c "import picamera2" 2>/dev/null; then
-    PYTHON="$PYTHON_VENV"
-    echo "[kiosk] Usando Python del venv (tiene picamera2)"
-elif "$PYTHON_SYS" -c "import picamera2" 2>/dev/null; then
-    PYTHON="$PYTHON_SYS"
-    echo "[kiosk] Usando Python del sistema (picamera2 en sistema)"
-elif [ -f "$PYTHON_VENV" ]; then
-    PYTHON="$PYTHON_VENV"
-    echo "[kiosk] Usando Python del venv (sin picamera2 — modo simulado)"
+if [ -f "$VENV_PY" ] && "$VENV_PY" -c "import picamera2" 2>/dev/null; then
+    PYTHON="$VENV_PY"
+    echo "Python: venv (con picamera2)"
+elif "$SYS_PY" -c "import picamera2" 2>/dev/null; then
+    PYTHON="$SYS_PY"
+    echo "Python: sistema (con picamera2)"
+elif [ -f "$VENV_PY" ]; then
+    PYTHON="$VENV_PY"
+    echo "Python: venv (sin picamera2 — modo simulado)"
 else
-    PYTHON="$PYTHON_SYS"
-    echo "[kiosk] Usando Python del sistema"
+    PYTHON="$SYS_PY"
+    echo "Python: sistema"
 fi
 
-# Asegurar que el sitio del sistema esté accesible para picamera2
-export PYTHONPATH="/usr/lib/python3/dist-packages:$PYTHONPATH"
+# Asegurar acceso a paquetes del sistema (picamera2 vive en site-packages del sistema)
+export PYTHONPATH="/usr/lib/python3/dist-packages:${PYTHONPATH:-}"
 
-echo "[kiosk] Lanzando Smart Locker con $PYTHON"
-exec "$PYTHON" "$PROJECT_DIR/main.py" --mode locker
+# ── 5. Lanzar el sistema ─────────────────────────────────────────────────────
+echo "Lanzando: $PYTHON $PROJECT_DIR/main.py --mode locker"
+cd "$PROJECT_DIR"
+exec "$PYTHON" main.py --mode locker

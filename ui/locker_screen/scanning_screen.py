@@ -290,27 +290,27 @@ class ScanningScreen(ctk.CTkFrame):
             anchor="center",
         )
 
-        # Estado principal ("DESBLOQUEADO" / "IDENTIDAD VERIFICADA")
+        # Estado (se reconfigura en on_face_match según el caso)
         self.lbl_success_main = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=20, weight="bold"),
+            font=ctk.CTkFont(size=15),      # sin negrita, igual que matrícula
             text_color="#FFFFFF",
             fg_color="transparent",
             anchor="center",
         )
 
-        # Etiqueta "Locker" (solo cuando tiene locker)
+        # Etiqueta "Locker" — grande y en negrita en pantalla verde
         self.lbl_success_locker_label = ctk.CTkLabel(
             self._success_inner,
             text="Locker",
-            font=ctk.CTkFont(size=16),
-            text_color="#D4EDDA",
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#FFFFFF",
             fg_color="transparent",
             anchor="center",
         )
 
-        # Número de locker — grande para que sea visible
+        # Número de locker — muy grande y visible
         self.lbl_success_locker_big = ctk.CTkLabel(
             self._success_inner,
             text="",
@@ -320,12 +320,12 @@ class ScanningScreen(ctk.CTkFrame):
             anchor="center",
         )
 
-        # Sub-mensaje (solo cuando NO tiene locker)
+        # Sub-mensaje sin locker — grande y en negrita para que destaque
         self.lbl_success_sub = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=16),
-            text_color="#D4EDDA",
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#FFFFFF",
             fg_color="transparent",
             wraplength=390,
             justify="center",
@@ -1239,10 +1239,10 @@ class ScanningScreen(ctk.CTkFrame):
     def _pin_digit(self, digit: str) -> None:
         self.lbl_pin_error.configure(text="")
         if self._pin_state == "matricula":
-            if len(self._pin_matricula) < 12:
+            if len(self._pin_matricula) < 8:          # máx 8 dígitos de matrícula
                 self._pin_matricula += digit
         else:
-            if len(self._pin_code) < 8:
+            if len(self._pin_code) < 4:               # máx 4 dígitos de PIN
                 self._pin_code += digit
         self._update_pin_display()
 
@@ -1328,7 +1328,7 @@ class ScanningScreen(ctk.CTkFrame):
             )
             s = "s" if remaining != 1 else ""
             self.lbl_pin_error.configure(
-                text=f"{t('scan.matricula_label')} o PIN incorrecto  ({remaining} intento{s} restante)"
+                text=f"PIN incorrecto  ({remaining} intento{s} restante)"
             )
             self._pin_code = ""
             self._update_pin_display()

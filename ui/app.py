@@ -37,6 +37,9 @@ class LockerApp(ctk.CTk):
     def __init__(self) -> None:
         super().__init__()
 
+        # Ocultar mientras se configura para evitar ventana inicial miniatura.
+        self.withdraw()
+
         self._mode = "light"
         self._admin_frames_built = False
         self._kiosk_mode: bool = UI_CONFIG.get("kiosk_mode", False)
@@ -51,7 +54,6 @@ class LockerApp(ctk.CTk):
             # compositor Wayland → teclado y touch dejan de funcionar al arrancar.
             # attributes("-fullscreen") usa _NET_WM_STATE_FULLSCREEN, que Labwc
             # maneja correctamente y enruta todos los eventos de input.
-            self.attributes("-fullscreen", True)
             # Impedir cierre por el WM
             self.protocol("WM_DELETE_WINDOW", lambda: None)
             # Evitar que Escape salga del fullscreen (algunas compositors lo hacen)
@@ -81,6 +83,9 @@ class LockerApp(ctk.CTk):
         # Alt+F4: siempre interceptado internamente (con kiosco abre confirmación,
         # sin kiosco cierra normalmente a través del diálogo igualmente)
         self.bind_all("<Alt-F4>", self._on_kiosk_exit_key)
+
+        # Mostrar ventana ya configurada (evita el primer flash en miniatura).
+        self.after(0, self._reveal_window)
 
     # ── Navegación ────────────────────────────────────────────────────────────
 
@@ -299,9 +304,40 @@ class LockerApp(ctk.CTk):
         except Exception:
             pass
 
+    def _reveal_window(self) -> None:
+        """Hace visible la ventana ya configurada y fuerza fullscreen si aplica."""
+        try:
+            if self._kiosk_mode:
+                self.attributes("-fullscreen", True)
+        except Exception:
+            pass
+        try:
+            self.deiconify()
+            self.lift()
+            self.focus_force()
+        except Exception:
+            pass
+
     def _on_kiosk_exit_key(self, event=None) -> None:
         """Alt+F4 abre el diálogo de confirmación de salida."""
         self.confirm_kiosk_exit()
+
+    def _exit_kiosk(self) -> None:
+        """Cierra la app limpiamente para evitar ventanas fantasma."""
+        try:
+            from ui.locker_screen.scanning_screen import ScanningScreen
+            frame = self._frames.get(ScanningScreen)
+            if frame and hasattr(frame, "on_hide"):
+                frame.on_hide()
+        except Exception:
+            pass
+
+        try:
+            self.attributes("-fullscreen", False)
+        except Exception:
+            pass
+
+        self.destroy()
 
     def confirm_kiosk_exit(self) -> None:
         """Diálogo modal: confirma antes de salir del modo kiosco."""
@@ -370,5 +406,5 @@ class LockerApp(ctk.CTk):
             hover_color="#8B1A1A",
             text_color="#FFFFFF",
             corner_radius=12,
-            command=self.quit,   # cierra el event loop → vuelve al escritorio RPi
+            command=self._exit_kiosk,   # cierra la app sin dejar ventana residual
         ).pack(side="left")

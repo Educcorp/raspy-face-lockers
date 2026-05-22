@@ -11,6 +11,13 @@
 
 set -e
 
+# Evitar doble arranque si el compositor o autostart lo dispara 2 veces.
+exec 9>/tmp/smart-locker.lock
+if ! flock -n 9; then
+    echo "Otra instancia ya esta en ejecucion. Saliendo."
+    exit 0
+fi
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG="$PROJECT_DIR/logs/kiosk_startup.log"
 mkdir -p "$PROJECT_DIR/logs"
@@ -77,16 +84,16 @@ if command -v unclutter > /dev/null 2>&1; then
     echo "unclutter iniciado"
 fi
 
-# ── 4. Elegir Python: priorizar el que tiene picamera2 ───────────────────────
+# ── 4. Elegir Python: priorizar el del sistema para picamera2 ───────────────
 VENV_PY="$PROJECT_DIR/venv/bin/python3"
 SYS_PY="/usr/bin/python3"
 
-if [ -f "$VENV_PY" ] && "$VENV_PY" -c "import picamera2" 2>/dev/null; then
-    PYTHON="$VENV_PY"
-    echo "Python: venv (con picamera2)"
-elif "$SYS_PY" -c "import picamera2" 2>/dev/null; then
+if "$SYS_PY" -c "import picamera2" 2>/dev/null; then
     PYTHON="$SYS_PY"
     echo "Python: sistema (con picamera2)"
+elif [ -f "$VENV_PY" ] && "$VENV_PY" -c "import picamera2" 2>/dev/null; then
+    PYTHON="$VENV_PY"
+    echo "Python: venv (con picamera2)"
 elif [ -f "$VENV_PY" ]; then
     PYTHON="$VENV_PY"
     echo "Python: venv (sin picamera2 — modo simulado)"
@@ -97,6 +104,19 @@ fi
 
 # Asegurar acceso a paquetes del sistema (picamera2 vive en site-packages del sistema)
 export PYTHONPATH="/usr/lib/python3/dist-packages:${PYTHONPATH:-}"
+
+# Esperar a que el dispositivo de camara aparezca tras el boot
+CAMERA_DEV="/dev/video0"
+if [ ! -e "$CAMERA_DEV" ]; then
+    echo "Esperando dispositivo de camara ($CAMERA_DEV) ..."
+    for i in $(seq 1 12); do
+        if [ -e "$CAMERA_DEV" ]; then
+            echo "Camara disponible tras ${i}s"
+            break
+        fi
+        sleep 1
+    done
+fi
 
 # ── 5. Lanzar el sistema ─────────────────────────────────────────────────────
 echo "Lanzando: $PYTHON $PROJECT_DIR/main.py --mode locker"

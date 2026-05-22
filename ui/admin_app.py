@@ -117,6 +117,176 @@ DARK_PALETTE = {
 PALETTE: dict = dict(LIGHT_PALETTE)
 ctk.set_appearance_mode("light")
 
+# ── Teclado en pantalla ───────────────────────────────────────────────────────
+
+import tkinter as _tk   # noqa: E402
+
+_KB_ROWS = [
+    ("qwertyuiop", "QWERTYUIOP", "1234567890"),
+    ("asdfghjkl",  "ASDFGHJKL",  "-_.@#&!?%+"),
+    ("zxcvbnm",    "ZXCVBNM",    "()/;:',\"~"),
+]
+# variable global: se instancia en AdminApp.__init__
+_keyboard: "ScreenKeyboard | None" = None
+
+
+class ScreenKeyboard(ctk.CTkFrame):
+    """Teclado QWERTY táctil para el panel de admin.
+    Se muestra en la parte inferior de la ventana cuando un CTkEntry recibe foco.
+    Se cierra con ✕ o tocando fuera del área del teclado.
+    """
+
+    H = 220   # altura total del teclado
+
+    def __init__(self, root: ctk.CTk) -> None:
+        super().__init__(root, fg_color=PALETTE["CARD"], corner_radius=0,
+                         height=self.H, border_width=1,
+                         border_color=PALETTE["BORDER"])
+        self._root    = root
+        self._target: "ctk.CTkEntry | None" = None
+        self._caps    = False
+        self._sym     = False
+        self._visible = False
+        self._build()
+
+    # ── layout ───────────────────────────────────────────────────────────────
+
+    def _build(self) -> None:
+        # barra superior
+        bar = ctk.CTkFrame(self, fg_color=PALETTE["BORDER"], height=32, corner_radius=0)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+        ctk.CTkLabel(bar, text="Teclado", font=ctk.CTkFont(size=11),
+                     text_color=PALETTE["MUTED"], fg_color="transparent").pack(side="left", padx=8)
+        ctk.CTkButton(bar, text="✕", width=40, height=26, font=ctk.CTkFont(size=13, weight="bold"),
+                      fg_color=PALETTE["DANGER"], hover_color="#8B1A1A",
+                      text_color="#FFFFFF", corner_radius=6,
+                      command=self.hide).pack(side="right", padx=6, pady=3)
+
+        self._kf = ctk.CTkFrame(self, fg_color="transparent")
+        self._kf.pack(fill="both", expand=True, padx=2, pady=2)
+        self._render()
+
+    def _btn(self, parent, text, cmd, w=42, accent=False):
+        fg = PALETTE["ACCENT"] if accent else PALETTE["BG"]
+        tc = PALETTE["WHITE"] if accent else PALETTE["TEXT"]
+        b = ctk.CTkButton(parent, text=text, width=w, height=38,
+                          font=ctk.CTkFont(size=14, weight="bold" if len(text) == 1 else "normal"),
+                          fg_color=fg, hover_color=PALETTE["BORDER"],
+                          text_color=tc, corner_radius=5,
+                          command=cmd)
+        b.pack(side="left", padx=1)
+        return b
+
+    def _render(self) -> None:
+        for w in self._kf.winfo_children():
+            w.destroy()
+
+        col = 2 if self._sym else (1 if self._caps else 0)
+        rows = [r[col] for r in _KB_ROWS]
+
+        for r_i, chars in enumerate(rows):
+            row = ctk.CTkFrame(self._kf, fg_color="transparent")
+            row.pack(fill="x", pady=1)
+
+            if r_i == 2 and not self._sym:
+                self._btn(row, "⇧", self._toggle_caps, w=46, accent=self._caps)
+
+            for ch in chars:
+                self._btn(row, ch, lambda c=ch: self._type(c))
+
+            if r_i == 1:
+                self._btn(row, "⌫", self._backspace, w=48)
+
+        # fila inferior
+        bot = ctk.CTkFrame(self._kf, fg_color="transparent")
+        bot.pack(fill="x", pady=1)
+        self._btn(bot, "?123" if not self._sym else "ABC", self._toggle_sym,
+                  w=54, accent=self._sym)
+        ctk.CTkButton(bot, text="espacio", height=38, font=ctk.CTkFont(size=12),
+                      fg_color=PALETTE["BG"], hover_color=PALETTE["BORDER"],
+                      text_color=PALETTE["MUTED"], corner_radius=5,
+                      command=lambda: self._type(" ")
+                      ).pack(side="left", padx=1, fill="x", expand=True)
+        self._btn(bot, "@",  lambda: self._type("@"), w=38)
+        self._btn(bot, ".",  lambda: self._type("."), w=38)
+        self._btn(bot, "⌫", self._backspace,          w=44)
+
+    # ── acciones ─────────────────────────────────────────────────────────────
+
+    def _type(self, ch: str) -> None:
+        if self._target is None:
+            return
+        try:
+            e = self._target._entry
+            e.insert(_tk.INSERT, ch)
+            e.event_generate("<<Modified>>")
+        except Exception:
+            pass
+        if self._caps and not self._sym:
+            self._caps = False
+            self._render()
+
+    def _backspace(self) -> None:
+        if self._target is None:
+            return
+        try:
+            e = self._target._entry
+            i = e.index(_tk.INSERT)
+            if i > 0:
+                e.delete(i - 1, i)
+            e.event_generate("<<Modified>>")
+        except Exception:
+            pass
+
+    def _toggle_caps(self) -> None:
+        self._caps = not self._caps
+        self._render()
+
+    def _toggle_sym(self) -> None:
+        self._sym = not self._sym
+        self._render()
+
+    # ── visibilidad ───────────────────────────────────────────────────────────
+
+    def show(self, entry: ctk.CTkEntry) -> None:
+        self._target = entry
+        if not self._visible:
+            self.place(x=0, y=800 - self.H, relwidth=1)
+            self.lift()
+            self._visible = True
+
+    def hide(self) -> None:
+        self._target = None
+        if self._visible:
+            self.place_forget()
+            self._visible = False
+
+    def is_inside(self, rx: int, ry: int) -> bool:
+        try:
+            return (self.winfo_rootx() <= rx <= self.winfo_rootx() + self.winfo_width() and
+                    self.winfo_rooty() <= ry <= self.winfo_rooty() + self.winfo_height())
+        except Exception:
+            return False
+
+
+# Patch de CTkEntry: muestra el teclado al ganar el foco
+_orig_entry_init = ctk.CTkEntry.__init__
+
+def _entry_patched_init(self, *args, **kwargs):
+    _orig_entry_init(self, *args, **kwargs)
+    try:
+        self._entry.bind(
+            "<FocusIn>",
+            lambda e, en=self: _keyboard and _keyboard.show(en),
+            add="+",
+        )
+    except Exception:
+        pass
+
+ctk.CTkEntry.__init__ = _entry_patched_init
+
+
 _ICON_CACHE: dict[tuple[str, int, str], ctk.CTkImage] = {}
 _FA_FONT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts", "fa-solid-900.ttf"
@@ -295,8 +465,29 @@ class AdminApp(ctk.CTk):
         self._frames: dict[type, ctk.CTkFrame] = {}
         self._build_frames()
 
+        # Crear el teclado en pantalla y registrarlo globalmente
+        global _keyboard
+        _keyboard = ScreenKeyboard(self)
+
+        # Cerrar teclado al tocar fuera de él
+        self.bind_all("<ButtonPress-1>", self._close_keyboard_if_outside, add="+")
+
         from ui.admin.login_screen import LoginScreen
         self.show_frame(LoginScreen)
+
+    def _close_keyboard_if_outside(self, event) -> None:
+        if _keyboard is None or not _keyboard._visible:
+            return
+        # Si el click fue dentro del teclado, ignorar
+        if _keyboard.is_inside(event.x_root, event.y_root):
+            return
+        # Si el click fue en un CTkEntry, el FocusIn lo mostrará de nuevo
+        w = event.widget
+        while w is not None:
+            if isinstance(w, ctk.CTkEntry):
+                return
+            w = getattr(w, "master", None)
+        _keyboard.hide()
 
     # ── Construcción / reconstrucción de pantallas ────────────────────────────
 

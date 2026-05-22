@@ -354,46 +354,26 @@ class ScanningScreen(ctk.CTkFrame):
             width=self.WIN_W,
             height=self.WIN_H,
         )
-        denied_inner = ctk.CTkFrame(self.denied_overlay, fg_color="transparent")
-        denied_inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
+        _di = ctk.CTkFrame(self.denied_overlay, fg_color="transparent")
+        _di.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
 
         ctk.CTkLabel(
-            denied_inner,
+            _di,
             text="✗",
-            font=ctk.CTkFont(size=80, weight="bold"),
+            font=ctk.CTkFont(size=90, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
-        ).pack(pady=(0, 8))
+        ).pack(pady=(0, 16))
 
         ctk.CTkLabel(
-            denied_inner,
+            _di,
             text=t("scan.denied_title"),
-            font=ctk.CTkFont(size=34, weight="bold"),
+            font=ctk.CTkFont(size=36, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
-            wraplength=380,
+            wraplength=390,
             justify="center",
         ).pack()
-
-        ctk.CTkLabel(
-            denied_inner,
-            text=t("scan.denied_subtitle"),
-            font=ctk.CTkFont(size=20),
-            text_color="#FFCCCC",
-            fg_color="transparent",
-            wraplength=380,
-            justify="center",
-        ).pack(pady=(12, 0))
-
-        ctk.CTkLabel(
-            denied_inner,
-            text=t("scan.denied_use_pin"),
-            font=ctk.CTkFont(size=15),
-            text_color="#FFCCCC",
-            fg_color="transparent",
-            wraplength=360,
-            justify="center",
-        ).pack(pady=(16, 0))
 
     # ── Captura de video en background ────────────────────────────────────────
 
@@ -821,6 +801,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_matricula.pack(pady=(0, 16))
 
         if locker_num:
+            self.overlay_bg.configure(fg_color="#5B8C5A")          # verde: locker desbloqueado
             self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
             self.lbl_success_main.configure(text=t("scan.unlocked"))
             self.lbl_success_main.pack(pady=(0, 4))
@@ -829,7 +810,8 @@ class ScanningScreen(ctk.CTkFrame):
             self.lbl_success_locker_big.configure(text=str(locker_num))
             self.lbl_success_locker_big.pack(pady=(0, 6))
         else:
-            self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFD54F")
+            self.overlay_bg.configure(fg_color="#B8860B")          # amarillo: sin locker
+            self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFF8E1")
             self.lbl_success_main.configure(text=t("scan.success_identity"))
             self.lbl_success_main.pack(pady=(0, 8))
             self.lbl_success_sub.configure(text=t("scan.success_no_locker"))
@@ -879,6 +861,18 @@ class ScanningScreen(ctk.CTkFrame):
         self.denied_overlay.place_forget()
         if not self._success_shown:
             self._show_pin_overlay()
+
+    def _show_denied_to_standby(self) -> None:
+        """Muestra overlay de acceso denegado 3 segundos y regresa al inicio."""
+        self.btn_admin.place_forget()
+        self.denied_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.denied_overlay.lift()
+        self.after(3000, self._dismiss_denied_to_standby)
+
+    def _dismiss_denied_to_standby(self) -> None:
+        self.denied_overlay.place_forget()
+        if not self._success_shown:
+            self._go_standby()
 
     # ── Countdown ─────────────────────────────────────────────────────────────
 
@@ -1282,9 +1276,8 @@ class ScanningScreen(ctk.CTkFrame):
                 None, permitted=False, motivo="matricula_incorrecta"
             )
             if self._pin_matricula_fail_count >= 3:
-                # 3 matrículas incorrectas → volver al inicio
                 self._hide_pin_overlay()
-                self._go_standby()
+                self._show_denied_to_standby()
                 return
             remaining = 3 - self._pin_matricula_fail_count
             self.lbl_pin_error.configure(
@@ -1328,7 +1321,7 @@ class ScanningScreen(ctk.CTkFrame):
                     None, permitted=False, motivo="limite_intentos_pin"
                 )
                 self._hide_pin_overlay()
-                self.after(200, self._show_lock_screen)
+                self._show_denied_to_standby()
                 return
             access_log_service.register_access(
                 None, permitted=False, motivo="pin_incorrecto"

@@ -1,11 +1,17 @@
 """
-LockerApp – ventana raíz CustomTkinter para la pantalla física (800×480 px).
+LockerApp – ventana raíz CustomTkinter para la pantalla física (480×800 px).
 
 Gestiona la navegación entre pantallas sin abrir ventanas nuevas:
 simplemente hace tkraise() sobre el CTkFrame activo.
 
     standby_screen  →  scanning_screen  →  user_display
          ↑_________________________↑_______________|
+
+Modo kiosco:
+    Activado con UI_CONFIG["kiosk_mode"] = True en config.py.
+    - Sin barra de título (overrideredirect).
+    - La ventana cubre toda la pantalla (posición 0,0).
+    - Alt+F4 y el botón ✕ del admin abren un diálogo de confirmación.
 
 Uso desde main.py (--mode locker):
     from ui.app import LockerApp
@@ -14,6 +20,7 @@ Uso desde main.py (--mode locker):
 
 import os
 import customtkinter as ctk
+from config import UI_CONFIG
 
 _THEME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "School.json")
 
@@ -22,33 +29,38 @@ ctk.set_default_color_theme(_THEME)
 
 
 class LockerApp(ctk.CTk):
-    """
-    Ventana raíz del locker físico. Resolución fija 800×480 px.
+    """Ventana raíz del locker físico — soporta modo kiosco."""
 
-    Kiosk mode (sin barra de título) se activa descomentando
-    overrideredirect(True) — solo en la Raspberry Pi física.
-    """
-
-    WIDTH  = 480
-    HEIGHT = 800
+    WIDTH  = UI_CONFIG.get("width",  480)
+    HEIGHT = UI_CONFIG.get("height", 800)
 
     def __init__(self) -> None:
         super().__init__()
 
-        self._mode = "light"           # requerido por LoginScreen para el toggle de tema
+        self._mode = "light"
         self._admin_frames_built = False
+        self._kiosk_mode: bool = UI_CONFIG.get("kiosk_mode", False)
 
-        # ── Ventana ───────────────────────────────────────────────────────────
+        # ── Configuración de ventana ──────────────────────────────────────────
         self.title("Smart Locker")
-        self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
         self.resizable(False, False)
-        # self.overrideredirect(True)   # ← activar en RPi (kiosk sin decoración)
+
+        if self._kiosk_mode:
+            # Sin decoraciones del WM (sin barra de título, sin bordes)
+            self.overrideredirect(True)
+            # Ocupar pantalla completa desde la esquina (0,0)
+            self.geometry(f"{self.WIDTH}x{self.HEIGHT}+0+0")
+            # Impedir el cierre accidental por eventos del WM
+            self.protocol("WM_DELETE_WINDOW", lambda: None)
+            # Forzar foco al arrancar (necesario en RPi con X11)
+            self.after(100, self.focus_force)
+        else:
+            self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # ── Registrar todas las pantallas ────────────────────────────────────
-        # Importaciones diferidas para evitar ciclos de importación
+        # ── Registrar pantallas del locker ────────────────────────────────────
         from ui.locker_screen.standby_screen  import StandbyScreen
         from ui.locker_screen.scanning_screen import ScanningScreen
         from ui.locker_screen.user_display    import UserDisplayScreen
@@ -59,27 +71,28 @@ class LockerApp(ctk.CTk):
             self._frames[FrameClass] = frame
             frame.grid(row=0, column=0, sticky="nsew")
 
-        # Pantalla inicial
         self.show_frame(StandbyScreen)
 
-    # ── API de navegación ─────────────────────────────────────────────────────
+        # Alt+F4: siempre interceptado internamente (con kiosco abre confirmación,
+        # sin kiosco cierra normalmente a través del diálogo igualmente)
+        self.bind_all("<Alt-F4>", self._on_kiosk_exit_key)
+
+    # ── Navegación ────────────────────────────────────────────────────────────
 
     def show_frame(self, frame_class: type) -> None:
         """Trae al frente la pantalla indicada y llama on_show() si existe."""
-        # Llamar on_hide() a la pantalla que se oculta
-        for registered_class, frame in self._frames.items():
+        for frame in self._frames.values():
             if frame.winfo_ismapped():
                 if hasattr(frame, "on_hide"):
                     frame.on_hide()
                 break
-        
-        # Mostrar nueva pantalla y llamar on_show()
+
         frame = self._frames[frame_class]
         frame.tkraise()
         if hasattr(frame, "on_show"):
             frame.on_show()
 
-    # ── Admin bridge ─────────────────────────────────────────────────────────
+    # ── Admin bridge ──────────────────────────────────────────────────────────
 
     def ensure_admin_frames(self) -> None:
         """Registra las pantallas del panel admin la primera vez que se necesitan."""
@@ -103,30 +116,76 @@ class LockerApp(ctk.CTk):
             frame.grid(row=0, column=0, sticky="nsew")
         self._admin_frames_built = True
 
+    def on_login_success(self) -> None:
+        from ui.admin.dashboard import DashboardScreen
+        self.show_frame(DashboardScreen)
+
+    def logout(self) -> None:
+        from auth.session import clear_session
+        from ui.locker_screen.standby_screen import StandbyScreen
+        clear_session()
+        self.show_frame(StandbyScreen)
+
+    def show_user(self, user_data: dict) -> None:
+        from ui.locker_screen.scanning_screen import ScanningScreen
+        self._frames[ScanningScreen].on_face_match(user_data)
+
+    # ── Tema / Idioma ─────────────────────────────────────────────────────────
+
     def toggle_theme(self) -> None:
-        """Alterna tema claro/oscuro en el panel admin (las pantallas del locker no cambian)."""
         from ui.admin_app import PALETTE, LIGHT_PALETTE, DARK_PALETTE, _ICON_CACHE
-        import customtkinter as ctk_mod
         if self._mode == "light":
             self._mode = "dark"
-            ctk_mod.set_appearance_mode("dark")
             PALETTE.update(DARK_PALETTE)
         else:
             self._mode = "light"
-            ctk_mod.set_appearance_mode("light")
             PALETTE.update(LIGHT_PALETTE)
         _ICON_CACHE.clear()
         if self._admin_frames_built:
             self._rebuild_admin_frames()
 
     def toggle_lang(self) -> None:
-        """Alterna idioma ES/EN y reconstruye todas las pantallas."""
         from ui.i18n import toggle as i18n_toggle
         i18n_toggle()
         self._rebuild_all()
 
+    # ── Veil (cortina de transición para evitar flicker) ─────────────────────
+
+    def _create_veil(self, text: str = "", icon: str = "") -> ctk.CTkFrame:
+        """Frame opaco que cubre la ventana mientras se reconstruyen las pantallas."""
+        from ui.admin_app import PALETTE
+        bg  = PALETTE["BG"]
+        txt = PALETTE["TEXT"]
+        mut = PALETTE["MUTED"]
+
+        veil = ctk.CTkFrame(self, fg_color=bg, corner_radius=0)
+        veil.place(x=0, y=0, relwidth=1, relheight=1)
+        veil.lift()
+
+        if icon or text:
+            inner = ctk.CTkFrame(veil, fg_color="transparent")
+            inner.place(relx=0.5, rely=0.5, anchor="center")
+            if icon:
+                ctk.CTkLabel(inner, text=icon, font=ctk.CTkFont(size=52),
+                             fg_color="transparent", text_color=txt).pack(pady=(0, 12))
+            if text:
+                ctk.CTkLabel(inner, text=text, font=ctk.CTkFont(size=18, weight="bold"),
+                             fg_color="transparent", text_color=txt).pack()
+            ctk.CTkLabel(inner, text="Por favor espera…", font=ctk.CTkFont(size=13),
+                         fg_color="transparent", text_color=mut).pack(pady=(6, 0))
+        return veil
+
+    # ── Rebuild admin ─────────────────────────────────────────────────────────
+
     def _rebuild_admin_frames(self) -> None:
-        """Destruye y recrea solo los frames del panel admin."""
+        going_dark = self._mode == "dark"
+        veil = self._create_veil(
+            text="Cambiando a modo oscuro…" if going_dark else "Cambiando a modo claro…",
+            icon="🌙" if going_dark else "☀️",
+        )
+        self.after(30, lambda: self._do_rebuild_admin(veil))
+
+    def _do_rebuild_admin(self, veil: ctk.CTkFrame) -> None:
         from ui.admin.login_screen      import LoginScreen
         from ui.admin.dashboard         import DashboardScreen
         from ui.admin.users_catalog     import UsersCatalogScreen
@@ -142,61 +201,146 @@ class LockerApp(ctk.CTk):
             LockersCatalogScreen, AreasCatalogScreen,
             AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
         )
-        for cls in admin_classes:
-            if cls in self._frames:
-                self._frames[cls].destroy()
-                del self._frames[cls]
+        try:
+            ctk.set_appearance_mode("dark" if self._mode == "dark" else "light")
+            for cls in admin_classes:
+                if cls in self._frames:
+                    self._frames[cls].destroy()
+                    del self._frames[cls]
+            self._admin_frames_built = False
+            self.ensure_admin_frames()
+            if is_authenticated():
+                self.show_frame(DashboardScreen)
+            else:
+                self.show_frame(LoginScreen)
+        finally:
+            if veil.winfo_exists():
+                veil.lift()
+                veil.destroy()
 
-        self._admin_frames_built = False
-        self.ensure_admin_frames()
-
-        if is_authenticated():
-            self.show_frame(DashboardScreen)
-        else:
-            self.show_frame(LoginScreen)
+    # ── Rebuild all (cambio de idioma) ────────────────────────────────────────
 
     def _rebuild_all(self) -> None:
-        """Destruye y recrea todas las pantallas (locker + admin si están construidas)."""
+        veil = self._create_veil()
+        self.after(30, lambda: self._do_rebuild_all(veil))
+
+    def _do_rebuild_all(self, veil: ctk.CTkFrame) -> None:
         from ui.locker_screen.standby_screen  import StandbyScreen
         from ui.locker_screen.scanning_screen import ScanningScreen
         from ui.locker_screen.user_display    import UserDisplayScreen
         from auth.session import is_authenticated
+        try:
+            for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+                if cls in self._frames:
+                    self._frames[cls].destroy()
+                    del self._frames[cls]
+            for FrameClass in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+                frame = FrameClass(parent=self, controller=self)
+                self._frames[FrameClass] = frame
+                frame.grid(row=0, column=0, sticky="nsew")
+            if self._admin_frames_built:
+                from ui.admin.login_screen      import LoginScreen
+                from ui.admin.dashboard         import DashboardScreen
+                from ui.admin.users_catalog     import UsersCatalogScreen
+                from ui.admin.lockers_catalog   import LockersCatalogScreen
+                from ui.admin.areas_catalog     import AreasCatalogScreen
+                from ui.admin.access_history    import AccessHistoryScreen
+                from ui.admin.locker_assignment import LockerAssignmentScreen
+                from ui.admin.register_user     import RegisterUserScreen
+                admin_cls = (
+                    LoginScreen, DashboardScreen, UsersCatalogScreen,
+                    LockersCatalogScreen, AreasCatalogScreen,
+                    AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
+                )
+                for cls in admin_cls:
+                    if cls in self._frames:
+                        self._frames[cls].destroy()
+                        del self._frames[cls]
+                self._admin_frames_built = False
+                self.ensure_admin_frames()
+                if is_authenticated():
+                    self.show_frame(DashboardScreen)
+                else:
+                    self.show_frame(LoginScreen)
+            else:
+                self.show_frame(StandbyScreen)
+        finally:
+            if veil.winfo_exists():
+                veil.lift()
+                veil.destroy()
 
-        for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen):
-            if cls in self._frames:
-                self._frames[cls].destroy()
-                del self._frames[cls]
+    # ── Salida del modo kiosco ────────────────────────────────────────────────
 
-        for FrameClass in (StandbyScreen, ScanningScreen, UserDisplayScreen):
-            frame = FrameClass(parent=self, controller=self)
-            self._frames[FrameClass] = frame
-            frame.grid(row=0, column=0, sticky="nsew")
+    def _on_kiosk_exit_key(self, event=None) -> None:
+        """Alt+F4 abre el diálogo de confirmación de salida."""
+        self.confirm_kiosk_exit()
 
-        if self._admin_frames_built:
-            self._rebuild_admin_frames()
-        else:
-            self.show_frame(StandbyScreen)
+    def confirm_kiosk_exit(self) -> None:
+        """Diálogo modal: confirma antes de salir del modo kiosco."""
+        from ui.admin_app import PALETTE
 
-    def on_login_success(self) -> None:
-        from ui.admin.dashboard import DashboardScreen
-        self.show_frame(DashboardScreen)
+        # Fondo semitransparente oscuro
+        overlay = ctk.CTkFrame(self, fg_color="#000000", corner_radius=0)
+        overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        overlay.lift()
 
-    def logout(self) -> None:
-        from auth.session import clear_session
-        from ui.locker_screen.standby_screen import StandbyScreen
-        clear_session()
-        self.show_frame(StandbyScreen)
+        card = ctk.CTkFrame(
+            overlay,
+            fg_color=PALETTE["CARD"],
+            corner_radius=20,
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            width=360,
+            height=230,
+        )
+        card.place(relx=0.5, rely=0.5, anchor="center")
+        card.pack_propagate(False)
 
-    def show_user(self, user_data: dict) -> None:
-        """
-        Muestra overlay de éxito en ScanningScreen con los datos del usuario.
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.86)
 
-        user_data = {
-            "nombre":        str,
-            "locker_numero": int,
-            "fecha":         str,   # formato legible, ej. "07/03/2026 14:32"
-        }
-        """
-        from ui.locker_screen.scanning_screen import ScanningScreen
-        screen: ScanningScreen = self._frames[ScanningScreen]
-        screen.on_face_match(user_data)
+        ctk.CTkLabel(
+            inner,
+            text="⚠️  Salir del modo kiosco",
+            font=ctk.CTkFont(size=17, weight="bold"),
+            text_color=PALETTE["TEXT"],
+            fg_color="transparent",
+        ).pack(pady=(0, 10))
+
+        ctk.CTkLabel(
+            inner,
+            text="Regresarás al escritorio\nde la Raspberry Pi.",
+            font=ctk.CTkFont(size=13),
+            text_color=PALETTE["MUTED"],
+            fg_color="transparent",
+            justify="center",
+        ).pack(pady=(0, 20))
+
+        btn_row = ctk.CTkFrame(inner, fg_color="transparent")
+        btn_row.pack(fill="x")
+
+        ctk.CTkButton(
+            btn_row,
+            text="Cancelar",
+            width=140, height=46,
+            font=ctk.CTkFont(size=14),
+            fg_color=PALETTE["BG"],
+            hover_color=PALETTE["BORDER"],
+            text_color=PALETTE["TEXT"],
+            border_width=1,
+            border_color=PALETTE["BORDER"],
+            corner_radius=12,
+            command=overlay.destroy,
+        ).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            btn_row,
+            text="Salir",
+            width=140, height=46,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=PALETTE["DANGER"],
+            hover_color="#8B1A1A",
+            text_color="#FFFFFF",
+            corner_radius=12,
+            command=self.quit,   # cierra el event loop → vuelve al escritorio RPi
+        ).pack(side="left")

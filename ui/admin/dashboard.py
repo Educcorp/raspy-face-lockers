@@ -242,7 +242,11 @@ class DashboardScreen(ctk.CTkFrame):
             width=56,
         ).pack(anchor="w", pady=(6, 0))
 
-        # ── Botón cambio de idioma ────────────────────────────────────────────
+        # ── Botones del header (packed side=right → orden visual de izq a der:
+        #    [kiosk-exit]  [logout]  [theme]  [lang]
+        #    Se empaquetan en orden INVERSO porque side="right" llena de derecha a izq) ──
+
+        # 1. Idioma — más a la derecha (se empaqueta primero)
         ctk.CTkButton(
             header,
             text=lang_btn_text(),
@@ -257,7 +261,7 @@ class DashboardScreen(ctk.CTkFrame):
             command=self.controller.toggle_lang,
         ).pack(side="right", padx=(6, 4), pady=10)
 
-        # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
+        # 2. Tema (modo oscuro / claro)
         _mode = getattr(self.controller, "_mode", "light")
         icon_name = "moon" if _mode == "light" else "sun"
         self._theme_icon = get_icon(icon_name, size=22, color=PALETTE["TEXT"])
@@ -274,20 +278,36 @@ class DashboardScreen(ctk.CTkFrame):
             command=self.controller.toggle_theme,
         ).pack(side="right", padx=(6, 2), pady=10)
 
+        # 3. Cerrar sesión de admin
         self._logout_icon = get_icon("logout", size=20, color=PALETTE["TEXT"])
         ctk.CTkButton(
             header,
             text="",
             image=self._logout_icon,
-            width=46,
-            height=46,
+            width=46, height=46,
             fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,
             border_color=PALETTE["BORDER"],
             corner_radius=12,
             command=self._confirm_logout,
-        ).pack(side="right", padx=(0, 6), pady=10)
+        ).pack(side="right", padx=(0, 2), pady=10)
+
+        # 4. Salir del modo kiosco (✕) — solo si el controller lo soporta
+        if hasattr(self.controller, "confirm_kiosk_exit"):
+            self._kiosk_exit_icon = get_icon("times", size=18, color=PALETTE["TEXT"])
+            ctk.CTkButton(
+                header,
+                text="",
+                image=self._kiosk_exit_icon,
+                width=46, height=46,
+                fg_color=PALETTE["BG"],
+                hover_color=PALETTE["BORDER"],
+                border_width=1,
+                border_color=PALETTE["BORDER"],
+                corner_radius=12,
+                command=self.controller.confirm_kiosk_exit,
+            ).pack(side="right", padx=(20, 0), pady=10)
 
         # ── Resumen operativo ───────────────────────────────────────────────
         summary = ctk.CTkFrame(

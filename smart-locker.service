@@ -1,0 +1,20 @@
+[Unit]
+Description=Smart Locker – Sistema de lockers con reconocimiento facial
+After=graphical-session.target network.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+User=raspi
+Group=raspi
+WorkingDirectory=/home/raspi/Documents/GitHub/raspy-face-lockers
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/raspi/.Xauthority
+Environment=PYTHONPATH=/usr/lib/python3/dist-packages
+ExecStartPre=/bin/sleep 3
+ExecStart=/home/raspi/Documents/GitHub/raspy-face-lockers/kiosk_autostart.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

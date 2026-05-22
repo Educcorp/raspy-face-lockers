@@ -300,6 +300,7 @@ _FA_GLYPHS = {
     "eye": "\uf06e",
     "eye-off": "\uf070",
     "search": "\uf002",   # lupa / magnifying glass
+    "times":  "\uf00d",   # \u2715  salir / kiosk exit
 }
 _FA_ICON_SCALE = {
     "sun": 0.90,
@@ -310,6 +311,7 @@ _FA_ICON_SCALE = {
     "eye": 0.84,
     "eye-off": 0.84,
     "search": 0.86,
+    "times":  0.80,
 }
 _FA_ICON_Y_OFFSET = {
     "user": 1,
@@ -413,6 +415,17 @@ def _draw_lock(size: int, color: str) -> Image.Image:
     return img
 
 
+def _draw_times(size: int, color: str) -> Image.Image:
+    """Fallback: dibuja una X (cerrar/salir)."""
+    img  = _icon_canvas(size)
+    draw = ImageDraw.Draw(img)
+    lw   = max(2, int(size * 0.13))
+    m    = int(size * 0.22)
+    draw.line([(m, m), (size - m, size - m)], fill=color, width=lw)
+    draw.line([(size - m, m), (m, size - m)], fill=color, width=lw)
+    return img
+
+
 def _draw_search(size: int, color: str) -> Image.Image:
     """Fallback: dibuja una lupa (círculo + mango)."""
     img  = _icon_canvas(size)
@@ -446,6 +459,7 @@ def get_icon(name: str, size: int = 20, color: str | None = None) -> ctk.CTkImag
             "user":   _draw_user,
             "lock":   _draw_lock,
             "search": _draw_search,
+            "times":  _draw_times,
         }
         builder = builders.get(name, _draw_sun)
         img = builder(size, icon_color)
@@ -541,15 +555,17 @@ class AdminApp(ctk.CTk):
     def toggle_theme(self) -> None:
         """Alterna entre modo claro (locker-style) y modo oscuro."""
         if self._mode == "light":
+            going_dark = True
             self._mode = "dark"
-            ctk.set_appearance_mode("dark")
             PALETTE.update(DARK_PALETTE)
         else:
+            going_dark = False
             self._mode = "light"
-            ctk.set_appearance_mode("light")
             PALETTE.update(LIGHT_PALETTE)
         _ICON_CACHE.clear()
-        self._rebuild_frames()
+        label = "Cambiando a modo oscuro…" if going_dark else "Cambiando a modo claro…"
+        icon  = "🌙" if going_dark else "☀️"
+        self._rebuild_frames(transition_text=label, transition_icon=icon)
 
     def toggle_lang(self) -> None:
         """Alterna entre español e inglés y reconstruye las pantallas."""
@@ -557,16 +573,91 @@ class AdminApp(ctk.CTk):
         i18n_toggle()
         self._rebuild_frames()
 
-    def _rebuild_frames(self) -> None:
-        """Destruye todos los frames y los recrea con la paleta actualizada."""
-        for frame in list(self._frames.values()):
-            frame.destroy()
-        self._frames.clear()
-        self.configure(fg_color=PALETTE["BG"])
-        self.title(self._window_title())
-        self._build_frames()
-        from ui.admin.dashboard import DashboardScreen
-        self.show_frame(DashboardScreen)
+    def _rebuild_frames(
+        self,
+        transition_text: str = "",
+        transition_icon: str = "",
+    ) -> None:
+        """Reconstruye todos los frames mostrando una pantalla de transición.
+
+        1. Se muestra una pantalla opaca encima de todo el contenido actual
+           (con mensaje opcional) y se dibuja síncronamente.
+        2. La reconstrucción ocurre detrás sin llamar a update() — ningún
+           frame intermedio se pinta en pantalla.
+        3. Al destruir la pantalla de transición, el event loop dibuja
+           directamente el estado final ya listo.
+        """
+        bg  = PALETTE["BG"]
+        txt = PALETTE["TEXT"]
+        mut = PALETTE["MUTED"]
+
+        # ── Pantalla de transición ────────────────────────────────────────────
+        veil = ctk.CTkFrame(self, fg_color=bg, corner_radius=0)
+        veil.place(x=0, y=0, relwidth=1, relheight=1)
+        veil.lift()
+
+        if transition_icon or transition_text:
+            inner = ctk.CTkFrame(veil, fg_color="transparent")
+            inner.place(relx=0.5, rely=0.5, anchor="center")
+
+            if transition_icon:
+                ctk.CTkLabel(
+                    inner,
+                    text=transition_icon,
+                    font=ctk.CTkFont(size=52),
+                    fg_color="transparent",
+                    text_color=txt,
+                ).pack(pady=(0, 12))
+
+            if transition_text:
+                ctk.CTkLabel(
+                    inner,
+                    text=transition_text,
+                    font=ctk.CTkFont(size=18, weight="bold"),
+                    fg_color="transparent",
+                    text_color=txt,
+                ).pack()
+
+            ctk.CTkLabel(
+                inner,
+                text="Por favor espera…",
+                font=ctk.CTkFont(size=13),
+                fg_color="transparent",
+                text_color=mut,
+            ).pack(pady=(6, 0))
+
+        # ── Diferir el rebuild al siguiente tick del event loop ──────────────────
+        # update_idletasks() no garantiza flush físico al display en X11/RPi.
+        # Los frames nuevos nacen con z-order mayor al veil (creados después).
+        # Con after(30) el event loop dibuja el veil en pantalla primero;
+        # el rebuild ocurre en _do_rebuild() con el veil ya físicamente visible.
+        self.after(30, lambda: self._do_rebuild(veil))
+
+    def _do_rebuild(self, veil: "ctk.CTkFrame") -> None:
+        """Rebuilds all frames. Runs after the transition screen is already visible."""
+        try:
+            if _keyboard:
+                _keyboard.hide()
+
+            ctk.set_appearance_mode("dark" if self._mode == "dark" else "light")
+
+            for frame in list(self._frames.values()):
+                frame.destroy()
+            self._frames.clear()
+
+            self.configure(fg_color=PALETTE["BG"])
+            self.title(self._window_title())
+            self._build_frames()
+
+            from ui.admin.dashboard import DashboardScreen
+            self.show_frame(DashboardScreen)
+
+        finally:
+            # Re-levantar el veil: los frames nuevos nacen con z-order mayor.
+            # lift() lo pone encima de todos antes de destruirlo.
+            if veil.winfo_exists():
+                veil.lift()
+                veil.destroy()
 
     def on_login_success(self) -> None:
         """Se invoca cuando LoginScreen autentica al usuario en BD."""

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Smart Locker
+Comment=Sistema de lockers con reconocimiento facial — modo kiosco
+Exec=/home/raspi/Documents/GitHub/raspy-face-lockers/kiosk_autostart.sh
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
+Hidden=false
+NoDisplay=false

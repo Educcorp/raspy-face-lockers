@@ -63,8 +63,8 @@ UI_CONFIG = {
     "width": 480,
     "height": 800,
     "theme": "Greengage",
-    "fullscreen": False,  # True en Raspberry Pi física
-    "kiosk_mode": False,  # True en RPi (sin barra de título)
+    "fullscreen": True,   # Pantalla completa en RPi
+    "kiosk_mode": True,   # Sin barra de título (modo kiosco)
 }
 
 # ── Timeouts ───────────────────────────────────────────────────────────────

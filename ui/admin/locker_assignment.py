@@ -442,10 +442,11 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			"SELECT idLocker FROM asignacion_locker WHERE idUsuario=? AND estado='activo'",
 			(user_id,),
 		)
-		if existing_for_user and existing_for_user.get("idLocker") == locker_id:
+		if existing_for_user:
+			# El usuario ya tiene cualquier locker activo — no se permite reasignar
 			self.lbl_feedback.configure(
-				text=t("assignment.err_already"),
-				text_color=PALETTE["WARN"],
+				text=t("assignment.err_user_has_locker"),
+				text_color=PALETTE["DANGER"],
 			)
 			return
 
@@ -556,13 +557,18 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 					)
 				def _task(l=l, b=b):
 					ok = locker_service.open_locker(l, seconds=3.0)
-					msg = t("assignment.opened_ok", n=l) if ok else t("assignment.open_failed", n=l)
-					color = PALETTE.get("SUCCESS", "#27ae60") if ok else PALETTE["DANGER"]
-					def _done(m=msg, c=color, b=b):
+					err_msg = t("assignment.open_failed", n=l)
+					def _done(b=b, ok=ok, err=err_msg):
 						if b.winfo_exists():
 							b.configure(state="normal", fg_color=PALETTE["ACCENT"])
 						if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
-							self.lbl_manual_feedback.configure(text=m, text_color=c)
+							if ok:
+								# Solo limpiar — no mostrar "Locker abierto" (sin sensores)
+								self.lbl_manual_feedback.configure(text="")
+							else:
+								self.lbl_manual_feedback.configure(
+									text=err, text_color=PALETTE["DANGER"]
+								)
 					if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
 						self.lbl_manual_feedback.after(0, _done)
 				threading.Thread(target=_task, daemon=True).start()

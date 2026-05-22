@@ -1328,7 +1328,7 @@ class ScanningScreen(ctk.CTkFrame):
             )
             s = "s" if remaining != 1 else ""
             self.lbl_pin_error.configure(
-                text=f"PIN incorrecto  ({remaining} intento{s} restante)"
+                text=f"{t('pin.err_pin_wrong')}  {t('pin.attempts_remaining', n=remaining, s=s)}"
             )
             self._pin_code = ""
             self._update_pin_display()

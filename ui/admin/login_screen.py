@@ -19,6 +19,16 @@ class LoginScreen(ctk.CTkFrame):
         self._pin_var = tk.StringVar()
         self._show_pin_var = tk.BooleanVar(value=False)
 
+        # Limitar longitud máxima directamente en las variables
+        self._matricula_var.trace_add(
+            "write", lambda *_: self._matricula_var.set(self._matricula_var.get()[:8])
+            if len(self._matricula_var.get()) > 8 else None
+        )
+        self._pin_var.trace_add(
+            "write", lambda *_: self._pin_var.set(self._pin_var.get()[:4])
+            if len(self._pin_var.get()) > 4 else None
+        )
+
         self._build_ui()
 
     def _build_ui(self) -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from services import access_log_service
-from ui.admin_app import PALETTE
+from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t
 
 _MOTIVOS_CONCEDIDOS = {"facial", "pin"}
@@ -67,12 +67,12 @@ class AccessHistoryScreen(ctk.CTkFrame):
         search_row.pack(fill="x")
         search_row.pack_propagate(False)
 
+        _search_img = get_icon("search", size=17, color=PALETTE["MUTED"])
         ctk.CTkLabel(
             search_row,
-            text="🔍",
-            font=ctk.CTkFont(size=16),
+            image=_search_img,
+            text="",
             fg_color="transparent",
-            text_color=PALETTE["MUTED"],
         ).pack(side="left", padx=(10, 2))
 
         self._search_var = ctk.StringVar()

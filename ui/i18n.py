@@ -184,6 +184,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Ingresa tu PIN",
         "en": "Enter your PIN",
     },
+    "pin.err_pin_wrong": {
+        "es": "PIN incorrecto",
+        "en": "Incorrect PIN",
+    },
+    "pin.attempts_remaining": {
+        "es": "({n} intento{s} restante)",
+        "en": "({n} attempt{s} remaining)",
+    },
     "pin.err_restart": {
         "es": "Error: reinicia el proceso",
         "en": "Error: restart the process",
@@ -484,7 +492,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "assignment.no_permission":   {"es": "Tu rol no permite editar asignaciones", "en": "Your role does not allow editing assignments"},
     "assignment.no_active_list":  {"es": "No hay asignaciones activas",    "en": "No active assignments"},
     "assignment.err_select":      {"es": "Selecciona alumno y locker disponibles", "en": "Select a student and available locker"},
-    "assignment.err_already":     {"es": "Ese alumno ya tiene asignado ese locker", "en": "That student already has that locker assigned"},
+    "assignment.err_already":         {"es": "Ese alumno ya tiene asignado ese locker", "en": "That student already has that locker assigned"},
+    "assignment.err_user_has_locker": {"es": "Este usuario ya tiene un locker asignado. Libéralo primero.", "en": "This user already has a locker assigned. Release it first."},
     "assignment.ok_assigned":     {"es": "Locker {n} asignado correctamente", "en": "Locker {n} assigned successfully"},
     "assignment.err_select_release": {"es": "Selecciona un locker asignado para liberar", "en": "Select an assigned locker to release"},
     "assignment.ok_released":     {"es": "Locker {n} liberado correctamente", "en": "Locker {n} released successfully"},

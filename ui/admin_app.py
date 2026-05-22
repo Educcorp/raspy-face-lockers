@@ -299,6 +299,7 @@ _FA_GLYPHS = {
     "logout": "\uf2f5",
     "eye": "\uf06e",
     "eye-off": "\uf070",
+    "search": "\uf002",   # lupa / magnifying glass
 }
 _FA_ICON_SCALE = {
     "sun": 0.90,
@@ -308,6 +309,7 @@ _FA_ICON_SCALE = {
     "logout": 0.86,
     "eye": 0.84,
     "eye-off": 0.84,
+    "search": 0.86,
 }
 _FA_ICON_Y_OFFSET = {
     "user": 1,
@@ -411,6 +413,24 @@ def _draw_lock(size: int, color: str) -> Image.Image:
     return img
 
 
+def _draw_search(size: int, color: str) -> Image.Image:
+    """Fallback: dibuja una lupa (círculo + mango)."""
+    img  = _icon_canvas(size)
+    draw = ImageDraw.Draw(img)
+    r    = int(size * 0.28)
+    cx   = int(size * 0.40)
+    cy   = int(size * 0.40)
+    lw   = max(2, int(size * 0.12))
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=color, width=lw)
+    # mango diagonal
+    x0 = int(cx + r * 0.70)
+    y0 = int(cy + r * 0.70)
+    x1 = int(size * 0.86)
+    y1 = int(size * 0.86)
+    draw.line((x0, y0, x1, y1), fill=color, width=lw)
+    return img
+
+
 def get_icon(name: str, size: int = 20, color: str | None = None) -> ctk.CTkImage:
     """Retorna un ícono rasterizado y cacheado para evitar archivos estáticos."""
     icon_color = color or PALETTE["TEXT"]
@@ -421,10 +441,11 @@ def get_icon(name: str, size: int = 20, color: str | None = None) -> ctk.CTkImag
     img = _draw_fontawesome_icon(name, size, icon_color)
     if img is None:
         builders = {
-            "sun": _draw_sun,
-            "moon": _draw_moon,
-            "user": _draw_user,
-            "lock": _draw_lock,
+            "sun":    _draw_sun,
+            "moon":   _draw_moon,
+            "user":   _draw_user,
+            "lock":   _draw_lock,
+            "search": _draw_search,
         }
         builder = builders.get(name, _draw_sun)
         img = builder(size, icon_color)

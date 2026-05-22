@@ -19,15 +19,17 @@ class LoginScreen(ctk.CTkFrame):
         self._pin_var = tk.StringVar()
         self._show_pin_var = tk.BooleanVar(value=False)
 
-        # Limitar longitud máxima directamente en las variables
-        self._matricula_var.trace_add(
-            "write", lambda *_: self._matricula_var.set(self._matricula_var.get()[:8])
-            if len(self._matricula_var.get()) > 8 else None
-        )
-        self._pin_var.trace_add(
-            "write", lambda *_: self._pin_var.set(self._pin_var.get()[:4])
-            if len(self._pin_var.get()) > 4 else None
-        )
+        # Solo dígitos, con límite de longitud
+        def _only_digits(var, maxlen):
+            def _cb(*_):
+                val = var.get()
+                clean = "".join(c for c in val if c.isdigit())[:maxlen]
+                if clean != val:
+                    var.set(clean)
+            return _cb
+
+        self._matricula_var.trace_add("write", _only_digits(self._matricula_var, 8))
+        self._pin_var.trace_add("write",      _only_digits(self._pin_var,       4))
 
         self._build_ui()
 

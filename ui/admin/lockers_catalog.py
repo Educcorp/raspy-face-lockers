@@ -10,7 +10,7 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
-from ui.admin_app import PALETTE
+from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t
 from auth.session import can_edit_catalogs, is_superadmin
 
@@ -68,9 +68,9 @@ class LockersCatalogScreen(ctk.CTkFrame):
         sf = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=12, height=48)
         sf.pack(fill="x", padx=14, pady=(12, 6))
         sf.pack_propagate(False)
-        ctk.CTkLabel(sf, text="🔍", fg_color="transparent",
-                     text_color=PALETTE["MUTED"],
-                     font=ctk.CTkFont(size=18)).pack(side="left", padx=10)
+        _ic = get_icon("search", size=17, color=PALETTE["MUTED"])
+        ctk.CTkLabel(sf, image=_ic, text="",
+                     fg_color="transparent").pack(side="left", padx=10)
         entry = ctk.CTkEntry(
             sf, textvariable=self._search_var,
             placeholder_text=t("lockers.search_placeholder"),

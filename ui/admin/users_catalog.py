@@ -15,7 +15,7 @@ from tkinter import messagebox
 from tkinter import ttk
 from database.connection import fetch_all
 from services import user_service
-from ui.admin_app import PALETTE
+from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t
 from auth.session import (
     can_create_users,
@@ -92,9 +92,9 @@ class UsersCatalogScreen(ctk.CTkFrame):
         search_frame.pack(fill="x", padx=14, pady=(12, 6))
         search_frame.pack_propagate(False)
 
-        ctk.CTkLabel(search_frame, text="🔍", fg_color="transparent",
-                     text_color=PALETTE["MUTED"],
-                     font=ctk.CTkFont(size=18)).pack(side="left", padx=10)
+        _ic = get_icon("search", size=17, color=PALETTE["MUTED"])
+        ctk.CTkLabel(search_frame, image=_ic, text="",
+                     fg_color="transparent").pack(side="left", padx=10)
 
         entry = ctk.CTkEntry(
             search_frame, textvariable=self._search_var,

@@ -899,16 +899,31 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return
 
         if self._current_frame is not None:
-            frame_rgb = cv2.flip(cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB), 1)
+            backend = getattr(self._face_mgr, "backend_type", "picamera2")
+            if backend == "opencv":
+                frame_rgb = cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = self._current_frame
+
+            frame_rgb = cv2.flip(frame_rgb, 1)
             h, w = frame_rgb.shape[:2]
-            scale = min(WIN_W / w, self.CANVAS_H / h)
-            new_w, new_h = int(w * scale), int(h * scale)
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            square_size = min(WIN_W, self.CANVAS_H)
+            crop_side = min(h, w)
+            crop_x0 = (w - crop_side) // 2
+            crop_y0 = (h - crop_side) // 2
+            frame_crop = frame_rgb[crop_y0:crop_y0 + crop_side, crop_x0:crop_x0 + crop_side]
+
+            frame_resized = cv2.resize(
+                frame_crop,
+                (square_size, square_size),
+                interpolation=cv2.INTER_LINEAR,
+            )
 
             canvas_arr = np.zeros((self.CANVAS_H, WIN_W, 3), dtype=np.uint8)
-            y_off = (self.CANVAS_H - new_h) // 2
-            x_off = (WIN_W - new_w) // 2
-            canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
+            y_off = (self.CANVAS_H - square_size) // 2
+            x_off = (WIN_W - square_size) // 2
+            canvas_arr[y_off:y_off + square_size, x_off:x_off + square_size] = frame_resized
 
             pil_image = Image.fromarray(canvas_arr, "RGB")
             draw = ImageDraw.Draw(pil_image)

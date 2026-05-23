@@ -22,7 +22,7 @@ from datetime import datetime
 from collections import deque
 import random
 
-from config import FACE_RECOGNITION_CONFIG
+from config import FACE_RECOGNITION_CONFIG, CAMERA_CONFIG
 from config import GPIO_CONFIG
 from ui.i18n import t
 from core.gpio_controller import get_locker_gpio_controller
@@ -551,23 +551,37 @@ class ScanningScreen(ctk.CTkFrame):
         logger.debug("Detection loop finalizado. Total detecciones: %d", detect_count)
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
-        """Dibuja el frame en modo espejo y letterbox (sin zoom), con guía de rostro."""
+        """Dibuja el frame en modo espejo con recorte 1:1 y guía de rostro."""
         try:
-            # BGR → RGB y espejo horizontal (modo selfie)
-            frame_rgb = cv2.flip(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 1)
+            backend = getattr(self.face_manager, "backend_type", CAMERA_CONFIG.get("backend", "picamera2"))
+            if backend == "opencv":
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = frame
+
+            # Espejo horizontal (modo selfie)
+            frame_rgb = cv2.flip(frame_rgb, 1)
             h, w = frame_rgb.shape[:2]
 
-            # Letterbox: escalar manteniendo aspecto, sin recortar
-            scale = min(self.WIN_W / w, self.WIN_H / h)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            # Recorte central 1:1 y escalado a cuadro cuadrado
+            square_size = min(self.WIN_W, self.WIN_H)
+            crop_side = min(h, w)
+            crop_x0 = (w - crop_side) // 2
+            crop_y0 = (h - crop_side) // 2
+            frame_crop = frame_rgb[crop_y0:crop_y0 + crop_side, crop_x0:crop_x0 + crop_side]
+
+            scale = square_size / max(crop_side, 1)
+            frame_resized = cv2.resize(
+                frame_crop,
+                (square_size, square_size),
+                interpolation=cv2.INTER_AREA,
+            )
 
             # Centrar en lienzo negro
             canvas_arr = np.zeros((self.WIN_H, self.WIN_W, 3), dtype=np.uint8)
-            x_off = (self.WIN_W - new_w) // 2
-            y_off = (self.WIN_H - new_h) // 2
-            canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
+            x_off = (self.WIN_W - square_size) // 2
+            y_off = (self.WIN_H - square_size) // 2
+            canvas_arr[y_off:y_off + square_size, x_off:x_off + square_size] = frame_resized
 
             pil_image = Image.fromarray(canvas_arr, mode="RGB")
             draw = ImageDraw.Draw(pil_image)
@@ -579,16 +593,22 @@ class ScanningScreen(ctk.CTkFrame):
                     fx, fy, fw, fh = face_box
                     # Espejo: invertir x en el espacio del frame original
                     fx_m = w - fx - fw
-                    # Escalar al espacio de pantalla + offset letterbox
-                    xs = int(fx_m * scale) + x_off
-                    ys = int(fy  * scale) + y_off
-                    ws = int(fw  * scale)
-                    hs = int(fh  * scale)
-                    pad = int(max(ws, hs) * 0.3)
-                    x1 = max(0,        xs - pad)
-                    y1 = max(0,        ys - pad)
-                    x2 = min(self.WIN_W, xs + ws + pad)
-                    y2 = min(self.WIN_H, ys + hs + pad)
+                    # Mapear al recorte 1:1 y luego al cuadrado mostrado
+                    fx_c = fx_m - crop_x0
+                    fy_c = fy - crop_y0
+
+                    if (fx_c + fw) <= 0 or (fy_c + fh) <= 0 or fx_c >= crop_side or fy_c >= crop_side:
+                        x1, y1, x2, y2 = self._default_guide_box()
+                    else:
+                        xs = int(fx_c * scale) + x_off
+                        ys = int(fy_c * scale) + y_off
+                        ws = int(fw * scale)
+                        hs = int(fh * scale)
+                        pad = int(max(ws, hs) * 0.3)
+                        x1 = max(0, xs - pad)
+                        y1 = max(0, ys - pad)
+                        x2 = min(self.WIN_W, xs + ws + pad)
+                        y2 = min(self.WIN_H, ys + hs + pad)
                 else:
                     x1, y1, x2, y2 = self._default_guide_box()
             else:
@@ -615,7 +635,10 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _default_guide_box(self) -> tuple[int, int, int, int]:
         """Cuadro guía centrado cuando no hay rostro detectado."""
-        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+        square_size = min(self.WIN_W, self.WIN_H)
+        x_off = (self.WIN_W - square_size) // 2
+        y_off = (self.WIN_H - square_size) // 2
+        cx, cy = x_off + square_size // 2, y_off + square_size // 2 - 40
         return cx - 140, cy - 180, cx + 140, cy + 180
 
     def _show_camera_error(self, error_msg: str) -> None:

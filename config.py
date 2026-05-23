@@ -68,8 +68,8 @@ DOOR_SWITCH_CONFIG = {
     },
     # Activar logica solo para lockers confirmados (por ahora solo el 3).
     "active_lockers": [3],
-    "close_cooldown_seconds": 10.0,
-    "close_timeout_seconds": 10.0,
+    "close_cooldown_seconds": 5.0,
+    "close_timeout_seconds": 5.0,
     "poll_interval_ms": 200,
 }
 

@@ -383,6 +383,43 @@ class ScanningScreen(ctk.CTkFrame):
             justify="center",
         ).pack()
 
+        # ── Overlay de advertencia (puerta abierta) ─────────────────────────
+        self.door_warning_overlay = ctk.CTkFrame(
+            self,
+            fg_color="#F3C94A",
+            corner_radius=0,
+            width=self.WIN_W,
+            height=self.WIN_H,
+        )
+        _dw = ctk.CTkFrame(self.door_warning_overlay, fg_color="transparent")
+        _dw.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
+
+        ctk.CTkLabel(
+            _dw,
+            text="⚠",
+            font=ctk.CTkFont(size=90, weight="bold"),
+            text_color="#4A3B00",
+            fg_color="transparent",
+        ).pack(pady=(0, 16))
+
+        ctk.CTkLabel(
+            _dw,
+            text="FAVOR DE CERRAR EL LOCKER",
+            font=ctk.CTkFont(size=28, weight="bold"),
+            text_color="#4A3B00",
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+        ).pack()
+
+        ctk.CTkLabel(
+            _dw,
+            text="La puerta sigue abierta",
+            font=ctk.CTkFont(size=16),
+            text_color="#4A3B00",
+            fg_color="transparent",
+        ).pack(pady=(10, 0))
+
     # ── Captura de video en background ────────────────────────────────────────
 
     def _camera_loop(self) -> None:
@@ -759,6 +796,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.scan_progress_bar.set(0)
         self.overlay_bg.place_forget()
         self.denied_overlay.place_forget()
+        self.door_warning_overlay.place_forget()
         self._hide_pin_overlay()
         self._hide_lock_overlay()
         self.btn_admin.place(x=452, y=44, anchor="center")
@@ -819,6 +857,7 @@ class ScanningScreen(ctk.CTkFrame):
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None
+        self.door_warning_overlay.place_forget()
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
@@ -985,8 +1024,7 @@ class ScanningScreen(ctk.CTkFrame):
         should_warn = self._door_open_seen and (now - self._door_wait_started_at) >= timeout_s
         if not self._door_wait_warned and should_warn:
             self._door_wait_warned = True
-            self.lbl_status.configure(text="FAVOR DE CERRAR EL LOCKER", text_color=self.WARNING)
-            self.lbl_countdown.configure(text="La puerta sigue abierta")
+            self._show_door_warning()
             access_log_service.register_access(
                 self._door_wait_assignment_id,
                 permitted=False,
@@ -1003,6 +1041,9 @@ class ScanningScreen(ctk.CTkFrame):
             self._door_wait_job = None
 
         if closed:
+            self._hide_door_warning()
+
+        if closed:
             access_log_service.register_access(
                 self._door_wait_assignment_id,
                 permitted=True,
@@ -1013,6 +1054,13 @@ class ScanningScreen(ctk.CTkFrame):
             self.after(800, self._go_standby)
         else:
             self._go_standby()
+
+    def _show_door_warning(self) -> None:
+        self.door_warning_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.door_warning_overlay.lift()
+
+    def _hide_door_warning(self) -> None:
+        self.door_warning_overlay.place_forget()
 
     # ── Métodos internos ──────────────────────────────────────────────────────
 

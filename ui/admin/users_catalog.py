@@ -223,6 +223,11 @@ class UsersCatalogScreen(ctk.CTkFrame):
 
     def _load(self) -> None:
         self._rows = user_service.get_all_users()
+        if not is_superadmin():
+            self._rows = [
+                r for r in self._rows
+                if normalize_user_type_name(r.get("tipo")) != ROLE_SUPERADMIN
+            ]
         self._filter()
 
     # ── Navegación ────────────────────────────────────────────────────────────

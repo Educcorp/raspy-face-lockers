@@ -70,6 +70,8 @@ DOOR_SWITCH_CONFIG = {
     "active_lockers": [3],
     "close_cooldown_seconds": 5.0,
     "close_timeout_seconds": 5.0,
+    "warning_duration_seconds": 6.0,
+    "warning_repeat_seconds": 45.0,
     "poll_interval_ms": 200,
 }
 

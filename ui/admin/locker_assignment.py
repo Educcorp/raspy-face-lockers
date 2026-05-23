@@ -11,6 +11,8 @@ import customtkinter as ctk
 from auth.session import can_edit_catalogs
 from database.connection import db_session, fetch_all, fetch_one
 from services import locker_service
+from config import DOOR_SWITCH_CONFIG
+from core.door_switch_controller import get_door_switch_controller
 from ui.admin_app import PALETTE
 from ui.i18n import t
 
@@ -30,6 +32,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._student_var = tk.StringVar()
 		self._locker_var = tk.StringVar()
 		self._assigned_var = tk.StringVar()
+		self._manual_open_jobs: dict[int, str] = {}
+		self._manual_open_locked: set[int] = set()
 
 		self._build_ui()
 
@@ -536,20 +540,30 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		)
 		for i, row in enumerate(lockers):
 			lid = int(row["idLocker"])
+			is_locked = lid in self._manual_open_locked
 
 			btn = ctk.CTkButton(
 				self.manual_open_frame,
 				text=f"  Locker {lid}",
 				font=ctk.CTkFont(size=14, weight="bold"),
-				fg_color=PALETTE["ACCENT"],
-				hover_color=PALETTE["ACCENT_HOVER"],
+				fg_color=PALETTE["BORDER"] if is_locked else PALETTE["ACCENT"],
+				hover_color=PALETTE["BORDER"] if is_locked else PALETTE["ACCENT_HOVER"],
 				text_color=PALETTE["WHITE"],
 				height=48,
 				corner_radius=12,
 			)
+			if is_locked:
+				btn.configure(state="disabled")
 			btn.grid(row=0, column=i, padx=6, pady=4, sticky="ew")
 
 			def _open(l=lid, b=btn) -> None:
+				if l in self._manual_open_locked:
+					if self.lbl_manual_feedback:
+						self.lbl_manual_feedback.configure(
+							text=f"Locker {l} aun abierto — espera cierre",
+							text_color=PALETTE["WARN"],
+						)
+					return
 				b.configure(state="disabled", fg_color=PALETTE["BORDER"])
 				if self.lbl_manual_feedback:
 					self.lbl_manual_feedback.configure(
@@ -560,11 +574,21 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 					err_msg = t("assignment.open_failed", n=l)
 					def _done(b=b, ok=ok, err=err_msg):
 						if b.winfo_exists():
-							b.configure(state="normal", fg_color=PALETTE["ACCENT"])
+							if ok and self._can_use_switch(l):
+								self._manual_open_locked.add(l)
+								b.configure(state="disabled", fg_color=PALETTE["BORDER"])
+								self._wait_manual_close(l, b)
+							else:
+								b.configure(state="normal", fg_color=PALETTE["ACCENT"])
 						if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
 							if ok:
-								# Solo limpiar — no mostrar "Locker abierto" (sin sensores)
-								self.lbl_manual_feedback.configure(text="")
+								if self._can_use_switch(l):
+									self.lbl_manual_feedback.configure(
+										text=f"Locker {l} abierto — esperando cierre",
+										text_color=PALETTE["WARN"],
+									)
+								else:
+									self.lbl_manual_feedback.configure(text="")
 							else:
 								self.lbl_manual_feedback.configure(
 									text=err, text_color=PALETTE["DANGER"]
@@ -578,10 +602,44 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		for i in range(len(lockers)):
 			self.manual_open_frame.grid_columnconfigure(i, weight=1)
 
+	def _can_use_switch(self, locker_id: int) -> bool:
+		active = DOOR_SWITCH_CONFIG.get("active_lockers", [])
+		if int(locker_id) not in [int(x) for x in active]:
+			return False
+		return get_door_switch_controller().is_available()
+
+	def _wait_manual_close(self, locker_id: int, btn: ctk.CTkButton) -> None:
+		controller = get_door_switch_controller()
+		state = controller.read_state(locker_id)
+		if state is None:
+			self._manual_open_locked.discard(locker_id)
+			if btn.winfo_exists():
+				btn.configure(state="normal", fg_color=PALETTE["ACCENT"])
+			if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
+				self.lbl_manual_feedback.configure(
+					text=f"Locker {locker_id} — sensor no disponible",
+					text_color=PALETTE["WARN"],
+				)
+			return
+		if state is True:
+			self._manual_open_locked.discard(locker_id)
+			if btn.winfo_exists():
+				btn.configure(state="normal", fg_color=PALETTE["ACCENT"])
+			if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
+				self.lbl_manual_feedback.configure(text=f"Locker {locker_id} cerrado")
+			return
+
+		job = self.after(400, lambda: self._wait_manual_close(locker_id, btn))
+		self._manual_open_jobs[locker_id] = job
+
 	def on_show(self, **_kwargs) -> None:
 		self.lbl_feedback.configure(text="", text_color=PALETTE["MUTED"])
 		if self.lbl_manual_feedback is not None:
 			self.lbl_manual_feedback.configure(text="")
+		for job in list(self._manual_open_jobs.values()):
+			self.after_cancel(job)
+		self._manual_open_jobs.clear()
+		self._manual_open_locked.clear()
 		self._refresh_data()
 		self._build_manual_open_buttons()
 

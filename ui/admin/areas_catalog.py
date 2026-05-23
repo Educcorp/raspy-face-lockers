@@ -230,6 +230,10 @@ class AreasCatalogScreen(ctk.CTkFrame):
         self.controller.show_frame(DashboardScreen)
 
     def on_show(self, **_kwargs) -> None:
+        if not is_superadmin():
+            from ui.admin.dashboard import DashboardScreen
+            self.controller.show_frame(DashboardScreen)
+            return
         self._load()
 
 

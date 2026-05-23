@@ -24,6 +24,7 @@ import random
 
 from config import FACE_RECOGNITION_CONFIG, CAMERA_CONFIG
 from config import GPIO_CONFIG
+from config import DOOR_SWITCH_CONFIG
 from ui.i18n import t
 from core.gpio_controller import get_locker_gpio_controller
 from core.face_recognition import filter_close_faces as _filter_close_faces
@@ -108,6 +109,13 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_ref_box = None
         self._blink_closed_seen = False
         self._auto_return_started_ts: float | None = None
+        self._door_wait_job = None
+        self._door_wait_active = False
+        self._door_wait_started_at = 0.0
+        self._door_open_seen = False
+        self._door_wait_warned = False
+        self._door_wait_locker_id: int | None = None
+        self._door_wait_assignment_id: int | None = None
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
@@ -732,6 +740,15 @@ class ScanningScreen(ctk.CTkFrame):
         self._scan_progress_pct = 0
         self._last_close_face_ts = time.time()  # arrancar temporizador de inactividad
         self._auto_return_started_ts = None
+        self._door_wait_active = False
+        self._door_wait_started_at = 0.0
+        self._door_open_seen = False
+        self._door_wait_warned = False
+        self._door_wait_locker_id = None
+        self._door_wait_assignment_id = None
+        if self._door_wait_job:
+            self.after_cancel(self._door_wait_job)
+            self._door_wait_job = None
         self._reset_liveness_state()
         self._pin_fail_count = 0
         self._pin_matricula_fail_count = 0
@@ -778,6 +795,11 @@ class ScanningScreen(ctk.CTkFrame):
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
         self._latest_frame_for_detect = None
+        self._door_wait_active = False
+        self._door_open_seen = False
+        if self._door_wait_job:
+            self.after_cancel(self._door_wait_job)
+            self._door_wait_job = None
 
         # Liberar la cámara antes de joinear para que get_frame() retorne rápido.
         if self.face_manager and self.face_manager.initialized:
@@ -845,7 +867,10 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts.configure(text="")
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
         self.btn_admin.place_forget()
-        self._start_countdown(self.DISPLAY_SECONDS)
+        if locker_num and self._should_wait_for_door(int(locker_num)):
+            self._start_door_close_wait(int(locker_num), user_data.get("locker_assignment_id"))
+        else:
+            self._start_countdown(self.DISPLAY_SECONDS)
 
     def on_face_no_match(self) -> None:
         """Llamado cuando no hay match."""
@@ -909,6 +934,85 @@ class ScanningScreen(ctk.CTkFrame):
 
         self.lbl_countdown.configure(text=t("scan.return_in", s=seconds))
         self._return_job = self.after(1000, self._start_countdown, seconds - 1)
+
+    def _should_wait_for_door(self, locker_id: int) -> bool:
+        active = DOOR_SWITCH_CONFIG.get("active_lockers", [])
+        return int(locker_id) in [int(x) for x in active]
+
+    def _start_door_close_wait(self, locker_id: int, assignment_id: int | None) -> None:
+        from core.door_switch_controller import get_door_switch_controller
+
+        controller = get_door_switch_controller()
+        if not controller.is_available():
+            self._start_countdown(self.DISPLAY_SECONDS)
+            return
+
+        self._door_wait_active = True
+        self._door_wait_warned = False
+        self._door_open_seen = False
+        self._door_wait_locker_id = int(locker_id)
+        self._door_wait_assignment_id = assignment_id
+        self._door_wait_started_at = time.time()
+        self.lbl_countdown.configure(text="Esperando cierre de puerta...")
+        self._poll_door_close()
+
+    def _poll_door_close(self) -> None:
+        if not self._door_wait_active or self._door_wait_locker_id is None:
+            return
+
+        from core.door_switch_controller import get_door_switch_controller
+
+        controller = get_door_switch_controller()
+        state = controller.read_state(self._door_wait_locker_id)
+        now = time.time()
+
+        cooldown_s = float(DOOR_SWITCH_CONFIG.get("close_cooldown_seconds", 10.0))
+
+        if state is None:
+            self._door_wait_active = False
+            self._door_wait_job = None
+            self._start_countdown(self.DISPLAY_SECONDS)
+            return
+
+        if state is False:
+            self._door_open_seen = True
+
+        if state is True and self._door_open_seen and (now - self._door_wait_started_at) >= cooldown_s:
+            self._finish_door_wait(closed=True)
+            return
+
+        timeout_s = float(DOOR_SWITCH_CONFIG.get("close_timeout_seconds", 10.0))
+        should_warn = self._door_open_seen and (now - self._door_wait_started_at) >= timeout_s
+        if not self._door_wait_warned and should_warn:
+            self._door_wait_warned = True
+            self.lbl_status.configure(text="FAVOR DE CERRAR EL LOCKER", text_color=self.WARNING)
+            self.lbl_countdown.configure(text="La puerta sigue abierta")
+            access_log_service.register_access(
+                self._door_wait_assignment_id,
+                permitted=False,
+                motivo="puerta_no_cerrada",
+            )
+
+        poll_ms = int(DOOR_SWITCH_CONFIG.get("poll_interval_ms", 200))
+        self._door_wait_job = self.after(poll_ms, self._poll_door_close)
+
+    def _finish_door_wait(self, closed: bool) -> None:
+        self._door_wait_active = False
+        if self._door_wait_job:
+            self.after_cancel(self._door_wait_job)
+            self._door_wait_job = None
+
+        if closed:
+            access_log_service.register_access(
+                self._door_wait_assignment_id,
+                permitted=True,
+                motivo="puerta_cerrada",
+            )
+            self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
+            self.lbl_countdown.configure(text="Puerta cerrada. Volviendo al inicio...")
+            self.after(800, self._go_standby)
+        else:
+            self._go_standby()
 
     # ── Métodos internos ──────────────────────────────────────────────────────
 
@@ -1376,6 +1480,7 @@ class ScanningScreen(ctk.CTkFrame):
             "nombre": full_name or "Usuario",
             "matricula": result.get("matricula") or "—",
             "locker_numero": locker_id,
+            "locker_assignment_id": result.get("idLockerAsignado"),
             "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }
         self._hide_pin_overlay()
@@ -1497,5 +1602,6 @@ class ScanningScreen(ctk.CTkFrame):
             "nombre": full_name or "Usuario",
             "matricula": matched.get("matricula") or "—",
             "locker_numero": locker_id,
+            "locker_assignment_id": matched.get("idLockerAsignado"),
             "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }

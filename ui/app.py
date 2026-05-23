@@ -44,6 +44,13 @@ class LockerApp(ctk.CTk):
         self._admin_frames_built = False
         self._kiosk_mode: bool = UI_CONFIG.get("kiosk_mode", False)
 
+        # Preparar GPIO de switches de puerta desde el arranque.
+        try:
+            from core.door_switch_controller import get_door_switch_controller
+            get_door_switch_controller().ensure_setup()
+        except Exception:
+            pass
+
         # ── Configuración de ventana ──────────────────────────────────────────
         self.title("Smart Locker")
         self.resizable(False, False)

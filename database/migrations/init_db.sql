@@ -144,7 +144,8 @@ CREATE TABLE IF NOT EXISTS historial_accesos (
 	motivo TEXT CHECK(motivo IN (
 		'facial', 'pin', 'sin_asignacion', 'limite_intentos',
 		'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
-		'matricula_incorrecta', 'pin_cancelado'
+		'matricula_incorrecta', 'pin_cancelado',
+		'puerta_cerrada', 'puerta_no_cerrada'
 	) OR motivo IS NULL),
 	fechaExpiracion TEXT NOT NULL,
 	CONSTRAINT fk_historial_asignacion

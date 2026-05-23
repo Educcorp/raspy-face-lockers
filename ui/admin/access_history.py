@@ -19,6 +19,8 @@ _MOTIVO_LABELS: dict[str, str] = {
     "no_reconocido":        "No reconocido",
     "matricula_incorrecta": "Matrícula incorrecta",
     "sin_asignacion":       "Sin asignación",
+    "puerta_cerrada":        "Puerta cerrada",
+    "puerta_no_cerrada":     "Puerta no cerrada",
 }
 
 _ALL      = "Todos"

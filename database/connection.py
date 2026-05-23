@@ -85,7 +85,8 @@ def _apply_incremental_migrations(conn: sqlite3.Connection) -> None:
                 motivo TEXT CHECK(motivo IN (
                     'facial', 'pin', 'sin_asignacion', 'limite_intentos',
                     'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
-                    'matricula_incorrecta', 'pin_cancelado'
+                    'matricula_incorrecta', 'pin_cancelado',
+                    'puerta_cerrada', 'puerta_no_cerrada'
                 ) OR motivo IS NULL),
                 fechaExpiracion TEXT NOT NULL,
                 CONSTRAINT fk_historial_asignacion
@@ -100,6 +101,51 @@ def _apply_incremental_migrations(conn: sqlite3.Connection) -> None:
             """
         )
         conn.commit()
+
+    # Migracion: ampliar lista de motivos en historial_accesos si es necesario.
+    try:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='historial_accesos'"
+        ).fetchone()
+        schema_sql = (row[0] if row else "") or ""
+        if "puerta_cerrada" not in schema_sql:
+            conn.executescript(
+                """
+                ALTER TABLE historial_accesos RENAME TO historial_accesos_old;
+
+                CREATE TABLE historial_accesos (
+                    idAcceso INTEGER PRIMARY KEY AUTOINCREMENT,
+                    idLockerAsignado INTEGER,
+                    fechaHoraAcceso TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+                    accesoPermitido TEXT NOT NULL DEFAULT 'si' CHECK(accesoPermitido IN ('si', 'no')),
+                    motivo TEXT CHECK(motivo IN (
+                        'facial', 'pin', 'sin_asignacion', 'limite_intentos',
+                        'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
+                        'matricula_incorrecta', 'pin_cancelado',
+                        'puerta_cerrada', 'puerta_no_cerrada'
+                    ) OR motivo IS NULL),
+                    fechaExpiracion TEXT NOT NULL,
+                    CONSTRAINT fk_historial_asignacion
+                        FOREIGN KEY (idLockerAsignado) REFERENCES asignacion_locker(idLockerAsignado)
+                        ON UPDATE CASCADE ON DELETE SET NULL
+                );
+
+                INSERT INTO historial_accesos
+                    (idAcceso, idLockerAsignado, fechaHoraAcceso, accesoPermitido, motivo, fechaExpiracion)
+                SELECT idAcceso, idLockerAsignado, fechaHoraAcceso, accesoPermitido, motivo, fechaExpiracion
+                FROM historial_accesos_old;
+
+                DROP TABLE historial_accesos_old;
+
+                CREATE INDEX IF NOT EXISTS idx_historial_expiracion
+                    ON historial_accesos(fechaExpiracion, accesoPermitido);
+                CREATE INDEX IF NOT EXISTS idx_historial_locker
+                    ON historial_accesos(idLockerAsignado, fechaHoraAcceso);
+                """
+            )
+            conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
     conn.executescript(
         """

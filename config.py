@@ -58,6 +58,21 @@ GPIO_CONFIG = {
     "debounce_ms": 50,
 }
 
+# ── Door limit switches (KW11-3Z) ──────────────────────────────────────────
+DOOR_SWITCH_CONFIG = {
+    "pins": {
+        1: 5,   # Locker 1
+        2: 6,   # Locker 2
+        3: 12,  # Locker 3
+        4: 13,  # Locker 4
+    },
+    # Activar logica solo para lockers confirmados (por ahora solo el 3).
+    "active_lockers": [3],
+    "close_cooldown_seconds": 10.0,
+    "close_timeout_seconds": 10.0,
+    "poll_interval_ms": 200,
+}
+
 # ── UI ─────────────────────────────────────────────────────────────────────
 UI_CONFIG = {
     "width": 480,

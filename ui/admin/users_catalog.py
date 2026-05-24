@@ -406,6 +406,18 @@ class UserDetailOverlay(ctk.CTkFrame):
         if not self._can_edit:
             self.btn_reregister_face.pack_forget()
 
+        self.btn_update_pin = ctk.CTkButton(
+            self._scroll,
+            text="Cambiar PIN",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="#5B6E7F", hover_color="#4A5A68",
+            text_color=PALETTE["WHITE"], height=52, corner_radius=12,
+            command=self._update_pin,
+        )
+        self.btn_update_pin.pack(fill="x", padx=4, pady=(0, 8))
+        if not self._can_edit:
+            self.btn_update_pin.pack_forget()
+
         self.btn_delete = ctk.CTkButton(
             self._scroll,
             text=t("common.disable"),
@@ -735,6 +747,13 @@ class UserDetailOverlay(ctk.CTkFrame):
         else:
             self.btn_save.pack_forget()
 
+    def _update_pin(self) -> None:
+        """Abre el diálogo para cambiar el PIN del usuario."""
+        if not self._can_edit:
+            return
+        nombre_str = self._vars.get("nombre", tk.StringVar()).get().strip()
+        _PinUpdateDialog(self, self.user_id, nombre_str)
+
     def _reregister_face(self) -> None:
         """Navega al flujo de captura facial para actualizar el rostro del usuario."""
         if not self._can_edit:
@@ -811,3 +830,98 @@ class _ConfirmDialog(ctk.CTkFrame):
             text_color=PALETTE["WHITE"],
             command=lambda: (on_confirm(), self.destroy()),
         ).pack(side="right", expand=True, fill="x", padx=(6, 0))
+
+
+# ── Diálogo para cambiar PIN ──────────────────────────────────────────────────
+
+class _PinUpdateDialog(ctk.CTkFrame):
+    """Overlay para cambiar el PIN de un usuario."""
+
+    def __init__(self, parent, user_id: int, user_name: str = ""):
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+        self._user_id = user_id
+
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=420, height=360)
+        card.pack(expand=True)
+        card.pack_propagate(False)
+
+        ctk.CTkLabel(
+            card,
+            text=f"Cambiar PIN{': ' + user_name if user_name else ''}",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=PALETTE["ACCENT"], fg_color="transparent",
+        ).pack(pady=(22, 4))
+
+        ctk.CTkLabel(
+            card, text="Ingresa el nuevo PIN de 4 dígitos.",
+            font=ctk.CTkFont(size=13),
+            text_color=PALETTE["MUTED"], fg_color="transparent",
+        ).pack(pady=(0, 14))
+
+        self._pin_var    = tk.StringVar()
+        self._confirm_var = tk.StringVar()
+
+        def _only_digits(var, maxlen=4):
+            def _cb(*_):
+                val = var.get()
+                clean = "".join(c for c in val if c.isdigit())[:maxlen]
+                if clean != val:
+                    var.set(clean)
+            return _cb
+
+        self._pin_var.trace_add("write", _only_digits(self._pin_var))
+        self._confirm_var.trace_add("write", _only_digits(self._confirm_var))
+
+        for label, var in (("Nuevo PIN", self._pin_var),
+                           ("Confirmar PIN", self._confirm_var)):
+            ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=12),
+                         text_color=PALETTE["MUTED"],
+                         fg_color="transparent").pack(anchor="w", padx=24, pady=(6, 2))
+            ctk.CTkEntry(card, textvariable=var, show="*",
+                         font=ctk.CTkFont(size=18),
+                         fg_color=PALETTE["BG"], border_color=PALETTE["BORDER"],
+                         text_color=PALETTE["TEXT"], height=46,
+                         ).pack(fill="x", padx=24)
+
+        self._lbl_err = ctk.CTkLabel(card, text="",
+                                     font=ctk.CTkFont(size=12),
+                                     text_color=PALETTE["DANGER"],
+                                     fg_color="transparent")
+        self._lbl_err.pack(pady=(6, 0))
+
+        btn_row = ctk.CTkFrame(card, fg_color="transparent", height=58)
+        btn_row.pack(fill="x", padx=24, pady=(6, 18))
+        btn_row.pack_propagate(False)
+
+        ctk.CTkButton(btn_row, text="Cancelar", height=48,
+                      fg_color=PALETTE["BORDER"], hover_color=PALETTE["MUTED"],
+                      text_color=PALETTE["TEXT"],
+                      command=self.destroy,
+                      ).pack(side="left", expand=True, fill="x", padx=(0, 6))
+
+        ctk.CTkButton(btn_row, text="Guardar PIN", height=48,
+                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+                      text_color=PALETTE["WHITE"],
+                      command=self._save,
+                      ).pack(side="right", expand=True, fill="x", padx=(6, 0))
+
+    def _save(self) -> None:
+        pin = self._pin_var.get().strip()
+        confirm = self._confirm_var.get().strip()
+        if len(pin) != 4 or not pin.isdigit():
+            self._lbl_err.configure(text="El PIN debe tener exactamente 4 dígitos.")
+            return
+        if pin != confirm:
+            self._lbl_err.configure(text="Los PINs no coinciden.")
+            return
+        try:
+            from services import user_service
+            user_service.update_pin(self._user_id, pin)
+        except Exception as exc:
+            self._lbl_err.configure(text=f"Error: {str(exc)[:60]}")
+            return
+        self.destroy()

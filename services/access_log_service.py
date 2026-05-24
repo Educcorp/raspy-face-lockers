@@ -49,5 +49,26 @@ def register_access(
 
 
 def get_access_history(limit: int = 200) -> list[dict]:
-    """Devuelve los últimos accesos usando la vista v_historial_detalle."""
-    return fetch_all(f"SELECT * FROM v_historial_detalle LIMIT {limit}")
+    """Devuelve los últimos accesos del historial de accesos."""
+    return fetch_all(
+        """
+        SELECT
+            h.idAcceso,
+            COALESCE(u.nombre || ' ' || u.apPaterno, 'Desconocido') AS nombreCompleto,
+            u.matricula,
+            l.idLocker,
+            a.nombreArea,
+            h.fechaHoraAcceso,
+            h.accesoPermitido,
+            h.motivo,
+            h.fechaExpiracion
+        FROM historial_accesos h
+        LEFT JOIN asignacion_locker al ON h.idLockerAsignado = al.idLockerAsignado
+        LEFT JOIN usuarios u ON al.idUsuario = u.idUsuario
+        LEFT JOIN lockers l ON al.idLocker = l.idLocker
+        LEFT JOIN area_lockers a ON l.idArea = a.idArea
+        ORDER BY h.fechaHoraAcceso DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )

@@ -10,7 +10,6 @@ Cada pestaña ofrece lista + CRUD completo.
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE
 from ui.i18n import t
@@ -353,6 +352,77 @@ class _BaseFormOverlay(ctk.CTkFrame):
         self.destroy()
 
 
+# ── Diálogos overlay ──────────────────────────────────────────────────────────
+
+class _AlertDialog(ctk.CTkFrame):
+    """Diálogo informativo de un solo botón (compatible Linux/RPi)."""
+
+    def __init__(self, parent, message: str):
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=400, height=220)
+        card.pack(expand=True)
+        card.pack_propagate(False)
+
+        ctk.CTkLabel(
+            card, text=message,
+            font=ctk.CTkFont(size=15),
+            text_color=PALETTE["TEXT"], fg_color="transparent",
+            wraplength=360, justify="center",
+        ).pack(expand=True, padx=20, pady=(30, 10))
+
+        ctk.CTkButton(
+            card, text=t("common.accept"), height=52,
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+            text_color=PALETTE["WHITE"],
+            command=self.destroy,
+        ).pack(fill="x", padx=20, pady=(0, 20))
+
+
+class _ConfirmDialog(ctk.CTkFrame):
+    """Diálogo de confirmación como overlay en-ventana (compatible Linux/RPi)."""
+
+    def __init__(self, parent, message: str, on_confirm):
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=400, height=250)
+        card.pack(expand=True)
+        card.pack_propagate(False)
+
+        ctk.CTkLabel(
+            card, text=message,
+            font=ctk.CTkFont(size=15),
+            text_color=PALETTE["TEXT"], fg_color="transparent",
+            wraplength=360, justify="center",
+        ).pack(expand=True, padx=20, pady=(30, 10))
+
+        btn_row = ctk.CTkFrame(card, fg_color="transparent", height=60)
+        btn_row.pack(fill="x", padx=20, pady=(0, 20))
+        btn_row.pack_propagate(False)
+
+        ctk.CTkButton(
+            btn_row, text=t("common.cancel"), height=52,
+            fg_color=PALETTE["BORDER"], hover_color=PALETTE["MUTED"],
+            text_color=PALETTE["TEXT"],
+            command=self.destroy,
+        ).pack(side="left", expand=True, fill="x", padx=(0, 6))
+
+        ctk.CTkButton(
+            btn_row, text=t("common.confirm"), height=52,
+            fg_color=PALETTE["DANGER"], hover_color="#922b21",
+            text_color=PALETTE["WHITE"],
+            command=lambda: (on_confirm(), self.destroy()),
+        ).pack(side="right", expand=True, fill="x", padx=(6, 0))
+
+
 # ── Área ──────────────────────────────────────────────────────────────────────
 
 class AreaFormOverlay(_BaseFormOverlay):
@@ -451,21 +521,24 @@ class AreaFormOverlay(_BaseFormOverlay):
         area_id = self._row["idArea"]
         count = fetch_one("SELECT COUNT(*) AS n FROM lockers WHERE idArea=?", (area_id,))
         if count and count["n"] > 0:
-            messagebox.showwarning(
-                "No permitido",
-                f"Esta área tiene {count['n']} locker(s) asignado(s). Reasígnalos antes de eliminar.",
+            _AlertDialog(
+                self,
+                f"Esta área tiene {count['n']} locker(s) asignado(s).\nReasígnalos antes de eliminar.",
             )
             return
         nombre = self._row.get("nombreArea", "")
-        if not messagebox.askyesno(
-            "Eliminar área",
+        _ConfirmDialog(
+            self,
             f"¿Eliminar permanentemente el área '{nombre}'?\n\nEsta acción no se puede deshacer.",
-        ):
-            return
+            on_confirm=self._do_delete_area,
+        )
+
+    def _do_delete_area(self) -> None:
+        area_id = self._row["idArea"]
         try:
             execute("DELETE FROM area_lockers WHERE idArea=?", (area_id,))
         except Exception:
-            messagebox.showerror("Error", "No se pudo eliminar el área. Puede haber dependencias.")
+            _AlertDialog(self, "No se pudo eliminar el área.\nPuede haber dependencias.")
             return
         self._close()
 
@@ -552,21 +625,24 @@ class UnidadFormOverlay(_BaseFormOverlay):
             (uid,),
         )
         if ur and ur["n"] > 0:
-            messagebox.showwarning(
-                "No permitido",
-                f"Esta unidad tiene {ur['n']} usuario(s) activos. Reasígnalos antes de eliminar.",
+            _AlertDialog(
+                self,
+                f"Esta unidad tiene {ur['n']} usuario(s) activos.\nReasígnalos antes de eliminar.",
             )
             return
         nombre = self._row.get("nombreUnidadAcademica", "")
-        if not messagebox.askyesno(
-            "Eliminar unidad",
+        _ConfirmDialog(
+            self,
             f"¿Eliminar permanentemente '{nombre}'?\n\nEsta acción no se puede deshacer.",
-        ):
-            return
+            on_confirm=self._do_delete_unidad,
+        )
+
+    def _do_delete_unidad(self) -> None:
+        uid = self._row["idUnidadAcademica"]
         try:
             execute("DELETE FROM unidad_academica WHERE idUnidadAcademica=?", (uid,))
         except Exception:
-            messagebox.showerror("Error", "No se pudo eliminar la unidad. Puede haber dependencias.")
+            _AlertDialog(self, "No se pudo eliminar la unidad.\nPuede haber dependencias.")
             return
         self._close()
 
@@ -619,9 +695,10 @@ class AccessHistoryScreen(ctk.CTkFrame):
         self._list_frame.pack(fill="both", expand=True, padx=10, pady=8)
 
     def _load(self) -> None:
+        from services.access_log_service import get_access_history
         for w in self._list_frame.winfo_children():
             w.destroy()
-        rows = fetch_all("SELECT * FROM v_historial_detalle LIMIT 200")
+        rows = get_access_history(limit=200)
         if not rows:
             ctk.CTkLabel(self._list_frame, text=t("hist.no_records"),
                          font=ctk.CTkFont(size=16),

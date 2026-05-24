@@ -414,6 +414,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "common.save":           {"es": "Guardar",                   "en": "Save"},
     "common.save_changes":   {"es": "Guardar cambios",           "en": "Save changes"},
     "common.cancel":         {"es": "Cancelar",                  "en": "Cancel"},
+    "common.accept":         {"es": "Aceptar",                   "en": "Accept"},
     "common.confirm":        {"es": "Confirmar",                 "en": "Confirm"},
     "common.edit":           {"es": "Editar",                    "en": "Edit"},
     "common.read_only":      {"es": "Solo lectura",              "en": "Read only"},

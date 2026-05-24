@@ -1696,14 +1696,27 @@ class ScanningScreen(ctk.CTkFrame):
             return None
 
         locker_id = matched.get("idLocker")
+        user_id   = matched.get("idUsuario")
         if locker_id and self._camera_running:
             threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
         elif locker_id:
             logger.info("Reconocimiento completado pero cámara detenida — locker no abierto")
         else:
-            logger.info("Usuario id=%s autenticado pero sin locker asignado", matched.get("idUsuario"))
+            logger.info("Usuario id=%s autenticado pero sin locker asignado", user_id)
 
-        access_log_service.register_access(matched.get("idLockerAsignado"), permitted=True)
+        if locker_id:
+            access_log_service.register_access(
+                matched.get("idLockerAsignado"),
+                permitted=True,
+                user_id=user_id,
+            )
+        else:
+            access_log_service.register_access(
+                None,
+                permitted=False,
+                motivo="sin_asignacion",
+                user_id=user_id,
+            )
 
         full_name = " ".join(
             p for p in [matched.get("nombre"), matched.get("apPaterno"), matched.get("apMaterno")]

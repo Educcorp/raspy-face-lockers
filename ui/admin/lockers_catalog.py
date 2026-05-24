@@ -8,13 +8,12 @@ Botón "+" → formulario para crear un nuevo locker.
 
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox
 from database.connection import fetch_all, fetch_one, execute
 from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t
 from auth.session import can_edit_catalogs, is_superadmin
 
-# Lockers 1-4 son predeterminados del sistema — no se pueden modificar ni eliminar
+# Lockers 1-4 son predeterminados del sistema — área/unidad no editables, solo estado
 _DEFAULT_LOCKER_IDS = frozenset({1, 2, 3, 4})
 
 
@@ -199,6 +198,77 @@ class LockersCatalogScreen(ctk.CTkFrame):
         self._load()
 
 
+# ── Diálogos overlay ──────────────────────────────────────────────────────────
+
+class _AlertDialog(ctk.CTkFrame):
+    """Diálogo informativo de un solo botón (compatible Linux/RPi)."""
+
+    def __init__(self, parent, message: str):
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=400, height=220)
+        card.pack(expand=True)
+        card.pack_propagate(False)
+
+        ctk.CTkLabel(
+            card, text=message,
+            font=ctk.CTkFont(size=15),
+            text_color=PALETTE["TEXT"], fg_color="transparent",
+            wraplength=360, justify="center",
+        ).pack(expand=True, padx=20, pady=(30, 10))
+
+        ctk.CTkButton(
+            card, text=t("common.accept"), height=52,
+            fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+            text_color=PALETTE["WHITE"],
+            command=self.destroy,
+        ).pack(fill="x", padx=20, pady=(0, 20))
+
+
+class _ConfirmDialog(ctk.CTkFrame):
+    """Diálogo de confirmación como overlay en-ventana (compatible Linux/RPi)."""
+
+    def __init__(self, parent, message: str, on_confirm):
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=400, height=250)
+        card.pack(expand=True)
+        card.pack_propagate(False)
+
+        ctk.CTkLabel(
+            card, text=message,
+            font=ctk.CTkFont(size=15),
+            text_color=PALETTE["TEXT"], fg_color="transparent",
+            wraplength=360, justify="center",
+        ).pack(expand=True, padx=20, pady=(30, 10))
+
+        btn_row = ctk.CTkFrame(card, fg_color="transparent", height=60)
+        btn_row.pack(fill="x", padx=20, pady=(0, 20))
+        btn_row.pack_propagate(False)
+
+        ctk.CTkButton(
+            btn_row, text=t("common.cancel"), height=52,
+            fg_color=PALETTE["BORDER"], hover_color=PALETTE["MUTED"],
+            text_color=PALETTE["TEXT"],
+            command=self.destroy,
+        ).pack(side="left", expand=True, fill="x", padx=(0, 6))
+
+        ctk.CTkButton(
+            btn_row, text=t("common.confirm"), height=52,
+            fg_color=PALETTE["DANGER"], hover_color="#922b21",
+            text_color=PALETTE["WHITE"],
+            command=lambda: (on_confirm(), self.destroy()),
+        ).pack(side="right", expand=True, fill="x", padx=(6, 0))
+
+
 # ── Detalle Locker ────────────────────────────────────────────────────────────
 
 class LockerDetailOverlay(ctk.CTkFrame):
@@ -301,6 +371,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
         if not self._can_edit or self._is_default:
             self._unidad_menu.configure(state="disabled")
             self._area_menu.configure(state="disabled")
+        if not self._can_edit:
             self._estado_menu.configure(state="disabled")
 
         # Botones
@@ -312,7 +383,14 @@ class LockerDetailOverlay(ctk.CTkFrame):
                     font=ctk.CTkFont(size=13, weight="bold"),
                     text_color="#D4A34A", fg_color=PALETTE["CARD"],
                     corner_radius=8, height=40,
-                ).pack(fill="x", padx=4, pady=(16, 8))
+                ).pack(fill="x", padx=4, pady=(16, 4))
+                ctk.CTkButton(
+                    scroll, text=t("common.save_changes"),
+                    font=ctk.CTkFont(size=15, weight="bold"),
+                    fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+                    text_color=PALETTE["WHITE"], height=50, corner_radius=12,
+                    command=self._save_estado_only,
+                ).pack(fill="x", padx=4, pady=(0, 8))
             else:
                 ctk.CTkButton(
                     scroll, text=t("common.save_changes"),
@@ -426,9 +504,9 @@ class LockerDetailOverlay(ctk.CTkFrame):
         area = next((a for a in self._areas if a["nombreArea"] == area_name), None)
 
         if new_state != "activo" and self._has_active_assignment():
-            messagebox.showwarning(
-                "Acción no permitida",
-                "No puedes deshabilitar un locker con asignación activa. Libéralo primero.",
+            _AlertDialog(
+                self,
+                "No puedes deshabilitar un locker con asignación activa.\nLibéralo primero.",
             )
             return
         execute(
@@ -470,26 +548,45 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self._estado_var.set(new_state)
         self._save()
 
+    def _save_estado_only(self) -> None:
+        if not self._can_edit:
+            return
+        new_state = (self._estado_var.get() or "activo").strip()
+        if new_state != "activo" and self._has_active_assignment():
+            _AlertDialog(
+                self,
+                "No puedes deshabilitar un locker con asignación activa.\nLibéralo primero.",
+            )
+            return
+        execute(
+            "UPDATE lockers SET estado=?, "
+            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+            "modificadoPor=1 WHERE idLocker=?",
+            (new_state, self.locker_id),
+        )
+        self._close()
+
     def _confirm_delete_locker(self) -> None:
         if not is_superadmin():
             return
         if self._is_default:
-            messagebox.showwarning("Protegido", "Los lockers predeterminados no pueden eliminarse.")
+            _AlertDialog(self, "Los lockers predeterminados no pueden eliminarse.")
             return
         if self._has_active_assignment():
-            messagebox.showwarning(
-                "No permitido",
+            _AlertDialog(
+                self,
                 "Este locker tiene una asignación activa.\nLibéralo primero en el módulo de Asignaciones.",
             )
             return
-        confirmed = messagebox.askyesno(
-            "Eliminar locker",
+        _ConfirmDialog(
+            self,
             f"¿Eliminar permanentemente el Locker #{self.locker_id}?\n\n"
             "Se borrarán también sus asignaciones históricas.\n"
             "Esta acción NO se puede deshacer.",
+            on_confirm=self._do_delete_locker,
         )
-        if not confirmed:
-            return
+
+    def _do_delete_locker(self) -> None:
         from database.connection import db_session
         with db_session() as conn:
             conn.execute(

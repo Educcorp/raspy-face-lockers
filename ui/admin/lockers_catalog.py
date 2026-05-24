@@ -409,7 +409,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
                 )
                 self.btn_toggle.pack(fill="x", padx=4, pady=(0, 8))
 
-                if is_superadmin():
+                if self._can_edit:
                     ctk.CTkButton(
                         scroll, text=t("lockers.delete_btn"),
                         font=ctk.CTkFont(size=15, weight="bold"),
@@ -567,7 +567,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
         self._close()
 
     def _confirm_delete_locker(self) -> None:
-        if not is_superadmin():
+        if not self._can_edit:
             return
         if self._is_default:
             _AlertDialog(self, "Los lockers predeterminados no pueden eliminarse.")

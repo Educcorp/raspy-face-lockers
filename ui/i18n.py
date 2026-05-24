@@ -229,6 +229,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Returning to start in {s} s…",
     },
 
+    # ── Locker: Alerta de puerta abierta ────────────────────────────────────
+    "door.alert_title": {
+        "es": "FAVOR DE CERRAR EL LOCKER",
+        "en": "PLEASE CLOSE THE LOCKER",
+    },
+    "door.alert_locker": {
+        "es": "Locker {n} abierto",
+        "en": "Locker {n} is open",
+    },
+    "door.alert_subtitle": {
+        "es": "La puerta sigue abierta",
+        "en": "The door is still open",
+    },
+    "door.waiting_close": {
+        "es": "Esperando cierre de puerta…",
+        "en": "Waiting for door to close…",
+    },
+    "door.banner_prefix": {
+        "es": "⚠  Favor de cerrar el locker:",
+        "en": "⚠  Please close locker:",
+    },
+
     # ── Admin: LoginScreen ───────────────────────────────────────────────────
     "login.admin_access": {
         "es": "Acceso administrativo",
@@ -277,6 +299,22 @@ STRINGS: dict[str, dict[str, str]] = {
     "login.err_invalid": {
         "es": "Credenciales inválidas o cuenta inactiva",
         "en": "Invalid credentials or inactive account",
+    },
+    "login.err_not_found": {
+        "es": "Matrícula no encontrada",
+        "en": "ID number not found",
+    },
+    "login.err_inactive": {
+        "es": "Cuenta inactiva o bloqueada",
+        "en": "Account inactive or blocked",
+    },
+    "login.err_wrong_pin": {
+        "es": "PIN incorrecto",
+        "en": "Incorrect PIN",
+    },
+    "login.err_no_permission": {
+        "es": "Sin permisos de administrador",
+        "en": "No administrator permissions",
     },
 
     # ── Admin: DashboardScreen ───────────────────────────────────────────────

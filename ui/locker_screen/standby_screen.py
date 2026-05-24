@@ -145,8 +145,6 @@ class StandbyScreen(ctk.CTkFrame):
     def on_show(self) -> None:
         """Llamado por LockerApp.show_frame() al traer esta pantalla al frente."""
         self._transitioning = False
-        # Recrear face_manager para apuntar al singleton correcto tras posible liberación
-        # (mismo patrón que ScanningScreen.on_show — evita cámara congelada al volver)
         try:
             from core.face_recognition import get_face_recognition_manager
             self.face_manager = get_face_recognition_manager()
@@ -186,7 +184,7 @@ class StandbyScreen(ctk.CTkFrame):
             if not self.face_manager.initialized:
                 self.face_manager.initialize()
 
-            stable_hits = 0
+            face_first_seen: float | None = None
             while self._monitor_running and not self._transitioning:
                 frame, all_faces = self.face_manager.detect_faces_in_frame()
                 if frame is None:
@@ -197,14 +195,14 @@ class StandbyScreen(ctk.CTkFrame):
                 faces = filter_close_faces(all_faces, frame)
 
                 if faces:
-                    stable_hits += 1
+                    if face_first_seen is None:
+                        face_first_seen = time.time()
+                    elif time.time() - face_first_seen >= 3.0:
+                        self._transitioning = True
+                        self.after(0, self._go_scanning)
+                        break
                 else:
-                    stable_hits = 0
-
-                if stable_hits >= 3:
-                    self._transitioning = True
-                    self.after(0, self._go_scanning)
-                    break
+                    face_first_seen = None
 
                 time.sleep(0.12)
         except Exception as e:
@@ -229,6 +227,8 @@ class StandbyScreen(ctk.CTkFrame):
         self._transitioning = True
         from ui.locker_screen.scanning_screen import ScanningScreen
         self.controller.show_frame(ScanningScreen)
+
+    # ── Animación de puntos ───────────────────────────────────────────────────
 
     def _animate_dots(self, step: int = 0) -> None:
         """Alterna el brillo del indicador ● ● ● de forma cíclica."""

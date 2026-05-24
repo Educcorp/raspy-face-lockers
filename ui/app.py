@@ -87,6 +87,26 @@ class LockerApp(ctk.CTk):
 
         self.show_frame(StandbyScreen)
 
+        # ── Badge de locker abierto (flota sobre todas las pantallas) ─────────
+        self._badge_blink_job = None
+        self._badge_poll_job = None
+        self._badge_frame = ctk.CTkFrame(
+            self,
+            fg_color="#F3C94A",
+            corner_radius=0,
+            border_width=0,
+        )
+        self._badge_label = ctk.CTkLabel(
+            self._badge_frame,
+            text="",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color="#4A3B00",
+            fg_color="transparent",
+            wraplength=210,
+            justify="left",
+        )
+        self._badge_label.pack(padx=10, pady=7)
+
         # Alt+F4: siempre interceptado internamente (con kiosco abre confirmación,
         # sin kiosco cierra normalmente a través del diálogo igualmente)
         self.bind_all("<Alt-F4>", self._on_kiosk_exit_key)
@@ -108,6 +128,57 @@ class LockerApp(ctk.CTk):
         frame.tkraise()
         if hasattr(frame, "on_show"):
             frame.on_show()
+
+    # ── Badge de locker abierto ───────────────────────────────────────────────
+
+    def show_open_locker_badge(self) -> None:
+        """Muestra/actualiza el badge de locker sin cerrar. Seguro llamar varias veces."""
+        self._badge_update_text()
+        if self._badge_blink_job is None:
+            self._badge_blink(visible=True)
+        if self._badge_poll_job is None:
+            self._badge_poll_job = self.after(1000, self._badge_poll)
+
+    def _badge_update_text(self) -> None:
+        from ui.locker_screen.door_state import get_open_lockers
+        from ui.i18n import t
+        ids = sorted(get_open_lockers())
+        id_str = ", ".join(str(i) for i in ids)
+        self._badge_label.configure(text=f'{t("door.banner_prefix")} {id_str}')
+
+    def _badge_blink(self, visible: bool = True) -> None:
+        if visible:
+            self._badge_frame.place(x=8, y=8)
+            self._badge_frame.lift()
+        else:
+            self._badge_frame.place_forget()
+        self._badge_blink_job = self.after(500, self._badge_blink, not visible)
+
+    def _badge_poll(self) -> None:
+        from ui.locker_screen.door_state import get_open_lockers, remove_open_locker, has_open_lockers
+        try:
+            from core.door_switch_controller import get_door_switch_controller
+            controller = get_door_switch_controller()
+            if controller.is_available():
+                for lid in list(get_open_lockers()):
+                    if controller.read_state(lid) is True:
+                        remove_open_locker(lid)
+        except Exception:
+            pass
+        if has_open_lockers():
+            self._badge_update_text()
+            self._badge_poll_job = self.after(500, self._badge_poll)
+        else:
+            self._badge_stop()
+
+    def _badge_stop(self) -> None:
+        if self._badge_blink_job:
+            self.after_cancel(self._badge_blink_job)
+            self._badge_blink_job = None
+        if self._badge_poll_job:
+            self.after_cancel(self._badge_poll_job)
+            self._badge_poll_job = None
+        self._badge_frame.place_forget()
 
     # ── Admin bridge ──────────────────────────────────────────────────────────
 

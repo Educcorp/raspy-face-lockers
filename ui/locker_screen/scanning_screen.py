@@ -65,6 +65,8 @@ class ScanningScreen(ctk.CTkFrame):
     PIN_MAX_FAILS   = 3
     LOCK_SECONDS    = 60
     DISPLAY_SECONDS = 5
+    DOOR_ALERT_DELAY_S    = 10.0   # segundos de espera antes de mostrar alerta
+    DOOR_ALERT_DURATION_S =  5.0   # segundos que dura la pantalla de alerta
     RECOGNITION_INTERVAL_FRAMES = 5   # intentos de reconocimiento cada 5 frames (~0.33s)
     STABLE_FACE_FRAMES = 12           # rostro estable ~0.8s antes de intentar reconocimiento
     RECOGNITION_COOLDOWN_SECONDS = 3.0  # mínimo 3s entre intentos de reconocimiento
@@ -113,10 +115,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._door_wait_active = False
         self._door_wait_started_at = 0.0
         self._door_open_seen = False
-        self._door_wait_warned = False
-        self._door_warn_last_shown = 0.0
-        self._door_warn_hide_job = None
-        self._door_success_hide_job = None
+        self._door_wait_phase: str = "waiting"   # "waiting" | "alerting"
         self._door_wait_locker_id: int | None = None
         self._door_wait_assignment_id: int | None = None
 
@@ -386,7 +385,7 @@ class ScanningScreen(ctk.CTkFrame):
             justify="center",
         ).pack()
 
-        # ── Overlay de advertencia (puerta abierta) ─────────────────────────
+        # ── Overlay de alerta de puerta abierta (pantalla completa, 5 s) ────
         self.door_warning_overlay = ctk.CTkFrame(
             self,
             fg_color="#F3C94A",
@@ -405,32 +404,34 @@ class ScanningScreen(ctk.CTkFrame):
             fg_color="transparent",
         ).pack(pady=(0, 16))
 
-        ctk.CTkLabel(
+        self.lbl_door_alert_title = ctk.CTkLabel(
             _dw,
-            text="FAVOR DE CERRAR EL LOCKER",
+            text=t("door.alert_title"),
             font=ctk.CTkFont(size=28, weight="bold"),
             text_color="#4A3B00",
             fg_color="transparent",
             wraplength=390,
             justify="center",
-        ).pack()
+        )
+        self.lbl_door_alert_title.pack()
 
         self.lbl_door_warning_locker = ctk.CTkLabel(
             _dw,
-            text="Locker abierto",
+            text="",
             font=ctk.CTkFont(size=18, weight="bold"),
             text_color="#4A3B00",
             fg_color="transparent",
         )
         self.lbl_door_warning_locker.pack(pady=(10, 0))
 
-        ctk.CTkLabel(
+        self.lbl_door_alert_subtitle = ctk.CTkLabel(
             _dw,
-            text="La puerta sigue abierta",
+            text=t("door.alert_subtitle"),
             font=ctk.CTkFont(size=15),
             text_color="#4A3B00",
             fg_color="transparent",
-        ).pack(pady=(8, 0))
+        )
+        self.lbl_door_alert_subtitle.pack(pady=(8, 0))
 
     # ── Captura de video en background ────────────────────────────────────────
 
@@ -792,14 +793,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._door_wait_active = False
         self._door_wait_started_at = 0.0
         self._door_open_seen = False
-        self._door_wait_warned = False
-        self._door_warn_last_shown = 0.0
-        if self._door_warn_hide_job:
-            self.after_cancel(self._door_warn_hide_job)
-            self._door_warn_hide_job = None
-        if self._door_success_hide_job:
-            self.after_cancel(self._door_success_hide_job)
-            self._door_success_hide_job = None
+        self._door_wait_phase = "waiting"
         self._door_wait_locker_id = None
         self._door_wait_assignment_id = None
         if self._door_wait_job:
@@ -854,13 +848,6 @@ class ScanningScreen(ctk.CTkFrame):
         self._latest_frame_for_detect = None
         self._door_wait_active = False
         self._door_open_seen = False
-        self._door_warn_last_shown = 0.0
-        if self._door_warn_hide_job:
-            self.after_cancel(self._door_warn_hide_job)
-            self._door_warn_hide_job = None
-        if self._door_success_hide_job:
-            self.after_cancel(self._door_success_hide_job)
-            self._door_success_hide_job = None
         if self._door_wait_job:
             self.after_cancel(self._door_wait_job)
             self._door_wait_job = None
@@ -1013,14 +1000,12 @@ class ScanningScreen(ctk.CTkFrame):
             return
 
         self._door_wait_active = True
-        self._door_wait_warned = False
+        self._door_wait_phase = "waiting"
         self._door_open_seen = False
-        self._door_warn_last_shown = 0.0
         self._door_wait_locker_id = int(locker_id)
         self._door_wait_assignment_id = assignment_id
         self._door_wait_started_at = time.time()
-        self.lbl_countdown.configure(text="Esperando cierre de puerta...")
-        self._schedule_success_overlay_hide()
+        self.lbl_countdown.configure(text=t("door.waiting_close"))
         self._poll_door_close()
 
     def _poll_door_close(self) -> None:
@@ -1032,8 +1017,7 @@ class ScanningScreen(ctk.CTkFrame):
         controller = get_door_switch_controller()
         state = controller.read_state(self._door_wait_locker_id)
         now = time.time()
-
-        cooldown_s = float(DOOR_SWITCH_CONFIG.get("close_cooldown_seconds", 10.0))
+        elapsed = now - self._door_wait_started_at
 
         if state is None:
             self._door_wait_active = False
@@ -1044,87 +1028,55 @@ class ScanningScreen(ctk.CTkFrame):
         if state is False:
             self._door_open_seen = True
 
-        if state is True and self._door_open_seen and (now - self._door_wait_started_at) >= cooldown_s:
-            self._finish_door_wait(closed=True)
-            return
-
-        timeout_s = float(DOOR_SWITCH_CONFIG.get("close_timeout_seconds", 10.0))
-        warn_duration_s = float(DOOR_SWITCH_CONFIG.get("warning_duration_seconds", 6.0))
-        warn_repeat_s = float(DOOR_SWITCH_CONFIG.get("warning_repeat_seconds", 45.0))
-        should_warn = self._door_open_seen and (now - self._door_wait_started_at) >= timeout_s
-        can_repeat = (now - self._door_warn_last_shown) >= warn_repeat_s
-        if should_warn and (not self._door_wait_warned or can_repeat):
-            self._door_wait_warned = True
-            self._door_warn_last_shown = now
-            self._show_door_warning()
-            if self._door_warn_hide_job:
-                self.after_cancel(self._door_warn_hide_job)
-            self._door_warn_hide_job = self.after(
-                int(warn_duration_s * 1000),
-                self._hide_door_warning,
-            )
-            access_log_service.register_access(
-                self._door_wait_assignment_id,
-                permitted=False,
-                motivo="puerta_no_cerrada",
-            )
-
-        poll_ms = int(DOOR_SWITCH_CONFIG.get("poll_interval_ms", 200))
-        self._door_wait_job = self.after(poll_ms, self._poll_door_close)
-
-    def _finish_door_wait(self, closed: bool) -> None:
-        self._door_wait_active = False
-        if self._door_wait_job:
-            self.after_cancel(self._door_wait_job)
-            self._door_wait_job = None
-        if self._door_warn_hide_job:
-            self.after_cancel(self._door_warn_hide_job)
-            self._door_warn_hide_job = None
-        if self._door_success_hide_job:
-            self.after_cancel(self._door_success_hide_job)
-            self._door_success_hide_job = None
-
-        if closed:
-            self._hide_door_warning()
-
-        if closed:
+        # Door closed after being opened → success, go to standby
+        if state is True and self._door_open_seen:
+            self._door_wait_active = False
+            if self._door_wait_job:
+                self.after_cancel(self._door_wait_job)
+                self._door_wait_job = None
             access_log_service.register_access(
                 self._door_wait_assignment_id,
                 permitted=True,
                 motivo="puerta_cerrada",
             )
-            self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
-            self.lbl_countdown.configure(text="Puerta cerrada. Volviendo al inicio...")
-            self.after(800, self._go_standby)
-        else:
             self._go_standby()
+            return
 
-    def _show_door_warning(self) -> None:
+        # Phase transition: waiting → alerting at DOOR_ALERT_DELAY_S
+        if self._door_wait_phase == "waiting" and elapsed >= self.DOOR_ALERT_DELAY_S:
+            self._door_wait_phase = "alerting"
+            self._show_door_alert()
+
+        # Phase end: alerting expires → mark locker open and go to standby
+        if self._door_wait_phase == "alerting" and elapsed >= self.DOOR_ALERT_DELAY_S + self.DOOR_ALERT_DURATION_S:
+            self._door_wait_active = False
+            if self._door_wait_job:
+                self.after_cancel(self._door_wait_job)
+                self._door_wait_job = None
+            access_log_service.register_access(
+                self._door_wait_assignment_id,
+                permitted=False,
+                motivo="puerta_no_cerrada",
+            )
+            from ui.locker_screen.door_state import add_open_locker
+            add_open_locker(self._door_wait_locker_id)
+            if hasattr(self.controller, "show_open_locker_badge"):
+                self.controller.show_open_locker_badge()
+            self._go_standby()
+            return
+
+        poll_ms = int(DOOR_SWITCH_CONFIG.get("poll_interval_ms", 200))
+        self._door_wait_job = self.after(poll_ms, self._poll_door_close)
+
+    def _show_door_alert(self) -> None:
+        self.overlay_bg.place_forget()
+        self.canvas.delete("all")
         if self._door_wait_locker_id is not None:
             self.lbl_door_warning_locker.configure(
-                text=f"Locker {self._door_wait_locker_id} abierto"
+                text=t("door.alert_locker", n=self._door_wait_locker_id)
             )
         self.door_warning_overlay.place(x=0, y=0, relwidth=1, relheight=1)
         self.door_warning_overlay.lift()
-
-    def _hide_door_warning(self) -> None:
-        self.door_warning_overlay.place_forget()
-
-    def _schedule_success_overlay_hide(self) -> None:
-        if self._door_success_hide_job:
-            self.after_cancel(self._door_success_hide_job)
-        cooldown_s = float(DOOR_SWITCH_CONFIG.get("close_timeout_seconds", 5.0))
-        self._door_success_hide_job = self.after(
-            int(cooldown_s * 1000),
-            self._hide_success_overlay_if_waiting,
-        )
-
-    def _hide_success_overlay_if_waiting(self) -> None:
-        self._door_success_hide_job = None
-        if not self._door_wait_active:
-            return
-        self.overlay_bg.place_forget()
-        self.lbl_status.configure(text="Esperando cierre de puerta...", text_color="#FFD54F")
 
     # ── Métodos internos ──────────────────────────────────────────────────────
 

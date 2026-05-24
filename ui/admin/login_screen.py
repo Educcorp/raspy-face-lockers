@@ -353,9 +353,15 @@ class LoginScreen(ctk.CTkFrame):
             self.lbl_error.configure(text=t("login.err_empty"))
             return
 
-        user = authenticate_admin_user(matricula, pin)
-        if not user:
-            self.lbl_error.configure(text=t("login.err_invalid"))
+        error_code, user = authenticate_admin_user(matricula, pin)
+        if error_code is not None:
+            error_msgs = {
+                "not_found": t("login.err_not_found"),
+                "inactive": t("login.err_inactive"),
+                "wrong_pin": t("login.err_wrong_pin"),
+                "no_permission": t("login.err_no_permission"),
+            }
+            self.lbl_error.configure(text=error_msgs.get(error_code, t("login.err_invalid")))
             return
 
         set_current_user(user)

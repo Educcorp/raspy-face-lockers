@@ -165,7 +165,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
 		)
-		self.lbl_feedback.pack(anchor="w", padx=4, pady=(2, 8))
+		# Not packed — feedback is conveyed through button states only
 
 		ctk.CTkLabel(
 			body,
@@ -191,14 +191,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			self.manual_open_frame = ctk.CTkFrame(body, fg_color="transparent")
 			self.manual_open_frame.pack(fill="x", padx=4, pady=(0, 8))
 
-			self.lbl_manual_feedback = ctk.CTkLabel(
-				body,
-				text="",
-				font=ctk.CTkFont(size=12),
-				text_color=PALETTE["MUTED"],
-				fg_color="transparent",
-			)
-			self.lbl_manual_feedback.pack(anchor="w", padx=4, pady=(0, 6))
+			self.lbl_manual_feedback = None
 		else:
 			self.manual_open_frame = None
 			self.lbl_manual_feedback = None

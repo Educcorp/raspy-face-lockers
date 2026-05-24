@@ -7,7 +7,7 @@ import customtkinter as ctk
 
 from auth.session import authenticate_admin_user, set_current_user
 from ui.admin_app import PALETTE, get_icon
-from ui.i18n import t, lang_btn_text
+from ui.i18n import t
 
 
 class LoginScreen(ctk.CTkFrame):
@@ -106,20 +106,6 @@ class LoginScreen(ctk.CTkFrame):
             wraplength=300,
         ).pack(anchor="w")
 
-        ctk.CTkButton(
-            top,
-            text=lang_btn_text(),
-            font=ctk.CTkFont(size=20),
-            width=48,
-            height=36,
-            fg_color=PALETTE["BG"],
-            hover_color=PALETTE["BORDER"],
-            border_width=1,
-            border_color=PALETTE["BORDER"],
-            text_color=PALETTE["TEXT"],
-            corner_radius=10,
-            command=self.controller.toggle_lang,
-        ).place(in_=hero, relx=0.965, rely=0.20, anchor="e")
 
         card = ctk.CTkFrame(
             self,

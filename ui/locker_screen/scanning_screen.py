@@ -115,6 +115,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._door_wait_active = False
         self._door_wait_started_at = 0.0
         self._door_open_seen = False
+        self._door_open_count: int = 0           # consecutive open readings (debounce)
         self._door_wait_phase: str = "waiting"   # "waiting" | "alerting"
         self._door_wait_locker_id: int | None = None
         self._door_wait_assignment_id: int | None = None
@@ -1014,6 +1015,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._door_wait_active = True
         self._door_wait_phase = "waiting"
         self._door_open_seen = False
+        self._door_open_count = 0
         self._door_wait_locker_id = int(locker_id)
         self._door_wait_assignment_id = assignment_id
         self._door_wait_started_at = time.time()
@@ -1037,10 +1039,16 @@ class ScanningScreen(ctk.CTkFrame):
             self._start_countdown(self.DISPLAY_SECONDS)
             return
 
+        # Debounce: require 3 consecutive open readings (~600 ms) to avoid
+        # solenoid-activation noise triggering a false "door opened" detection.
         if state is False:
-            self._door_open_seen = True
+            self._door_open_count += 1
+            if self._door_open_count >= 3:
+                self._door_open_seen = True
+        else:
+            self._door_open_count = 0
 
-        # Door closed after being opened → success, go to standby
+        # Door closed after being genuinely opened → success, go to standby
         if state is True and self._door_open_seen:
             self._door_wait_active = False
             if self._door_wait_job:
@@ -1054,7 +1062,18 @@ class ScanningScreen(ctk.CTkFrame):
             self._go_standby()
             return
 
+        # Door was never opened and timeout reached → user ignored the solenoid,
+        # go to standby silently with no alert and no open-locker badge.
+        if not self._door_open_seen and elapsed >= self.DOOR_ALERT_DELAY_S:
+            self._door_wait_active = False
+            if self._door_wait_job:
+                self.after_cancel(self._door_wait_job)
+                self._door_wait_job = None
+            self._go_standby()
+            return
+
         # Phase transition: waiting → alerting at DOOR_ALERT_DELAY_S
+        # (only reached if door was genuinely opened)
         if self._door_wait_phase == "waiting" and elapsed >= self.DOOR_ALERT_DELAY_S:
             self._door_wait_phase = "alerting"
             self._show_door_alert()

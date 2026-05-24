@@ -270,14 +270,6 @@ class LockerApp(ctk.CTk):
     # ── Rebuild admin ─────────────────────────────────────────────────────────
 
     def _rebuild_admin_frames(self) -> None:
-        going_dark = self._mode == "dark"
-        veil = self._create_veil(
-            text="Cambiando a modo oscuro…" if going_dark else "Cambiando a modo claro…",
-            icon="🌙" if going_dark else "☀️",
-        )
-        self.after(30, lambda: self._do_rebuild_admin(veil))
-
-    def _do_rebuild_admin(self, veil: ctk.CTkFrame) -> None:
         from ui.admin.login_screen      import LoginScreen
         from ui.admin.dashboard         import DashboardScreen
         from ui.admin.users_catalog     import UsersCatalogScreen
@@ -293,25 +285,17 @@ class LockerApp(ctk.CTk):
             LockersCatalogScreen, AreasCatalogScreen,
             AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
         )
-        try:
-            ctk.set_appearance_mode("dark" if self._mode == "dark" else "light")
-            for cls in admin_classes:
-                if cls in self._frames:
-                    self._frames[cls].destroy()
-                    del self._frames[cls]
-            self._admin_frames_built = False
-            self.ensure_admin_frames()
-            # New frames stack above the veil — keep the veil on top
-            if veil.winfo_exists():
-                veil.lift()
-            if is_authenticated():
-                self.show_frame(DashboardScreen)
-            else:
-                self.show_frame(LoginScreen)
-        finally:
-            if veil.winfo_exists():
-                veil.lift()
-                veil.destroy()
+        ctk.set_appearance_mode("dark" if self._mode == "dark" else "light")
+        for cls in admin_classes:
+            if cls in self._frames:
+                self._frames[cls].destroy()
+                del self._frames[cls]
+        self._admin_frames_built = False
+        self.ensure_admin_frames()
+        if is_authenticated():
+            self.show_frame(DashboardScreen)
+        else:
+            self.show_frame(LoginScreen)
 
     # ── Rebuild all (cambio de idioma) ────────────────────────────────────────
 

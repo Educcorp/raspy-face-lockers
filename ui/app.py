@@ -93,6 +93,7 @@ class LockerApp(ctk.CTk):
         self._badge_frame = ctk.CTkFrame(
             self,
             fg_color="#F3C94A",
+            bg_color="#F3C94A",
             corner_radius=0,
             border_width=0,
         )
@@ -128,6 +129,9 @@ class LockerApp(ctk.CTk):
         frame.tkraise()
         if hasattr(frame, "on_show"):
             frame.on_show()
+        # Badge must always sit above every screen frame
+        if getattr(self, "_badge_blink_job", None) is not None:
+            self._badge_frame.lift()
 
     # ── Badge de locker abierto ───────────────────────────────────────────────
 
@@ -297,6 +301,9 @@ class LockerApp(ctk.CTk):
                     del self._frames[cls]
             self._admin_frames_built = False
             self.ensure_admin_frames()
+            # New frames stack above the veil — keep the veil on top
+            if veil.winfo_exists():
+                veil.lift()
             if is_authenticated():
                 self.show_frame(DashboardScreen)
             else:
@@ -317,6 +324,13 @@ class LockerApp(ctk.CTk):
         from ui.locker_screen.scanning_screen import ScanningScreen
         from ui.locker_screen.user_display    import UserDisplayScreen
         from auth.session import is_authenticated
+
+        # Remember if we were on a locker screen before rebuilding
+        locker_was_active = any(
+            cls in self._frames and self._frames[cls].winfo_ismapped()
+            for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen)
+        )
+
         try:
             for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen):
                 if cls in self._frames:
@@ -326,6 +340,9 @@ class LockerApp(ctk.CTk):
                 frame = FrameClass(parent=self, controller=self)
                 self._frames[FrameClass] = frame
                 frame.grid(row=0, column=0, sticky="nsew")
+            # New frames stack above the veil — keep the veil on top throughout
+            if veil.winfo_exists():
+                veil.lift()
             if self._admin_frames_built:
                 from ui.admin.login_screen      import LoginScreen
                 from ui.admin.dashboard         import DashboardScreen
@@ -346,8 +363,12 @@ class LockerApp(ctk.CTk):
                         del self._frames[cls]
                 self._admin_frames_built = False
                 self.ensure_admin_frames()
+                if veil.winfo_exists():
+                    veil.lift()
                 if is_authenticated():
                     self.show_frame(DashboardScreen)
+                elif locker_was_active:
+                    self.show_frame(StandbyScreen)
                 else:
                     self.show_frame(LoginScreen)
             else:

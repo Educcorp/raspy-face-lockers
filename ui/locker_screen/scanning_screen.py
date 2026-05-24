@@ -67,13 +67,13 @@ class ScanningScreen(ctk.CTkFrame):
     DISPLAY_SECONDS = 5
     DOOR_ALERT_DELAY_S    = 10.0   # segundos de espera antes de mostrar alerta
     DOOR_ALERT_DURATION_S =  5.0   # segundos que dura la pantalla de alerta
-    RECOGNITION_INTERVAL_FRAMES = 5   # intentos de reconocimiento cada 5 frames (~0.33s)
-    STABLE_FACE_FRAMES = 12           # rostro estable ~0.8s antes de intentar reconocimiento
-    RECOGNITION_COOLDOWN_SECONDS = 3.0  # mínimo 3s entre intentos de reconocimiento
+    RECOGNITION_INTERVAL_FRAMES = 4   # intentos de reconocimiento cada 4 frames
+    STABLE_FACE_FRAMES = 6            # rostro estable ~0.4s antes de intentar reconocimiento
+    RECOGNITION_COOLDOWN_SECONDS = 1.5  # mínimo 1.5s entre intentos de reconocimiento
     LIVENESS_HISTORY_FRAMES = 12      # 12 frames de historial de movimiento (~0.8s)
     LIVENESS_MIN_MOTION = 1.5         # requiere movimiento natural real (no ruido)
     LIVENESS_MIN_BOX_SHIFT = 0.015    # desplazamiento mínimo visible del rostro
-    MIN_SCAN_SECONDS = 3.5            # tiempo mínimo de escaneo antes de intentar identificar
+    MIN_SCAN_SECONDS = 2.0            # tiempo mínimo de escaneo antes de intentar identificar
     AUTO_RETURN_SECONDS = 25.0        # segundos sin cara cercana → volver a standby
     LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
     CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
@@ -399,15 +399,15 @@ class ScanningScreen(ctk.CTkFrame):
         ctk.CTkLabel(
             _dw,
             text="⚠",
-            font=ctk.CTkFont(size=90, weight="bold"),
+            font=ctk.CTkFont(size=64, weight="bold"),
             text_color="#4A3B00",
             fg_color="transparent",
-        ).pack(pady=(0, 16))
+        ).pack(pady=(0, 4))
 
         self.lbl_door_alert_title = ctk.CTkLabel(
             _dw,
             text=t("door.alert_title"),
-            font=ctk.CTkFont(size=28, weight="bold"),
+            font=ctk.CTkFont(size=24, weight="bold"),
             text_color="#4A3B00",
             fg_color="transparent",
             wraplength=390,
@@ -418,11 +418,11 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_door_warning_locker = ctk.CTkLabel(
             _dw,
             text="",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=ctk.CTkFont(size=130, weight="bold"),
             text_color="#4A3B00",
             fg_color="transparent",
         )
-        self.lbl_door_warning_locker.pack(pady=(10, 0))
+        self.lbl_door_warning_locker.pack(pady=(0, 0))
 
         self.lbl_door_alert_subtitle = ctk.CTkLabel(
             _dw,
@@ -431,7 +431,7 @@ class ScanningScreen(ctk.CTkFrame):
             text_color="#4A3B00",
             fg_color="transparent",
         )
-        self.lbl_door_alert_subtitle.pack(pady=(8, 0))
+        self.lbl_door_alert_subtitle.pack(pady=(4, 0))
 
     # ── Captura de video en background ────────────────────────────────────────
 
@@ -532,6 +532,18 @@ class ScanningScreen(ctk.CTkFrame):
                 all_faces = []
 
             faces = _filter_close_faces(all_faces, frame)
+
+            # Reject faces whose bounding box touches or overflows the frame edges
+            if faces:
+                fh, fw = frame.shape[:2]
+                edge = int(min(fh, fw) * 0.05)  # 5% margin on each side
+                complete = []
+                for f in faces:
+                    bx, by, bw, bh = f.get("box", (0, 0, 0, 0))
+                    if bx >= edge and by >= edge and bx + bw <= fw - edge and by + bh <= fh - edge:
+                        complete.append(f)
+                faces = complete
+
             self._detected_faces = faces
             self._face_detected  = len(faces) > 0
 
@@ -1060,9 +1072,10 @@ class ScanningScreen(ctk.CTkFrame):
             )
             from ui.locker_screen.door_state import add_open_locker
             add_open_locker(self._door_wait_locker_id)
+            self._go_standby()
+            # Badge must be lifted AFTER show_frame raises the new screen
             if hasattr(self.controller, "show_open_locker_badge"):
                 self.controller.show_open_locker_badge()
-            self._go_standby()
             return
 
         poll_ms = int(DOOR_SWITCH_CONFIG.get("poll_interval_ms", 200))
@@ -1073,7 +1086,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.canvas.delete("all")
         if self._door_wait_locker_id is not None:
             self.lbl_door_warning_locker.configure(
-                text=t("door.alert_locker", n=self._door_wait_locker_id)
+                text=str(self._door_wait_locker_id)
             )
         self.door_warning_overlay.place(x=0, y=0, relwidth=1, relheight=1)
         self.door_warning_overlay.lift()

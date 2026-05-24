@@ -106,23 +106,6 @@ class LoginScreen(ctk.CTkFrame):
             wraplength=300,
         ).pack(anchor="w")
 
-        mode = getattr(self.controller, "_mode", "light")
-        theme_icon = "moon" if mode == "light" else "sun"
-        self._theme_icon = get_icon(theme_icon, size=22, color=PALETTE["TEXT"])
-        ctk.CTkButton(
-            top,
-            text="",
-            image=self._theme_icon,
-            width=44,
-            height=44,
-            fg_color=PALETTE["BG"],
-            hover_color=PALETTE["BORDER"],
-            border_width=1,
-            border_color=PALETTE["BORDER"],
-            corner_radius=12,
-            command=self.controller.toggle_theme,
-        ).place(in_=hero, relx=0.965, rely=0.20, anchor="e")
-
         ctk.CTkButton(
             top,
             text=lang_btn_text(),
@@ -136,7 +119,7 @@ class LoginScreen(ctk.CTkFrame):
             text_color=PALETTE["TEXT"],
             corner_radius=10,
             command=self.controller.toggle_lang,
-        ).place(in_=hero, relx=0.78, rely=0.20, anchor="e")
+        ).place(in_=hero, relx=0.965, rely=0.20, anchor="e")
 
         card = ctk.CTkFrame(
             self,

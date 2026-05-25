@@ -1084,11 +1084,6 @@ class ScanningScreen(ctk.CTkFrame):
             if self._door_wait_job:
                 self.after_cancel(self._door_wait_job)
                 self._door_wait_job = None
-            access_log_service.register_access(
-                self._door_wait_assignment_id,
-                permitted=False,
-                motivo="puerta_no_cerrada",
-            )
             from ui.locker_screen.door_state import add_open_locker
             add_open_locker(self._door_wait_locker_id)
             self._go_standby()

@@ -146,12 +146,15 @@ def can_edit_catalogs() -> bool:
 def filter_assignable_user_types(rows: list[dict]) -> list[dict]:
 	"""Filtra tipos asignables según rol actual.
 
-	- Superadmin: todos los tipos activos.
+	- Superadmin: todos los tipos activos excepto Superadmin (solo puede haber uno).
 	- Admin: solo tipo Usuario.
 	- Usuario: ninguno.
 	"""
 	if is_superadmin():
-		return rows
+		return [
+			r for r in rows
+			if normalize_user_type_name(r.get("nombreTipoUsuario")) != ROLE_SUPERADMIN
+		]
 	if is_admin():
 		return [
 			r for r in rows
@@ -168,10 +171,13 @@ def _pin_matches(pin_input: str, pin_stored: str | None) -> bool:
 	return hmac.compare_digest(pin_stored, hashed) or hmac.compare_digest(pin_stored, pin_input)
 
 
-def authenticate_admin_user(matricula: str, pin: str) -> dict | None:
+def authenticate_admin_user(matricula: str, pin: str) -> tuple[str | None, dict | None]:
 	"""Autentica un usuario admin contra BD por matrícula + PIN.
 
-	Devuelve dict con datos de sesión si es válido y activo.
+	Retorna (error_code, user_dict).
+	- Si error_code es None: autenticación exitosa, user_dict tiene los datos.
+	- Si error_code no es None: falla con código 'not_found', 'inactive',
+	  'wrong_pin' o 'no_permission'.
 	"""
 	row = fetch_one(
 		"""
@@ -188,19 +194,19 @@ def authenticate_admin_user(matricula: str, pin: str) -> dict | None:
 	)
 
 	if not row:
-		return None
+		return "not_found", None
 	if (row.get("estado") or "").strip().lower() != "activo":
-		return None
+		return "inactive", None
 	if (row.get("tipo_estado") or "activo").strip().lower() != "activo":
-		return None
+		return "inactive", None
 	if not _pin_matches(pin.strip(), row.get("pin")):
-		return None
+		return "wrong_pin", None
 
 	role = normalize_user_type_name(row.get("tipo"))
 	if role not in {ROLE_SUPERADMIN, ROLE_ADMIN}:
-		return None
+		return "no_permission", None
 
-	return {
+	return None, {
 		"idUsuario": row.get("idUsuario"),
 		"matricula": str(row.get("matricula") or ""),
 		"full_name": row.get("full_name") or "",

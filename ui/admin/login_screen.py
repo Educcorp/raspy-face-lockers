@@ -7,7 +7,7 @@ import customtkinter as ctk
 
 from auth.session import authenticate_admin_user, set_current_user
 from ui.admin_app import PALETTE, get_icon
-from ui.i18n import t, lang_btn_text
+from ui.i18n import t
 
 
 class LoginScreen(ctk.CTkFrame):
@@ -18,6 +18,18 @@ class LoginScreen(ctk.CTkFrame):
         self._matricula_var = tk.StringVar()
         self._pin_var = tk.StringVar()
         self._show_pin_var = tk.BooleanVar(value=False)
+
+        # Solo dígitos, con límite de longitud
+        def _only_digits(var, maxlen):
+            def _cb(*_):
+                val = var.get()
+                clean = "".join(c for c in val if c.isdigit())[:maxlen]
+                if clean != val:
+                    var.set(clean)
+            return _cb
+
+        self._matricula_var.trace_add("write", _only_digits(self._matricula_var, 8))
+        self._pin_var.trace_add("write",      _only_digits(self._pin_var,       4))
 
         self._build_ui()
 
@@ -94,37 +106,6 @@ class LoginScreen(ctk.CTkFrame):
             wraplength=300,
         ).pack(anchor="w")
 
-        mode = getattr(self.controller, "_mode", "light")
-        theme_icon = "moon" if mode == "light" else "sun"
-        self._theme_icon = get_icon(theme_icon, size=22, color=PALETTE["TEXT"])
-        ctk.CTkButton(
-            top,
-            text="",
-            image=self._theme_icon,
-            width=44,
-            height=44,
-            fg_color=PALETTE["BG"],
-            hover_color=PALETTE["BORDER"],
-            border_width=1,
-            border_color=PALETTE["BORDER"],
-            corner_radius=12,
-            command=self.controller.toggle_theme,
-        ).place(in_=hero, relx=0.965, rely=0.20, anchor="e")
-
-        ctk.CTkButton(
-            top,
-            text=lang_btn_text(),
-            font=ctk.CTkFont(size=20),
-            width=48,
-            height=36,
-            fg_color=PALETTE["BG"],
-            hover_color=PALETTE["BORDER"],
-            border_width=1,
-            border_color=PALETTE["BORDER"],
-            text_color=PALETTE["TEXT"],
-            corner_radius=10,
-            command=self.controller.toggle_lang,
-        ).place(in_=hero, relx=0.78, rely=0.20, anchor="e")
 
         card = ctk.CTkFrame(
             self,
@@ -341,9 +322,15 @@ class LoginScreen(ctk.CTkFrame):
             self.lbl_error.configure(text=t("login.err_empty"))
             return
 
-        user = authenticate_admin_user(matricula, pin)
-        if not user:
-            self.lbl_error.configure(text=t("login.err_invalid"))
+        error_code, user = authenticate_admin_user(matricula, pin)
+        if error_code is not None:
+            error_msgs = {
+                "not_found": t("login.err_not_found"),
+                "inactive": t("login.err_inactive"),
+                "wrong_pin": t("login.err_wrong_pin"),
+                "no_permission": t("login.err_no_permission"),
+            }
+            self.lbl_error.configure(text=error_msgs.get(error_code, t("login.err_invalid")))
             return
 
         set_current_user(user)

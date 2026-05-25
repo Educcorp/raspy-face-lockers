@@ -13,6 +13,7 @@ import logging
 import os
 from PIL import Image
 from ui.i18n import t, lang_btn_text
+from core.face_recognition import filter_close_faces
 
 logger = logging.getLogger(__name__)
 
@@ -128,13 +129,13 @@ class StandbyScreen(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row,
             text=lang_btn_text(),
-            font=ctk.CTkFont(size=26),
+            font=ctk.CTkFont(size=14),
             fg_color="transparent",
             hover_color="#CCCCCC",
             text_color="#FFFFFF",
             border_width=2,
             border_color="#FFFFFF",
-            width=72, height=56,
+            width=124, height=56,
             corner_radius=16,
             command=self.controller.toggle_lang,
         ).pack(side="left")
@@ -144,6 +145,11 @@ class StandbyScreen(ctk.CTkFrame):
     def on_show(self) -> None:
         """Llamado por LockerApp.show_frame() al traer esta pantalla al frente."""
         self._transitioning = False
+        try:
+            from core.face_recognition import get_face_recognition_manager
+            self.face_manager = get_face_recognition_manager()
+        except Exception as e:
+            logger.error("Error recreando face_manager en standby: %s", e)
         self._animate_dots()
         self._start_face_monitor()
 
@@ -162,6 +168,10 @@ class StandbyScreen(ctk.CTkFrame):
         self._monitor_running = False
         if self._monitor_thread:
             self._monitor_thread.join(timeout=1.0)
+            if self._monitor_thread.is_alive():
+                logger.warning("Monitor de rostro no finalizo; liberando camara")
+                self._release_face_manager()
+                self._monitor_thread.join(timeout=1.0)
             self._monitor_thread = None
 
     def _monitor_loop(self) -> None:
@@ -174,22 +184,25 @@ class StandbyScreen(ctk.CTkFrame):
             if not self.face_manager.initialized:
                 self.face_manager.initialize()
 
-            stable_hits = 0
+            face_first_seen: float | None = None
             while self._monitor_running and not self._transitioning:
-                frame, faces = self.face_manager.detect_faces_in_frame()
+                frame, all_faces = self.face_manager.detect_faces_in_frame()
                 if frame is None:
                     time.sleep(0.15)
                     continue
 
-                if faces:
-                    stable_hits += 1
-                else:
-                    stable_hits = 0
+                # Solo reaccionar a caras cercanas (~1 metro)
+                faces = filter_close_faces(all_faces, frame)
 
-                if stable_hits >= 3:
-                    self._transitioning = True
-                    self.after(0, self._go_scanning)
-                    break
+                if faces:
+                    if face_first_seen is None:
+                        face_first_seen = time.time()
+                    elif time.time() - face_first_seen >= 3.0:
+                        self._transitioning = True
+                        self.after(0, self._go_scanning)
+                        break
+                else:
+                    face_first_seen = None
 
                 time.sleep(0.12)
         except Exception as e:
@@ -214,6 +227,8 @@ class StandbyScreen(ctk.CTkFrame):
         self._transitioning = True
         from ui.locker_screen.scanning_screen import ScanningScreen
         self.controller.show_frame(ScanningScreen)
+
+    # ── Animación de puntos ───────────────────────────────────────────────────
 
     def _animate_dots(self, step: int = 0) -> None:
         """Alterna el brillo del indicador ● ● ● de forma cíclica."""

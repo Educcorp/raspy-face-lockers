@@ -90,6 +90,46 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Intentos: {a} / {m}",
         "en": "Attempts: {a} / {m}",
     },
+    "scan.access_denied": {
+        "es": "✗ ACCESO DENEGADO",
+        "en": "✗ ACCESS DENIED",
+    },
+    "scan.not_registered": {
+        "es": "✗  Usuario no registrado",
+        "en": "✗  User not registered",
+    },
+    "scan.denied_title": {
+        "es": "ACCESO DENEGADO",
+        "en": "ACCESS DENIED",
+    },
+    "scan.denied_subtitle": {
+        "es": "Usuario no reconocido",
+        "en": "User not recognized",
+    },
+    "scan.denied_use_pin": {
+        "es": "Intenta con tu matrícula y PIN",
+        "en": "Try with your ID and PIN",
+    },
+    "scan.success_locker_open": {
+        "es": "✓  Locker {n}  abierto",
+        "en": "✓  Locker {n}  opened",
+    },
+    "scan.success_identity": {
+        "es": "Identidad verificada",
+        "en": "Identity verified",
+    },
+    "scan.unlocked": {
+        "es": "DESBLOQUEADO",
+        "en": "UNLOCKED",
+    },
+    "scan.locker_label": {
+        "es": "Locker",
+        "en": "Locker",
+    },
+    "scan.success_no_locker": {
+        "es": "Sin locker asignado",
+        "en": "No locker assigned",
+    },
     "scan.not_recognized_use_pin": {
         "es": "✗ No reconocido — usa tu PIN",
         "en": "✗ Not recognized — use your PIN",
@@ -97,6 +137,14 @@ STRINGS: dict[str, dict[str, str]] = {
     "scan.face_not_recognized": {
         "es": "Rostro no reconocido ({a}/{m})",
         "en": "Face not recognized ({a}/{m})",
+    },
+    "scan.hint_closer": {
+        "es": "Acérquese más a la cámara",
+        "en": "Move closer to the camera",
+    },
+    "scan.hint_farther": {
+        "es": "Aléjese un poco de la cámara",
+        "en": "Move a bit farther from the camera",
     },
 
     # ── Locker: ScanningScreen – overlay PIN ─────────────────────────────────
@@ -136,9 +184,21 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Matrícula no encontrada",
         "en": "ID number not found",
     },
+    "pin.err_matricula_too_short": {
+        "es": "La matrícula debe tener al menos 5 dígitos",
+        "en": "ID must be at least 5 digits",
+    },
     "pin.err_enter_pin": {
         "es": "Ingresa tu PIN",
         "en": "Enter your PIN",
+    },
+    "pin.err_pin_wrong": {
+        "es": "PIN incorrecto",
+        "en": "Incorrect PIN",
+    },
+    "pin.attempts_remaining": {
+        "es": "({n} intento{s} restante)",
+        "en": "({n} attempt{s} remaining)",
     },
     "pin.err_restart": {
         "es": "Error: reinicia el proceso",
@@ -175,6 +235,28 @@ STRINGS: dict[str, dict[str, str]] = {
     "display.return_in": {
         "es": "Volviendo al inicio en {s} s…",
         "en": "Returning to start in {s} s…",
+    },
+
+    # ── Locker: Alerta de puerta abierta ────────────────────────────────────
+    "door.alert_title": {
+        "es": "FAVOR DE CERRAR EL LOCKER",
+        "en": "PLEASE CLOSE THE LOCKER",
+    },
+    "door.alert_locker": {
+        "es": "Locker {n} abierto",
+        "en": "Locker {n} is open",
+    },
+    "door.alert_subtitle": {
+        "es": "La puerta sigue abierta",
+        "en": "The door is still open",
+    },
+    "door.waiting_close": {
+        "es": "Esperando cierre de puerta…",
+        "en": "Waiting for door to close…",
+    },
+    "door.banner_prefix": {
+        "es": "⚠  Favor de cerrar el locker:",
+        "en": "⚠  Please close locker:",
     },
 
     # ── Admin: LoginScreen ───────────────────────────────────────────────────
@@ -226,6 +308,22 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Credenciales inválidas o cuenta inactiva",
         "en": "Invalid credentials or inactive account",
     },
+    "login.err_not_found": {
+        "es": "Matrícula no encontrada",
+        "en": "ID number not found",
+    },
+    "login.err_inactive": {
+        "es": "Cuenta inactiva o bloqueada",
+        "en": "Account inactive or blocked",
+    },
+    "login.err_wrong_pin": {
+        "es": "PIN incorrecto",
+        "en": "Incorrect PIN",
+    },
+    "login.err_no_permission": {
+        "es": "Sin permisos de administrador",
+        "en": "No administrator permissions",
+    },
 
     # ── Admin: DashboardScreen ───────────────────────────────────────────────
     "dash.user_prefix": {
@@ -266,7 +364,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "cat.units.label":      {"es": "Unidades Acad.",   "en": "Acad. Units"},
     "cat.units.hint":       {"es": "Facultades y escuelas", "en": "Faculties and schools"},
     "cat.types.label":      {"es": "Historial Acceso", "en": "Access History"},
-    "cat.types.hint":       {"es": "Accesos registrados", "en": "Registered accesses"},
+    "cat.types.hint":       {"es": "Registro de entradas", "en": "Entry log"},
     "cat.assign.label":     {"es": "Asignaciones",     "en": "Assignments"},
     "cat.assign.hint":      {"es": "Lockers en uso",   "en": "Lockers in use"},
     # Diálogo de cierre de sesión
@@ -362,6 +460,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "common.save":           {"es": "Guardar",                   "en": "Save"},
     "common.save_changes":   {"es": "Guardar cambios",           "en": "Save changes"},
     "common.cancel":         {"es": "Cancelar",                  "en": "Cancel"},
+    "common.accept":         {"es": "Aceptar",                   "en": "Accept"},
     "common.confirm":        {"es": "Confirmar",                 "en": "Confirm"},
     "common.edit":           {"es": "Editar",                    "en": "Edit"},
     "common.read_only":      {"es": "Solo lectura",              "en": "Read only"},
@@ -385,10 +484,11 @@ STRINGS: dict[str, dict[str, str]] = {
     "users.field_unit":        {"es": "Unidad académica",        "en": "Academic unit"},
     "users.no_face":           {"es": "Sin rostro registrado",   "en": "No face registered"},
     "users.no_face_warning":   {"es": "(!) Sin rostro registrado", "en": "(!) No face registered"},
-    "users.face_count":        {"es": "[OK] {n} perfil(es) facial(es) registrado(s)", "en": "[OK] {n} facial profile(s) registered"},
+    "users.face_count":        {"es": "✓ {n} perfil(es) facial(es) registrado(s)", "en": "✓ {n} facial profile(s) registered"},
     "users.reregister_face":   {"es": "Actualizar rostro",     "en": "Update face"},
     "users.protected":         {"es": "Protegido",               "en": "Protected"},
     "users.your_account":      {"es": "Tu cuenta",               "en": "Your account"},
+    "users.err_superadmin_locked": {"es": "Solo puede existir un Superadmin en el sistema", "en": "Only one Superadmin is allowed in the system"},
     "users.err_matricula_taken": {"es": "La matrícula {mat} ya pertenece a otro usuario", "en": "ID {mat} already belongs to another user"},
     "users.err_email_taken":   {"es": "El correo {email} ya pertenece a otro usuario", "en": "Email {email} already belongs to another user"},
     "users.err_select_type_unit": {"es": "Selecciona un tipo de usuario y unidad académica válidos", "en": "Select a valid user type and academic unit"},
@@ -403,7 +503,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "lockers.current_assignment":{"es": "Asignación actual",     "en": "Current assignment"},
     "lockers.no_assignment":     {"es": "Sin asignación activa", "en": "No active assignment"},
     "lockers.system_protected":  {"es": "Locker de sistema — protegido", "en": "System locker — protected"},
-    "lockers.system_warning":    {"es": "Los lockers 1-4 son predeterminados del sistema\ny no pueden modificarse ni eliminarse.", "en": "Lockers 1-4 are system defaults\nand cannot be modified or deleted."},
+    "lockers.system_warning":    {"es": "Los lockers 1-4 son predeterminados del sistema\ny no pueden eliminarse.", "en": "Lockers 1-4 are system defaults\nand cannot be deleted."},
     "lockers.save_status":       {"es": "Guardar estado",        "en": "Save status"},
     "lockers.delete_btn":        {"es": "Eliminar locker",       "en": "Delete locker"},
     "lockers.inactive_badge":    {"es": "[INACTIVO]",            "en": "[INACTIVE]"},
@@ -439,7 +539,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "assignment.no_permission":   {"es": "Tu rol no permite editar asignaciones", "en": "Your role does not allow editing assignments"},
     "assignment.no_active_list":  {"es": "No hay asignaciones activas",    "en": "No active assignments"},
     "assignment.err_select":      {"es": "Selecciona alumno y locker disponibles", "en": "Select a student and available locker"},
-    "assignment.err_already":     {"es": "Ese alumno ya tiene asignado ese locker", "en": "That student already has that locker assigned"},
+    "assignment.err_already":         {"es": "Ese alumno ya tiene asignado ese locker", "en": "That student already has that locker assigned"},
+    "assignment.err_user_has_locker": {"es": "Este usuario ya tiene un locker asignado. Libéralo primero.", "en": "This user already has a locker assigned. Release it first."},
     "assignment.ok_assigned":     {"es": "Locker {n} asignado correctamente", "en": "Locker {n} assigned successfully"},
     "assignment.err_select_release": {"es": "Selecciona un locker asignado para liberar", "en": "Select an assigned locker to release"},
     "assignment.ok_released":     {"es": "Locker {n} liberado correctamente", "en": "Locker {n} released successfully"},
@@ -492,5 +593,5 @@ def toggle() -> None:
 
 
 def lang_btn_text() -> str:
-    """Ícono del botón de cambio de idioma (bandera del idioma destino)."""
-    return "🇺🇸" if _lang == "es" else "🇲🇽"
+    """Texto del botón de cambio de idioma (idioma destino)."""
+    return "🌐 English" if _lang == "es" else "🌐 Español"

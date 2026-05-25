@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import time
 import tkinter as tk
 
 import customtkinter as ctk
@@ -11,6 +12,8 @@ import customtkinter as ctk
 from auth.session import can_edit_catalogs
 from database.connection import db_session, fetch_all, fetch_one
 from services import locker_service
+from config import DOOR_SWITCH_CONFIG
+from core.door_switch_controller import get_door_switch_controller
 from ui.admin_app import PALETTE
 from ui.i18n import t
 
@@ -30,6 +33,9 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._student_var = tk.StringVar()
 		self._locker_var = tk.StringVar()
 		self._assigned_var = tk.StringVar()
+		self._manual_btn_refs: dict[int, ctk.CTkButton] = {}
+		self._sensor_cooldown_until: dict[int, float] = {}
+		self._sensor_poll_job: str | None = None
 
 		self._build_ui()
 
@@ -161,7 +167,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			text_color=PALETTE["MUTED"],
 			fg_color="transparent",
 		)
-		self.lbl_feedback.pack(anchor="w", padx=4, pady=(2, 8))
+		# Not packed — feedback is conveyed through button states only
 
 		ctk.CTkLabel(
 			body,
@@ -187,14 +193,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			self.manual_open_frame = ctk.CTkFrame(body, fg_color="transparent")
 			self.manual_open_frame.pack(fill="x", padx=4, pady=(0, 8))
 
-			self.lbl_manual_feedback = ctk.CTkLabel(
-				body,
-				text="",
-				font=ctk.CTkFont(size=12),
-				text_color=PALETTE["MUTED"],
-				fg_color="transparent",
-			)
-			self.lbl_manual_feedback.pack(anchor="w", padx=4, pady=(0, 6))
+			self.lbl_manual_feedback = None
 		else:
 			self.manual_open_frame = None
 			self.lbl_manual_feedback = None
@@ -309,6 +308,21 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._assigned_var.set(
 			assignment_labels[0] if assignment_labels else t("assignment.no_active")
 		)
+
+		# Habilitar/deshabilitar botón Liberar según si hay asignaciones activas
+		if self._can_edit:
+			if self._assignments:
+				self.btn_release.configure(
+					state="normal",
+					fg_color=PALETTE["DANGER"],
+					hover_color="#922b21",
+				)
+			else:
+				self.btn_release.configure(
+					state="disabled",
+					fg_color=PALETTE["MUTED"],
+					hover_color=PALETTE["MUTED"],
+				)
 
 		for widget in self.assignments_frame.winfo_children():
 			widget.destroy()
@@ -427,10 +441,11 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			"SELECT idLocker FROM asignacion_locker WHERE idUsuario=? AND estado='activo'",
 			(user_id,),
 		)
-		if existing_for_user and existing_for_user.get("idLocker") == locker_id:
+		if existing_for_user:
+			# El usuario ya tiene cualquier locker activo — no se permite reasignar
 			self.lbl_feedback.configure(
-				text=t("assignment.err_already"),
-				text_color=PALETTE["WARN"],
+				text=t("assignment.err_user_has_locker"),
+				text_color=PALETTE["DANGER"],
 			)
 			return
 
@@ -514,42 +529,59 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			return
 		for widget in self.manual_open_frame.winfo_children():
 			widget.destroy()
+		self._manual_btn_refs.clear()
 
 		lockers = fetch_all(
 			"SELECT idLocker FROM lockers WHERE estado='activo' ORDER BY idLocker"
 		)
+
+		active_switch_ids = [int(x) for x in DOOR_SWITCH_CONFIG.get("active_lockers", [])]
+		switch_ctrl = get_door_switch_controller()
+
 		for i, row in enumerate(lockers):
 			lid = int(row["idLocker"])
+
+			# Initial state: gray if door is already open
+			has_sensor = lid in active_switch_ids and switch_ctrl.is_available()
+			initial_open = False
+			if has_sensor:
+				initial_open = switch_ctrl.read_state(lid) is False
 
 			btn = ctk.CTkButton(
 				self.manual_open_frame,
 				text=f"  Locker {lid}",
 				font=ctk.CTkFont(size=14, weight="bold"),
-				fg_color=PALETTE["ACCENT"],
-				hover_color=PALETTE["ACCENT_HOVER"],
+				fg_color=PALETTE["BORDER"] if initial_open else PALETTE["ACCENT"],
+				hover_color=PALETTE["BORDER"] if initial_open else PALETTE["ACCENT_HOVER"],
 				text_color=PALETTE["WHITE"],
 				height=48,
 				corner_radius=12,
+				state="disabled" if initial_open else "normal",
 			)
 			btn.grid(row=0, column=i, padx=6, pady=4, sticky="ew")
+			self._manual_btn_refs[lid] = btn
 
 			def _open(l=lid, b=btn) -> None:
-				b.configure(state="disabled", fg_color=PALETTE["BORDER"])
-				if self.lbl_manual_feedback:
-					self.lbl_manual_feedback.configure(
-						text=t("assignment.opening", n=l), text_color=PALETTE["MUTED"]
-					)
+				# Gray out immediately and start 3-second cooldown
+				b.configure(state="disabled", fg_color=PALETTE["BORDER"], hover_color=PALETTE["BORDER"])
+				self._sensor_cooldown_until[l] = time.time() + 3.0
+
 				def _task(l=l, b=b):
 					ok = locker_service.open_locker(l, seconds=3.0)
-					msg = t("assignment.opened_ok", n=l) if ok else t("assignment.open_failed", n=l)
-					color = PALETTE.get("SUCCESS", "#27ae60") if ok else PALETTE["DANGER"]
-					def _done(m=msg, c=color, b=b):
-						if b.winfo_exists():
-							b.configure(state="normal", fg_color=PALETTE["ACCENT"])
-						if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
-							self.lbl_manual_feedback.configure(text=m, text_color=c)
-					if self.lbl_manual_feedback and self.lbl_manual_feedback.winfo_exists():
-						self.lbl_manual_feedback.after(0, _done)
+
+					def _done(ok=ok):
+						if not ok and self.winfo_exists() and b.winfo_exists():
+							# Failed to open — cancel cooldown and restore button
+							self._sensor_cooldown_until.pop(l, None)
+							b.configure(
+								state="normal",
+								fg_color=PALETTE["ACCENT"],
+								hover_color=PALETTE["ACCENT_HOVER"],
+							)
+
+					if self.winfo_exists():
+						self.after(0, _done)
+
 				threading.Thread(target=_task, daemon=True).start()
 
 			btn.configure(command=_open)
@@ -557,10 +589,66 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		for i in range(len(lockers)):
 			self.manual_open_frame.grid_columnconfigure(i, weight=1)
 
+		self._start_sensor_polling()
+
+	def _start_sensor_polling(self) -> None:
+		self._stop_sensor_polling()
+		self._poll_all_sensors()
+
+	def _stop_sensor_polling(self) -> None:
+		if self._sensor_poll_job is not None:
+			try:
+				self.after_cancel(self._sensor_poll_job)
+			except Exception:
+				pass
+			self._sensor_poll_job = None
+
+	def _poll_all_sensors(self) -> None:
+		if not self._can_edit or self.manual_open_frame is None:
+			return
+
+		now = time.time()
+		active_switch_ids = [int(x) for x in DOOR_SWITCH_CONFIG.get("active_lockers", [])]
+		switch_ctrl = get_door_switch_controller()
+
+		for lid, btn in list(self._manual_btn_refs.items()):
+			if not btn.winfo_exists():
+				continue
+			# Skip lockers in cooldown (solenoid just fired)
+			if now < self._sensor_cooldown_until.get(lid, 0):
+				continue
+			# Only update buttons that have a configured sensor
+			if lid not in active_switch_ids or not switch_ctrl.is_available():
+				continue
+
+			state = switch_ctrl.read_state(lid)
+			if state is False:  # door open → gray/disabled
+				btn.configure(
+					state="disabled",
+					fg_color=PALETTE["BORDER"],
+					hover_color=PALETTE["BORDER"],
+				)
+			elif state is True:  # door closed → green/enabled
+				btn.configure(
+					state="normal",
+					fg_color=PALETTE["ACCENT"],
+					hover_color=PALETTE["ACCENT_HOVER"],
+				)
+			# state is None → sensor unavailable, leave button as-is
+
+		if self.winfo_exists():
+			self._sensor_poll_job = self.after(400, self._poll_all_sensors)
+
+	def on_hide(self, **_kwargs) -> None:
+		self._stop_sensor_polling()
+
 	def on_show(self, **_kwargs) -> None:
 		self.lbl_feedback.configure(text="", text_color=PALETTE["MUTED"])
 		if self.lbl_manual_feedback is not None:
 			self.lbl_manual_feedback.configure(text="")
+		self._stop_sensor_polling()
+		self._sensor_cooldown_until.clear()
+		self._manual_btn_refs.clear()
 		self._refresh_data()
 		self._build_manual_open_buttons()
 

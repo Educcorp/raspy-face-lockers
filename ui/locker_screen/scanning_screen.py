@@ -11,6 +11,7 @@ Un botón de flecha ← en la parte inferior permite volver al standby.
 import customtkinter as ctk
 import threading
 import os
+import time
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -21,13 +22,25 @@ from datetime import datetime
 from collections import deque
 import random
 
-from config import FACE_RECOGNITION_CONFIG
+from config import FACE_RECOGNITION_CONFIG, CAMERA_CONFIG
 from config import GPIO_CONFIG
+from config import DOOR_SWITCH_CONFIG
 from ui.i18n import t
 from core.gpio_controller import get_locker_gpio_controller
+from core.face_recognition import filter_close_faces as _filter_close_faces
 from services import user_service, locker_service, access_log_service
 
 logger = logging.getLogger(__name__)
+
+
+def _largest_face(faces: list) -> dict | None:
+    """Selecciona el rostro más cercano (caja más grande) de la lista detectada."""
+    if not faces:
+        return None
+    return max(faces, key=lambda f: (
+        (f.get("box") or (0, 0, 0, 0))[2] * (f.get("box") or (0, 0, 0, 0))[3]
+    ))
+
 
 
 class ScanningScreen(ctk.CTkFrame):
@@ -51,14 +64,17 @@ class ScanningScreen(ctk.CTkFrame):
     MAX_ATTEMPTS    = 3
     PIN_MAX_FAILS   = 3
     LOCK_SECONDS    = 60
-    DISPLAY_SECONDS = 8
-    RECOGNITION_INTERVAL_FRAMES = 5   # intentos de reconocimiento cada 5 frames (~0.33s)
-    STABLE_FACE_FRAMES = 12           # rostro estable ~0.8s antes de intentar reconocimiento
-    RECOGNITION_COOLDOWN_SECONDS = 3.0  # mínimo 3s entre intentos de reconocimiento
+    DISPLAY_SECONDS = 5
+    DOOR_ALERT_DELAY_S    = 10.0   # segundos de espera antes de mostrar alerta
+    DOOR_ALERT_DURATION_S =  5.0   # segundos que dura la pantalla de alerta
+    RECOGNITION_INTERVAL_FRAMES = 4   # intentos de reconocimiento cada 4 frames
+    STABLE_FACE_FRAMES = 6            # rostro estable ~0.4s antes de intentar reconocimiento
+    RECOGNITION_COOLDOWN_SECONDS = 1.5  # mínimo 1.5s entre intentos de reconocimiento
     LIVENESS_HISTORY_FRAMES = 12      # 12 frames de historial de movimiento (~0.8s)
     LIVENESS_MIN_MOTION = 1.5         # requiere movimiento natural real (no ruido)
     LIVENESS_MIN_BOX_SHIFT = 0.015    # desplazamiento mínimo visible del rostro
-    MIN_SCAN_SECONDS = 3.5            # tiempo mínimo de escaneo antes de intentar identificar
+    MIN_SCAN_SECONDS = 2.0            # tiempo mínimo de escaneo antes de intentar identificar
+    AUTO_RETURN_SECONDS = 25.0        # segundos sin cara cercana → volver a standby
     LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
     CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
     CHALLENGE_SCALE_IN_THRESHOLD = 0.18  # No usado en modo pasivo
@@ -81,6 +97,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._last_seen_face_box = None
         self._face_first_seen_ts: float = 0.0   # cuando el rostro apareció por primera vez
         self._scan_progress_pct: int = 0         # 0-100, para barra de progreso en UI
+        self._last_close_face_ts: float = 0.0   # última vez que se detectó cara cercana
+        self._distance_hint: str = ""            # "closer" | "farther" | ""
         self._liveness_passed = False
         self._passive_liveness_ok = False
         self._active_liveness_ok = False
@@ -93,11 +111,22 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_started_at = 0.0
         self._challenge_ref_box = None
         self._blink_closed_seen = False
+        self._auto_return_started_ts: float | None = None
+        self._door_wait_job = None
+        self._door_wait_active = False
+        self._door_wait_started_at = 0.0
+        self._door_open_seen = False
+        self._door_open_count: int = 0           # consecutive open readings (debounce)
+        self._door_wait_phase: str = "waiting"   # "waiting" | "alerting"
+        self._door_wait_locker_id: int | None = None
+        self._door_wait_assignment_id: int | None = None
 
         # Variables de captura de cámara
         self._camera_thread: Optional[threading.Thread] = None
+        self._detect_thread: Optional[threading.Thread] = None
         self._camera_running = False
         self._camera_frame: Optional[np.ndarray] = None
+        self._latest_frame_for_detect: Optional[np.ndarray] = None  # canal entre hilos
         self._detected_faces = []
         self._photo_image: Optional[tkinter.PhotoImage] = None
 
@@ -109,6 +138,9 @@ class ScanningScreen(ctk.CTkFrame):
         self._pin_matricula: str = ""
         self._pin_code: str = ""
         self._pin_fail_count: int = 0
+        self._pin_matricula_fail_count: int = 0   # intentos de matrícula incorrecta
+        self._last_failed_closest: Optional[dict] = None  # candidato más cercano en fallo facial
+        self._display_pending: bool = False               # evita acumular frames en la cola
         self._found_user: Optional[dict] = None
 
         # Inicializar módulo de reconocimiento facial
@@ -151,6 +183,19 @@ class ScanningScreen(ctk.CTkFrame):
             width=390,
         )
         self.lbl_status.place(relx=0.5, y=104, anchor="center")
+
+        # ── Pista de distancia (acérquese / aléjese) ──────────────────────────
+        self.lbl_hint = ctk.CTkLabel(
+            self,
+            text="",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color="#FFD54F",
+            fg_color="#1A1A2E",
+            corner_radius=8,
+            height=32,
+            width=360,
+        )
+        self.lbl_hint.place(relx=0.5, y=142, anchor="center")
 
         # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
@@ -209,142 +254,204 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.btn_admin.place(x=452, y=44, anchor="center")
 
-        # ── Overlay de éxito (oculto por defecto) ────────────────────────────
-        # Contenedor con fondo oscuro para overlay modal
+        # ── Overlay de éxito — fondo verde pantalla completa ─────────────────
         self.overlay_bg = ctk.CTkFrame(
             self,
-            fg_color="#2A2A2E",  # Gris oscuro semi-transparente visualmente
-            corner_radius=0,
-            width=480,
-            height=800,
-            border_width=0,
-        )
-
-        # Frame principal del overlay con configuración explícita
-        self.success_frame = ctk.CTkFrame(
-            self.overlay_bg,
             fg_color="#5B8C5A",
-            corner_radius=20,
-            width=430,
-            height=250,
+            corner_radius=0,
+            width=self.WIN_W, height=self.WIN_H,
             border_width=0,
         )
-        # No se muestra aún — se coloca con .place() al detectar éxito
 
-        # Layout principal horizontal: ícono (izquierda) + texto (derecha)
-        success_content = ctk.CTkFrame(self.success_frame, fg_color="transparent", corner_radius=0)
-        success_content.pack(fill="both", expand=True, padx=(40, 16), pady=16)
-        success_content.grid_columnconfigure(0, weight=0)
-        success_content.grid_columnconfigure(1, weight=1)
-        success_content.grid_rowconfigure(0, weight=1)
+        # Panel interior centrado (todos los labels viven aquí).
+        # on_face_match() reordena el pack según si hay locker o no.
+        self._success_inner = ctk.CTkFrame(self.overlay_bg, fg_color="transparent")
+        self._success_inner.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.86)
 
-        icon_path = os.path.join(
+        # Ícono
+        _icon_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "..", "..", "assets", "icons", "icon_persona_blanco.png"
         )
         self._success_icon = None
         try:
-            if os.path.exists(icon_path):
-                icon_img = Image.open(icon_path)
+            if os.path.exists(_icon_path):
+                _icon_img = Image.open(_icon_path)
                 self._success_icon = ctk.CTkImage(
-                    light_image=icon_img,
-                    dark_image=icon_img,
-                    size=(118, 118),
+                    light_image=_icon_img,
+                    dark_image=_icon_img,
+                    size=(80, 80),
                 )
         except Exception as e:
             logger.warning(f"No se pudo cargar icono de éxito: {e}")
 
         self.lbl_success_icon = ctk.CTkLabel(
-            success_content,
-            text="",
+            self._success_inner,
+            text="" if self._success_icon else "👤",
             image=self._success_icon,
             fg_color="transparent",
-            width=120,
-            height=120,
+            width=84, height=84,
         )
-        self.lbl_success_icon.grid(row=0, column=0, sticky="nw", padx=(22, 12))
-
-        text_content = ctk.CTkFrame(success_content, fg_color="transparent", corner_radius=0)
-        text_content.grid(row=0, column=1, sticky="nsew")
-
-        # Título de locker
-        self.lbl_success_title = ctk.CTkLabel(
-            text_content,
-            text="Locker numero",
-            font=ctk.CTkFont(size=30, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_title.pack(fill="x")
-
-        # Número de locker
-        self.lbl_success_locker = ctk.CTkLabel(
-            text_content,
-            text="00",
-            font=ctk.CTkFont(size=28, weight="bold"),
-            text_color="#FFFFFF",
-            fg_color="transparent",
-            anchor="w",
-            justify="left",
-        )
-        self.lbl_success_locker.pack(fill="x", pady=(0, 3))
 
         # Nombre del usuario
         self.lbl_success_name = ctk.CTkLabel(
-            text_content,
-            text="—",
-            font=ctk.CTkFont(size=15),
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=24, weight="bold"),
             text_color="#FFFFFF",
             fg_color="transparent",
-            anchor="w",
-            justify="left",
+            wraplength=390,
+            justify="center",
+            anchor="center",
         )
-        self.lbl_success_name.pack(fill="x", pady=(0, 2))
 
         # Matrícula
         self.lbl_success_matricula = ctk.CTkLabel(
-            text_content,
-            text="Matrícula —",
+            self._success_inner,
+            text="",
             font=ctk.CTkFont(size=15),
-            text_color="#FFFFFF",
+            text_color="#D4EDDA",
             fg_color="transparent",
-            anchor="w",
-            justify="left",
+            anchor="center",
         )
-        self.lbl_success_matricula.pack(fill="x", pady=(0, 2))
 
-        # Fecha
-        self.lbl_success_fecha = ctk.CTkLabel(
-            text_content,
-            text="—",
-            font=ctk.CTkFont(size=15),
+        # Estado (se reconfigura en on_face_match según el caso)
+        self.lbl_success_main = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=15),      # sin negrita, igual que matrícula
             text_color="#FFFFFF",
             fg_color="transparent",
-            anchor="w",
-            justify="left",
+            anchor="center",
         )
-        self.lbl_success_fecha.pack(fill="x", pady=(0, 8))
+
+        # Etiqueta "Locker" — grande y en negrita en pantalla verde
+        self.lbl_success_locker_label = ctk.CTkLabel(
+            self._success_inner,
+            text="Locker",
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Número de locker — muy grande y visible
+        self.lbl_success_locker_big = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=88, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Sub-mensaje sin locker — grande y en negrita para que destaque
+        self.lbl_success_sub = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=ctk.CTkFont(size=26, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+            anchor="center",
+        )
 
         # Countdown
         self.lbl_countdown = ctk.CTkLabel(
-            text_content,
+            self._success_inner,
             text="",
-            font=ctk.CTkFont(size=12),
-            text_color="#E6F4E6",
+            font=ctk.CTkFont(size=13),
+            text_color="#D4EDDA",
             fg_color="transparent",
-            anchor="w",
-            justify="left",
+            anchor="center",
+            justify="center",
         )
-        self.lbl_countdown.pack(fill="x")
+
+        # Mantener referencia legacy por compatibilidad interna
+        self.success_frame = self._success_inner
+
+        # ── Overlay de acceso denegado (fondo completamente rojo) ─────────────
+        self.denied_overlay = ctk.CTkFrame(
+            self,
+            fg_color="#C0392B",
+            corner_radius=0,
+            width=self.WIN_W,
+            height=self.WIN_H,
+        )
+        _di = ctk.CTkFrame(self.denied_overlay, fg_color="transparent")
+        _di.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
+
+        ctk.CTkLabel(
+            _di,
+            text="✗",
+            font=ctk.CTkFont(size=90, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+        ).pack(pady=(0, 16))
+
+        ctk.CTkLabel(
+            _di,
+            text=t("scan.denied_title"),
+            font=ctk.CTkFont(size=36, weight="bold"),
+            text_color="#FFFFFF",
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+        ).pack()
+
+        # ── Overlay de alerta de puerta abierta (pantalla completa, 5 s) ────
+        self.door_warning_overlay = ctk.CTkFrame(
+            self,
+            fg_color="#F3C94A",
+            corner_radius=0,
+            width=self.WIN_W,
+            height=self.WIN_H,
+        )
+        _dw = ctk.CTkFrame(self.door_warning_overlay, fg_color="transparent")
+        _dw.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
+
+        ctk.CTkLabel(
+            _dw,
+            text="⚠",
+            font=ctk.CTkFont(size=64, weight="bold"),
+            text_color="#4A3B00",
+            fg_color="transparent",
+        ).pack(pady=(0, 4))
+
+        self.lbl_door_alert_title = ctk.CTkLabel(
+            _dw,
+            text=t("door.alert_title"),
+            font=ctk.CTkFont(size=24, weight="bold"),
+            text_color="#4A3B00",
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+        )
+        self.lbl_door_alert_title.pack()
+
+        self.lbl_door_warning_locker = ctk.CTkLabel(
+            _dw,
+            text="",
+            font=ctk.CTkFont(size=130, weight="bold"),
+            text_color="#4A3B00",
+            fg_color="transparent",
+        )
+        self.lbl_door_warning_locker.pack(pady=(0, 0))
+
+        self.lbl_door_alert_subtitle = ctk.CTkLabel(
+            _dw,
+            text=t("door.alert_subtitle"),
+            font=ctk.CTkFont(size=15),
+            text_color="#4A3B00",
+            fg_color="transparent",
+        )
+        self.lbl_door_alert_subtitle.pack(pady=(4, 0))
 
     # ── Captura de video en background ────────────────────────────────────────
 
     def _camera_loop(self) -> None:
         """Thread worker que captura frames y detecta rostros."""
-        import time
-
         if not self.face_manager:
             logger.error("FaceManager no inicializado")
             self.after(0, self._show_camera_error, "Gestor de reconocimiento facial no disponible")
@@ -376,147 +483,236 @@ class ScanningScreen(ctk.CTkFrame):
                 return
 
         logger.info("✓ Camera loop iniciado correctamente")
-        frame_count = 0
+
+        # Hilo de detección independiente: HOG+Haar corre en background
+        # para que la captura y el display nunca se bloqueen.
+        self._detect_thread = threading.Thread(
+            target=self._detection_loop, daemon=True
+        )
+        self._detect_thread.start()
 
         try:
             while self._camera_running:
-                frame, faces = self.face_manager.detect_faces_in_frame()
-
+                # ── Captura (bloquea ~33 ms al ritmo de la cámara) ───────────────
+                frame = self.face_manager.get_frame()
                 if frame is None:
-                    time.sleep(0.05)
+                    time.sleep(0.005)
                     continue
 
-                frame_count += 1
                 self._camera_frame = frame
-                self._detected_faces = faces
-                self._face_detected = len(faces) > 0
                 self._frame_counter += 1
+                # Publicar para el hilo de detección (el hilo consume el más reciente)
+                self._latest_frame_for_detect = frame
 
-                if self._success_shown:
-                    time.sleep(0.066)
-                    continue
-
-                now = time.time()
-
-                if faces:
-                    face_box = faces[0].get("box")
-
-                    # Detectar cambio de cara: múltiples caras simultáneas o salto brusco
-                    face_switched = len(faces) > 1
-                    if not face_switched and face_box and self._last_seen_face_box:
-                        prev = self._last_seen_face_box
-                        prev_cx = prev[0] + prev[2] * 0.5
-                        prev_cy = prev[1] + prev[3] * 0.5
-                        curr_cx = face_box[0] + face_box[2] * 0.5
-                        curr_cy = face_box[1] + face_box[3] * 0.5
-                        dist = np.sqrt((curr_cx - prev_cx) ** 2 + (curr_cy - prev_cy) ** 2)
-                        frame_w = max(frame.shape[1], 1)
-                        if dist / frame_w > 0.15:
-                            face_switched = True
-
-                    if face_switched:
-                        self._stable_face_frames = 0
-                        self._face_first_seen_ts = 0.0
-                        self._scan_progress_pct = 0
-                        self._reset_liveness_state()
-
-                    if self._stable_face_frames == 0:
-                        self._face_first_seen_ts = now
-                    self._stable_face_frames += 1
-                    self._last_seen_face_box = face_box
-                    if self._last_seen_face_box:
-                        self._update_liveness(frame, self._last_seen_face_box)
-                else:
-                    self._stable_face_frames = 0
-                    self._last_seen_face_box = None
-                    self._face_first_seen_ts = 0.0
-                    self._scan_progress_pct = 0
-                    self._reset_liveness_state()
-
-                # Calcular cuánto tiempo lleva el rostro visible y actualizar progreso
-                if self._face_first_seen_ts > 0:
-                    scan_elapsed = now - self._face_first_seen_ts
-                    self._scan_progress_pct = min(100, int(scan_elapsed / self.MIN_SCAN_SECONDS * 100))
-                else:
-                    scan_elapsed = 0.0
-                    self._scan_progress_pct = 0
-
-                enough_frames = self._frame_counter % self.RECOGNITION_INTERVAL_FRAMES == 0
-                enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
-                cooldown_ok = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
-                liveness_ok = self._liveness_passed
-                scan_time_ok = scan_elapsed >= self.MIN_SCAN_SECONDS
-
-                if faces and enough_frames and enough_stability and cooldown_ok and liveness_ok and scan_time_ok:
-                    self._last_recognition_ts = now
+                # ── Display: siempre al ritmo completo de la cámara ──────────────
+                if not self._display_pending:
+                    self._display_pending = True
                     try:
-                        user_data = self._recognize_current_face(frame, faces)
-                        if user_data:
-                            self.after(0, self.on_face_match, user_data)
-                        else:
-                            self.after(0, self.on_face_no_match)
-                    except Exception as recognition_error:
-                        logger.error(f"Error durante autenticación facial: {recognition_error}")
-                        self.after(0, self.on_face_no_match)
-
-                try:
-                    self._update_camera_display(frame, faces)
-                except Exception as e:
-                    logger.error(f"Error actualizando display: {e}")
-
-                time.sleep(0.066)
-
-                if frame_count % 30 == 0:
-                    logger.info(f"Camera loop: {frame_count} frames, {len(faces)} rostros")
+                        self._update_camera_display(frame, self._detected_faces)
+                    except Exception as e:
+                        self._display_pending = False
+                        logger.error("Display error: %s", e)
 
         except Exception as e:
             logger.error(f"Error en camera loop: {e}")
             self.after(0, self._show_camera_error, f"Error crítico: {str(e)}")
         finally:
             # NO liberar la cámara aquí: on_hide() lo hace después de que
-            # el hilo termina, evitando la condición de carrera donde este
-            # finally destruye la cámara que ya re-inicializó un hilo nuevo.
-            logger.info(f"Camera loop finalizado. Total: {frame_count}")
+            # el hilo termina, evitando la condición de carrera.
+            logger.info("Camera loop finalizado.")
+
+    def _detection_loop(self) -> None:
+        """
+        Hilo de detección independiente.
+        Corre HOG+Haar y toda la lógica de liveness/reconocimiento en background,
+        sin bloquear nunca el hilo de captura/display.
+        """
+        last_frame_id: int = -1
+        detect_count: int  = 0
+
+        while self._camera_running:
+            frame = self._latest_frame_for_detect
+            if frame is None or id(frame) == last_frame_id:
+                time.sleep(0.005)
+                continue
+
+            last_frame_id = id(frame)
+            detect_count += 1
+
+            # ── Detección (HOG + Haar si es necesario) ───────────────────────
+            try:
+                all_faces = self.face_manager.manager.detect_faces(frame)
+            except Exception as err:
+                logger.debug("Detection error: %s", err)
+                all_faces = []
+
+            close_faces = _filter_close_faces(all_faces, frame)
+
+            # Reject faces whose bounding box touches or overflows the frame edges
+            faces = list(close_faces)
+            if faces:
+                fh, fw = frame.shape[:2]
+                edge = int(min(fh, fw) * 0.05)  # 5% margin on each side
+                faces = [
+                    f for f in faces
+                    if (lambda bx, by, bw, bh:
+                        bx >= edge and by >= edge
+                        and bx + bw <= fw - edge and by + bh <= fh - edge
+                    )(*f.get("box", (0, 0, 0, 0)))
+                ]
+
+            # Distance hint — evaluated after both filters so we cover all "too close" paths:
+            #   1. Any raw detection is very wide (≥40% frame) → partially detected, too close.
+            #   2. Face passed distance filter but overflows the edge bounds → too close.
+            #   3. Faces detected but all too small for 1 m range → too far.
+            frame_w = frame.shape[1] if frame is not None else 480
+            any_large_raw = any(
+                (f.get("box") or (0, 0, 0, 0))[2] >= int(frame_w * 0.40) for f in all_faces
+            )
+            if any_large_raw or (close_faces and not faces):
+                self._distance_hint = "farther"
+            elif all_faces and not close_faces:
+                self._distance_hint = "closer"
+            elif faces:
+                self._distance_hint = ""
+            else:
+                self._distance_hint = ""
+
+            self._detected_faces = faces
+            self._face_detected  = len(faces) > 0
+
+            if self._success_shown:
+                continue
+
+            now = time.time()
+
+            if faces:
+                self._last_close_face_ts = now
+                primary_face = _largest_face(faces)
+                face_box = primary_face.get("box") if primary_face else None
+
+                face_switched = False
+                if face_box and self._last_seen_face_box:
+                    prev = self._last_seen_face_box
+                    prev_cx = prev[0] + prev[2] * 0.5
+                    prev_cy = prev[1] + prev[3] * 0.5
+                    curr_cx = face_box[0] + face_box[2] * 0.5
+                    curr_cy = face_box[1] + face_box[3] * 0.5
+                    dist = np.sqrt((curr_cx - prev_cx) ** 2 + (curr_cy - prev_cy) ** 2)
+                    if dist / max(frame.shape[1], 1) > 0.15:
+                        face_switched = True
+
+                if face_switched:
+                    self._stable_face_frames = 0
+                    self._face_first_seen_ts = 0.0
+                    self._scan_progress_pct  = 0
+                    self._reset_liveness_state()
+
+                if self._stable_face_frames == 0:
+                    self._face_first_seen_ts = now
+                self._stable_face_frames += 1
+                self._last_seen_face_box = face_box
+                if face_box:
+                    self._update_liveness(frame, face_box)
+            else:
+                self._stable_face_frames = 0
+                self._last_seen_face_box = None
+                self._face_first_seen_ts = 0.0
+                self._scan_progress_pct  = 0
+                self._reset_liveness_state()
+
+                if now - self._last_close_face_ts >= self.AUTO_RETURN_SECONDS:
+                    logger.info("Sin cara %.0f s → standby", self.AUTO_RETURN_SECONDS)
+                    self._camera_running = False
+                    self._auto_return_started_ts = time.time()
+                    self.after(0, self._finalize_auto_return)
+                    return
+
+            if self._face_first_seen_ts > 0:
+                scan_elapsed = now - self._face_first_seen_ts
+                self._scan_progress_pct = min(100, int(scan_elapsed / self.MIN_SCAN_SECONDS * 100))
+            else:
+                scan_elapsed = 0.0
+                self._scan_progress_pct = 0
+
+            enough_stability = self._stable_face_frames >= self.STABLE_FACE_FRAMES
+            cooldown_ok      = (now - self._last_recognition_ts) >= self.RECOGNITION_COOLDOWN_SECONDS
+            scan_time_ok     = scan_elapsed >= self.MIN_SCAN_SECONDS
+            do_recognize     = detect_count % self.RECOGNITION_INTERVAL_FRAMES == 0
+
+            if faces and do_recognize and enough_stability and cooldown_ok and self._liveness_passed and scan_time_ok:
+                self._last_recognition_ts = now
+                try:
+                    user_data = self._recognize_current_face(frame, faces)
+                    if user_data:
+                        self.after(0, self.on_face_match, user_data)
+                    else:
+                        self.after(0, self.on_face_no_match)
+                except Exception as err:
+                    logger.error("Error en reconocimiento: %s", err)
+                    self.after(0, self.on_face_no_match)
+
+        logger.debug("Detection loop finalizado. Total detecciones: %d", detect_count)
 
     def _update_camera_display(self, frame: np.ndarray, faces: list) -> None:
-        """Dibuja el frame en modo espejo y letterbox (sin zoom), con guía de rostro."""
+        """Dibuja el frame en modo espejo con recorte 1:1 y guía de rostro."""
         try:
-            # BGR → RGB y espejo horizontal (modo selfie)
-            frame_rgb = cv2.flip(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), 1)
+            backend = getattr(self.face_manager, "backend_type", CAMERA_CONFIG.get("backend", "picamera2"))
+            if backend == "opencv":
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = frame
+
+            # Espejo horizontal (modo selfie)
+            frame_rgb = cv2.flip(frame_rgb, 1)
             h, w = frame_rgb.shape[:2]
 
-            # Letterbox: escalar manteniendo aspecto, sin recortar
-            scale = min(self.WIN_W / w, self.WIN_H / h)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            # Recorte central 1:1 y escalado a cuadro cuadrado
+            square_size = min(self.WIN_W, self.WIN_H)
+            crop_side = min(h, w)
+            crop_x0 = (w - crop_side) // 2
+            crop_y0 = (h - crop_side) // 2
+            frame_crop = frame_rgb[crop_y0:crop_y0 + crop_side, crop_x0:crop_x0 + crop_side]
+
+            scale = square_size / max(crop_side, 1)
+            frame_resized = cv2.resize(
+                frame_crop,
+                (square_size, square_size),
+                interpolation=cv2.INTER_AREA,
+            )
 
             # Centrar en lienzo negro
             canvas_arr = np.zeros((self.WIN_H, self.WIN_W, 3), dtype=np.uint8)
-            x_off = (self.WIN_W - new_w) // 2
-            y_off = (self.WIN_H - new_h) // 2
-            canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
+            x_off = (self.WIN_W - square_size) // 2
+            y_off = (self.WIN_H - square_size) // 2
+            canvas_arr[y_off:y_off + square_size, x_off:x_off + square_size] = frame_resized
 
             pil_image = Image.fromarray(canvas_arr, mode="RGB")
             draw = ImageDraw.Draw(pil_image)
 
-            # Calcular cuadro guía (coordenadas en pantalla, ya en espejo)
+            # Calcular cuadro guía usando el rostro más cercano (mayor área)
             if len(faces) > 0:
-                face_box = faces[0].get("box")
+                face_box = (_largest_face(faces) or {}).get("box")
                 if face_box:
                     fx, fy, fw, fh = face_box
                     # Espejo: invertir x en el espacio del frame original
                     fx_m = w - fx - fw
-                    # Escalar al espacio de pantalla + offset letterbox
-                    xs = int(fx_m * scale) + x_off
-                    ys = int(fy  * scale) + y_off
-                    ws = int(fw  * scale)
-                    hs = int(fh  * scale)
-                    pad = int(max(ws, hs) * 0.3)
-                    x1 = max(0,        xs - pad)
-                    y1 = max(0,        ys - pad)
-                    x2 = min(self.WIN_W, xs + ws + pad)
-                    y2 = min(self.WIN_H, ys + hs + pad)
+                    # Mapear al recorte 1:1 y luego al cuadrado mostrado
+                    fx_c = fx_m - crop_x0
+                    fy_c = fy - crop_y0
+
+                    if (fx_c + fw) <= 0 or (fy_c + fh) <= 0 or fx_c >= crop_side or fy_c >= crop_side:
+                        x1, y1, x2, y2 = self._default_guide_box()
+                    else:
+                        xs = int(fx_c * scale) + x_off
+                        ys = int(fy_c * scale) + y_off
+                        ws = int(fw * scale)
+                        hs = int(fh * scale)
+                        pad = int(max(ws, hs) * 0.3)
+                        x1 = max(0, xs - pad)
+                        y1 = max(0, ys - pad)
+                        x2 = min(self.WIN_W, xs + ws + pad)
+                        y2 = min(self.WIN_H, ys + hs + pad)
                 else:
                     x1, y1, x2, y2 = self._default_guide_box()
             else:
@@ -543,7 +739,10 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _default_guide_box(self) -> tuple[int, int, int, int]:
         """Cuadro guía centrado cuando no hay rostro detectado."""
-        cx, cy = self.WIN_W // 2, self.WIN_H // 2 - 40
+        square_size = min(self.WIN_W, self.WIN_H)
+        x_off = (self.WIN_W - square_size) // 2
+        y_off = (self.WIN_H - square_size) // 2
+        cx, cy = x_off + square_size // 2, y_off + square_size // 2 - 40
         return cx - 140, cy - 180, cx + 140, cy + 180
 
     def _show_camera_error(self, error_msg: str) -> None:
@@ -582,6 +781,7 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _set_camera_image(self, pil_img: "Image.Image") -> None:
         """Recibe imagen PIL y la muestra en el canvas. Siempre corre en el main thread."""
+        self._display_pending = False   # liberar para el siguiente frame
         try:
             from PIL import ImageTk
             photo = ImageTk.PhotoImage(pil_img)
@@ -618,6 +818,17 @@ class ScanningScreen(ctk.CTkFrame):
                         text=t("scan.position_frame"),
                         text_color="#FFFFFF",
                     )
+
+                # Distance hint (shown regardless of liveness state)
+                hint = self._distance_hint
+                if hint == "closer":
+                    self.lbl_hint.configure(text="↔  " + t("scan.hint_closer"))
+                elif hint == "farther":
+                    self.lbl_hint.configure(text="↔  " + t("scan.hint_farther"))
+                else:
+                    self.lbl_hint.configure(text="")
+            else:
+                self.lbl_hint.configure(text="")
         except Exception as e:
             logger.error(f"Error mostrando imagen: {e}")
 
@@ -634,13 +845,30 @@ class ScanningScreen(ctk.CTkFrame):
         self._last_seen_face_box = None
         self._face_first_seen_ts = 0.0
         self._scan_progress_pct = 0
+        self._last_close_face_ts = time.time()  # arrancar temporizador de inactividad
+        self._auto_return_started_ts = None
+        self._door_wait_active = False
+        self._door_wait_started_at = 0.0
+        self._door_open_seen = False
+        self._door_wait_phase = "waiting"
+        self._door_wait_locker_id = None
+        self._door_wait_assignment_id = None
+        if self._door_wait_job:
+            self.after_cancel(self._door_wait_job)
+            self._door_wait_job = None
         self._reset_liveness_state()
+        self._distance_hint = ""
         self._pin_fail_count = 0
+        self._pin_matricula_fail_count = 0
+        self._last_failed_closest = None
         self._found_user = None
+        self.lbl_hint.configure(text="")
         self.lbl_status.configure(text=t("scan.starting_camera"), text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.scan_progress_bar.set(0)
         self.overlay_bg.place_forget()
+        self.denied_overlay.place_forget()
+        self.door_warning_overlay.place_forget()
         self._hide_pin_overlay()
         self._hide_lock_overlay()
         self.btn_admin.place(x=452, y=44, anchor="center")
@@ -659,8 +887,14 @@ class ScanningScreen(ctk.CTkFrame):
             self._camera_thread.join(timeout=1.0)
         self._camera_thread = None
 
+        if self._detect_thread and self._detect_thread.is_alive():
+            self._detect_thread.join(timeout=1.0)
+        self._detect_thread = None
+        self._latest_frame_for_detect = None
+
         if not self._camera_running:
             self._camera_running = True
+            # El hilo de detección lo arranca _camera_loop internamente
             self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self._camera_thread.start()
             self.after(1000, lambda: self.lbl_status.configure(
@@ -670,9 +904,14 @@ class ScanningScreen(ctk.CTkFrame):
     def on_hide(self) -> None:
         """Detiene captura de vídeo al salir de la pantalla."""
         self._camera_running = False
+        self._latest_frame_for_detect = None
+        self._door_wait_active = False
+        self._door_open_seen = False
+        if self._door_wait_job:
+            self.after_cancel(self._door_wait_job)
+            self._door_wait_job = None
 
-        # Liberar la cámara ANTES de joinear: así detect_faces_in_frame()
-        # retorna inmediatamente y el hilo sale sin esperar el timeout completo.
+        # Liberar la cámara antes de joinear para que get_frame() retorne rápido.
         if self.face_manager and self.face_manager.initialized:
             try:
                 self.face_manager.release()
@@ -683,41 +922,66 @@ class ScanningScreen(ctk.CTkFrame):
             self._camera_thread.join(timeout=1.0)
         self._camera_thread = None
 
+        if self._detect_thread and self._detect_thread.is_alive():
+            self._detect_thread.join(timeout=1.0)
+        self._detect_thread = None
+
         if self._return_job:
             self.after_cancel(self._return_job)
             self._return_job = None
+        self.door_warning_overlay.place_forget()
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
         """Muestra el overlay de resultado según si el usuario tiene locker o no."""
         self._success_shown = True
-        self._camera_running = False  # detener cámara — ya no se necesita detectar más
+        self._camera_running = False
         self._user_data = user_data
 
-        locker_num = user_data.get("locker_numero")   # None si no tiene locker
+        nombre    = user_data.get("nombre", "—")
+        matricula = user_data.get("matricula", "—")
+        locker_num = user_data.get("locker_numero")
+
+        # Reordenar labels (pack_forget todos primero, luego pack en orden correcto)
+        for w in self._success_inner.winfo_children():
+            w.pack_forget()
+
+        self.lbl_success_icon.pack(pady=(0, 10))
+
+        self.lbl_success_name.configure(text=nombre)
+        self.lbl_success_name.pack(pady=(0, 2))
+
+        self.lbl_success_matricula.configure(
+            text=f"{t('scan.matricula_label')}  {matricula}"
+        )
+        self.lbl_success_matricula.pack(pady=(0, 16))
 
         if locker_num:
+            self.overlay_bg.configure(fg_color="#5B8C5A")          # verde: locker desbloqueado
             self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
-            self.lbl_success_title.configure(text=t("scan.locker_number"))
-            self.lbl_success_locker.configure(text=str(locker_num))
+            self.lbl_success_main.configure(text=t("scan.unlocked"))
+            self.lbl_success_main.pack(pady=(0, 4))
+            self.lbl_success_locker_label.configure(text=t("scan.locker_label"))
+            self.lbl_success_locker_label.pack(pady=(0, 0))
+            self.lbl_success_locker_big.configure(text=str(locker_num))
+            self.lbl_success_locker_big.pack(pady=(0, 6))
         else:
-            self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFD54F")
-            self.lbl_success_title.configure(text=t("scan.no_locker"))
-            self.lbl_success_locker.configure(text=t("scan.no_locker_assigned"))
+            self.overlay_bg.configure(fg_color="#B8860B")          # amarillo: sin locker
+            self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFF8E1")
+            self.lbl_success_main.configure(text=t("scan.success_identity"))
+            self.lbl_success_main.pack(pady=(0, 8))
+            self.lbl_success_sub.configure(text=t("scan.success_no_locker"))
+            self.lbl_success_sub.pack(pady=(0, 8))
+
+        self.lbl_countdown.pack(pady=(6, 0))
 
         self.lbl_attempts.configure(text="")
-        self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
-        self.lbl_success_matricula.configure(
-            text=f"{t('scan.matricula_label')}  {user_data.get('matricula', '—')}"
-        )
-        self.lbl_success_fecha.configure(text=user_data.get("fecha", "—"))
-
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
-        self.success_frame.place(relx=0.5, rely=0.66, anchor="center")
         self.btn_admin.place_forget()
-
-        # Iniciar countdown
-        self._start_countdown(self.DISPLAY_SECONDS)
+        if locker_num and self._should_wait_for_door(int(locker_num)):
+            self._start_door_close_wait(int(locker_num), user_data.get("locker_assignment_id"))
+        else:
+            self._start_countdown(self.DISPLAY_SECONDS)
 
     def on_face_no_match(self) -> None:
         """Llamado cuando no hay match."""
@@ -726,17 +990,48 @@ class ScanningScreen(ctk.CTkFrame):
 
         self._reset_liveness_state()
         self._attempts += 1
-        self.lbl_attempts.configure(
-            text=t("scan.attempts", a=self._attempts, m=self.MAX_ATTEMPTS)
-        )
+        self.scan_progress_bar.set(0)
+
         if self._attempts >= self.MAX_ATTEMPTS:
-            self.lbl_status.configure(text=t("scan.not_recognized_use_pin"), text_color="#EF9A9A")
-            self.after(1200, self._show_pin_overlay)
-        else:
-            self.lbl_status.configure(
-                text=t("scan.face_not_recognized", a=self._attempts, m=self.MAX_ATTEMPTS),
-                text_color="#FFCC80",
+            # Registrar un único intento fallido al agotar los 3 intentos
+            access_log_service.register_access(
+                self._last_failed_closest.get("idLockerAsignado") if self._last_failed_closest else None,
+                permitted=False,
+                motivo="no_reconocido",
             )
+            self._last_failed_closest = None
+            # Mostrar overlay rojo 3 segundos, luego el PIN
+            self.lbl_attempts.configure(text="")
+            self.btn_admin.place_forget()
+            self.denied_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+            self.denied_overlay.lift()
+            self.after(3000, self._dismiss_denied_overlay)
+        else:
+            self.lbl_attempts.configure(
+                text=t("scan.attempts", a=self._attempts, m=self.MAX_ATTEMPTS)
+            )
+            self.lbl_status.configure(
+                text=t("scan.position_face"),
+                text_color="#FFFFFF",
+            )
+
+    def _dismiss_denied_overlay(self) -> None:
+        """Cierra el overlay rojo y abre el panel de PIN."""
+        self.denied_overlay.place_forget()
+        if not self._success_shown:
+            self._show_pin_overlay()
+
+    def _show_denied_to_standby(self) -> None:
+        """Muestra overlay de acceso denegado 3 segundos y regresa al inicio."""
+        self.btn_admin.place_forget()
+        self.denied_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.denied_overlay.lift()
+        self.after(3000, self._dismiss_denied_to_standby)
+
+    def _dismiss_denied_to_standby(self) -> None:
+        self.denied_overlay.place_forget()
+        if not self._success_shown:
+            self._go_standby()
 
     # ── Countdown ─────────────────────────────────────────────────────────────
 
@@ -751,11 +1046,132 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_countdown.configure(text=t("scan.return_in", s=seconds))
         self._return_job = self.after(1000, self._start_countdown, seconds - 1)
 
+    def _should_wait_for_door(self, locker_id: int) -> bool:
+        active = DOOR_SWITCH_CONFIG.get("active_lockers", [])
+        return int(locker_id) in [int(x) for x in active]
+
+    def _start_door_close_wait(self, locker_id: int, assignment_id: int | None) -> None:
+        from core.door_switch_controller import get_door_switch_controller
+
+        controller = get_door_switch_controller()
+        if not controller.is_available():
+            self._start_countdown(self.DISPLAY_SECONDS)
+            return
+
+        self._door_wait_active = True
+        self._door_wait_phase = "waiting"
+        self._door_open_seen = False
+        self._door_open_count = 0
+        self._door_wait_locker_id = int(locker_id)
+        self._door_wait_assignment_id = assignment_id
+        self._door_wait_started_at = time.time()
+        self.lbl_countdown.configure(text=t("door.waiting_close"))
+        self._poll_door_close()
+
+    def _poll_door_close(self) -> None:
+        if not self._door_wait_active or self._door_wait_locker_id is None:
+            return
+
+        from core.door_switch_controller import get_door_switch_controller
+
+        controller = get_door_switch_controller()
+        state = controller.read_state(self._door_wait_locker_id)
+        now = time.time()
+        elapsed = now - self._door_wait_started_at
+
+        if state is None:
+            self._door_wait_active = False
+            self._door_wait_job = None
+            self._start_countdown(self.DISPLAY_SECONDS)
+            return
+
+        # Debounce: require 3 consecutive open readings (~600 ms) to avoid
+        # solenoid-activation noise triggering a false "door opened" detection.
+        if state is False:
+            self._door_open_count += 1
+            if self._door_open_count >= 3:
+                self._door_open_seen = True
+        else:
+            self._door_open_count = 0
+
+        # Door closed after being genuinely opened → success, go to standby
+        if state is True and self._door_open_seen:
+            self._door_wait_active = False
+            if self._door_wait_job:
+                self.after_cancel(self._door_wait_job)
+                self._door_wait_job = None
+            access_log_service.register_access(
+                self._door_wait_assignment_id,
+                permitted=True,
+                motivo="puerta_cerrada",
+            )
+            self._go_standby()
+            return
+
+        # Door was never opened and timeout reached → user ignored the solenoid,
+        # go to standby silently with no alert and no open-locker badge.
+        if not self._door_open_seen and elapsed >= self.DOOR_ALERT_DELAY_S:
+            self._door_wait_active = False
+            if self._door_wait_job:
+                self.after_cancel(self._door_wait_job)
+                self._door_wait_job = None
+            self._go_standby()
+            return
+
+        # Phase transition: waiting → alerting at DOOR_ALERT_DELAY_S
+        # (only reached if door was genuinely opened)
+        if self._door_wait_phase == "waiting" and elapsed >= self.DOOR_ALERT_DELAY_S:
+            self._door_wait_phase = "alerting"
+            self._show_door_alert()
+
+        # Phase end: alerting expires → mark locker open and go to standby
+        if self._door_wait_phase == "alerting" and elapsed >= self.DOOR_ALERT_DELAY_S + self.DOOR_ALERT_DURATION_S:
+            self._door_wait_active = False
+            if self._door_wait_job:
+                self.after_cancel(self._door_wait_job)
+                self._door_wait_job = None
+            from ui.locker_screen.door_state import add_open_locker
+            add_open_locker(self._door_wait_locker_id)
+            self._go_standby()
+            # Badge must be lifted AFTER show_frame raises the new screen
+            if hasattr(self.controller, "show_open_locker_badge"):
+                self.controller.show_open_locker_badge()
+            return
+
+        poll_ms = int(DOOR_SWITCH_CONFIG.get("poll_interval_ms", 200))
+        self._door_wait_job = self.after(poll_ms, self._poll_door_close)
+
+    def _show_door_alert(self) -> None:
+        self.overlay_bg.place_forget()
+        self.canvas.delete("all")
+        if self._door_wait_locker_id is not None:
+            self.lbl_door_warning_locker.configure(
+                text=str(self._door_wait_locker_id)
+            )
+        self.door_warning_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.door_warning_overlay.lift()
+
     # ── Métodos internos ──────────────────────────────────────────────────────
 
     def _go_standby(self) -> None:
         from ui.locker_screen.standby_screen import StandbyScreen
         self.controller.show_frame(StandbyScreen)
+
+    def _finalize_auto_return(self) -> None:
+        if self._camera_thread and self._camera_thread.is_alive():
+            elapsed = 0.0
+            if self._auto_return_started_ts is not None:
+                elapsed = time.time() - self._auto_return_started_ts
+            if elapsed >= 1.5 and self.face_manager and self.face_manager.initialized:
+                try:
+                    self.face_manager.release()
+                except Exception as e:
+                    logger.debug("Auto-return: fallo al liberar camara: %s", e)
+            self.after(120, self._finalize_auto_return)
+            return
+
+        self._auto_return_started_ts = None
+        self._go_standby()
 
     def _go_admin_login(self) -> None:
         # Detener reconocimiento ANTES de construir los frames de admin
@@ -1052,7 +1468,7 @@ class ScanningScreen(ctk.CTkFrame):
             width=200,
             height=44,
             corner_radius=10,
-            command=self._go_standby,
+            command=self._cancel_pin,
         ).pack(pady=(16, 0))
 
     def _show_pin_overlay(self) -> None:
@@ -1087,10 +1503,10 @@ class ScanningScreen(ctk.CTkFrame):
     def _pin_digit(self, digit: str) -> None:
         self.lbl_pin_error.configure(text="")
         if self._pin_state == "matricula":
-            if len(self._pin_matricula) < 12:
+            if len(self._pin_matricula) < 8:          # máx 8 dígitos de matrícula
                 self._pin_matricula += digit
         else:
-            if len(self._pin_code) < 8:
+            if len(self._pin_code) < 4:               # máx 4 dígitos de PIN
                 self._pin_code += digit
         self._update_pin_display()
 
@@ -1109,16 +1525,30 @@ class ScanningScreen(ctk.CTkFrame):
 
     def _validate_matricula(self) -> None:
         """Paso 1: verifica que la matrícula exista en BD antes de pedir PIN."""
-        if not self._pin_matricula.strip():
+        mat = self._pin_matricula.strip()
+        if not mat:
             self.lbl_pin_error.configure(text=t("pin.err_enter_matricula"))
+            return
+        if len(mat) < 5:
+            self.lbl_pin_error.configure(text=t("pin.err_matricula_too_short"))
             return
 
         user = user_service.get_user_by_matricula(self._pin_matricula)
         if user is None:
-            self.lbl_pin_error.configure(text=t("pin.err_matricula_not_found"))
+            self._pin_matricula_fail_count += 1
             access_log_service.register_access(
                 None, permitted=False, motivo="matricula_incorrecta"
             )
+            if self._pin_matricula_fail_count >= 3:
+                self._hide_pin_overlay()
+                self._show_denied_to_standby()
+                return
+            remaining = 3 - self._pin_matricula_fail_count
+            self.lbl_pin_error.configure(
+                text=f"{t('pin.err_matricula_not_found')}  ({remaining} intento{'s' if remaining != 1 else ''} restante)"
+            )
+            self._pin_matricula = ""
+            self._update_pin_display()
             return
 
         self._found_user = user
@@ -1155,14 +1585,14 @@ class ScanningScreen(ctk.CTkFrame):
                     None, permitted=False, motivo="limite_intentos_pin"
                 )
                 self._hide_pin_overlay()
-                self.after(200, self._show_lock_screen)
+                self._show_denied_to_standby()
                 return
             access_log_service.register_access(
                 None, permitted=False, motivo="pin_incorrecto"
             )
             s = "s" if remaining != 1 else ""
             self.lbl_pin_error.configure(
-                text=f"{t('scan.matricula_label')} o PIN incorrecto  ({remaining} intento{s} restante)"
+                text=f"{t('pin.err_pin_wrong')}  {t('pin.attempts_remaining', n=remaining, s=s)}"
             )
             self._pin_code = ""
             self._update_pin_display()
@@ -1187,10 +1617,17 @@ class ScanningScreen(ctk.CTkFrame):
             "nombre": full_name or "Usuario",
             "matricula": result.get("matricula") or "—",
             "locker_numero": locker_id,
+            "locker_assignment_id": result.get("idLockerAsignado"),
             "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }
         self._hide_pin_overlay()
         self.on_face_match(user_data)
+
+    def _cancel_pin(self) -> None:
+        access_log_service.register_access(
+            None, permitted=False, motivo="pin_cancelado"
+        )
+        self._go_standby()
 
     # ── Pantalla de bloqueo tras PIN fallido ──────────────────────────────────
 
@@ -1258,7 +1695,7 @@ class ScanningScreen(ctk.CTkFrame):
         if not faces or not self.face_manager:
             return None
 
-        face_box = faces[0].get("box")
+        face_box = (_largest_face(faces) or {}).get("box")
         if not face_box:
             return None
 
@@ -1279,22 +1716,32 @@ class ScanningScreen(ctk.CTkFrame):
         matched, closest = user_service.find_best_face_match(probe_vec, probe_model_prefix, candidates)
 
         if matched is None:
-            access_log_service.register_access(
-                closest.get("idLockerAsignado") if closest else None,
-                permitted=False,
-                motivo="no_reconocido",
-            )
+            # Guardar closest para loguearlo una sola vez al agotar los intentos
+            self._last_failed_closest = closest
             return None
 
         locker_id = matched.get("idLocker")
+        user_id   = matched.get("idUsuario")
         if locker_id and self._camera_running:
             threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
         elif locker_id:
             logger.info("Reconocimiento completado pero cámara detenida — locker no abierto")
         else:
-            logger.info("Usuario id=%s autenticado pero sin locker asignado", matched.get("idUsuario"))
+            logger.info("Usuario id=%s autenticado pero sin locker asignado", user_id)
 
-        access_log_service.register_access(matched.get("idLockerAsignado"), permitted=True)
+        if locker_id:
+            access_log_service.register_access(
+                matched.get("idLockerAsignado"),
+                permitted=True,
+                user_id=user_id,
+            )
+        else:
+            access_log_service.register_access(
+                None,
+                permitted=False,
+                motivo="sin_asignacion",
+                user_id=user_id,
+            )
 
         full_name = " ".join(
             p for p in [matched.get("nombre"), matched.get("apPaterno"), matched.get("apMaterno")]
@@ -1305,5 +1752,6 @@ class ScanningScreen(ctk.CTkFrame):
             "nombre": full_name or "Usuario",
             "matricula": matched.get("matricula") or "—",
             "locker_numero": locker_id,
+            "locker_assignment_id": matched.get("idLockerAsignado"),
             "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
         }

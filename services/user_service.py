@@ -78,6 +78,17 @@ def update_user(user_id: int, data: dict) -> None:
     ))
 
 
+def update_pin(user_id: int, new_pin: str) -> None:
+    """Actualiza el PIN de un usuario. new_pin es el texto plano (se hashea con SHA-256)."""
+    hashed = hashlib.sha256(new_pin.strip().encode()).hexdigest()
+    execute(
+        "UPDATE usuarios SET pin=?, "
+        "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
+        "modificadoPor=1 WHERE idUsuario=?",
+        (hashed, user_id),
+    )
+
+
 def set_user_status(user_id: int, estado: str) -> None:
     """Cambia el estado de un usuario: 'activo', 'inactivo' o 'suspendido'."""
     execute(

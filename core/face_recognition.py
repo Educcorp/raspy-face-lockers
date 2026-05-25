@@ -27,6 +27,25 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# ── Filtro de distancia ─────────────────────────────────────────────────────
+# Cara debe ocupar al menos MIN_FACE_SIZE_RATIO del ancho del frame (~1 metro).
+# Pi Camera v2/3 ≈ 62° HFOV; a 1 m un rostro adulto ocupa ~82 px en 480 px.
+MIN_FACE_SIZE_RATIO: float = 0.17
+
+
+def filter_close_faces(faces: list, frame) -> list:
+    """Retiene solo las caras dentro del rango de ~1 metro.
+
+    Filtra por bounding box: la cara debe tener un ancho >= MIN_FACE_SIZE_RATIO
+    del ancho del frame. Esto evita detectar rostros o movimientos lejanos.
+    """
+    if not faces:
+        return faces
+    frame_w = frame.shape[1] if frame is not None else 480
+    min_w = max(60, int(frame_w * MIN_FACE_SIZE_RATIO))
+    return [f for f in faces if (f.get("box") or (0, 0, 0, 0))[2] >= min_w]
+
+
 try:
     import dlib
     _DLIB_AVAILABLE = True

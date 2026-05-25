@@ -15,7 +15,7 @@ from tkinter import messagebox
 from tkinter import ttk
 from database.connection import fetch_all
 from services import user_service
-from ui.admin_app import PALETTE
+from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t
 from auth.session import (
     can_create_users,
@@ -92,9 +92,9 @@ class UsersCatalogScreen(ctk.CTkFrame):
         search_frame.pack(fill="x", padx=14, pady=(12, 6))
         search_frame.pack_propagate(False)
 
-        ctk.CTkLabel(search_frame, text="🔍", fg_color="transparent",
-                     text_color=PALETTE["MUTED"],
-                     font=ctk.CTkFont(size=18)).pack(side="left", padx=10)
+        _ic = get_icon("search", size=17, color=PALETTE["MUTED"])
+        ctk.CTkLabel(search_frame, image=_ic, text="",
+                     fg_color="transparent").pack(side="left", padx=10)
 
         entry = ctk.CTkEntry(
             search_frame, textvariable=self._search_var,
@@ -223,6 +223,11 @@ class UsersCatalogScreen(ctk.CTkFrame):
 
     def _load(self) -> None:
         self._rows = user_service.get_all_users()
+        if not is_superadmin():
+            self._rows = [
+                r for r in self._rows
+                if normalize_user_type_name(r.get("tipo")) != ROLE_SUPERADMIN
+            ]
         self._filter()
 
     # ── Navegación ────────────────────────────────────────────────────────────
@@ -289,9 +294,11 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._load_user()
 
     def _load_catalogs(self) -> None:
+        from auth.session import filter_assignable_user_types
         self._tipos = fetch_all(
             "SELECT idTipoUsuario, nombreTipoUsuario FROM tipo_usuarios WHERE estado='activo'"
         )
+        self._tipos = filter_assignable_user_types(self._tipos)
         self._unidades = fetch_all(
             "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica WHERE estado='activo'"
         )
@@ -399,6 +406,18 @@ class UserDetailOverlay(ctk.CTkFrame):
         if not self._can_edit:
             self.btn_reregister_face.pack_forget()
 
+        self.btn_update_pin = ctk.CTkButton(
+            self._scroll,
+            text="Cambiar PIN",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            fg_color="#5B6E7F", hover_color="#4A5A68",
+            text_color=PALETTE["WHITE"], height=52, corner_radius=12,
+            command=self._update_pin,
+        )
+        self.btn_update_pin.pack(fill="x", padx=4, pady=(0, 8))
+        if not self._can_edit:
+            self.btn_update_pin.pack_forget()
+
         self.btn_delete = ctk.CTkButton(
             self._scroll,
             text=t("common.disable"),
@@ -483,7 +502,11 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._vars["matricula"].set(str(row.get("matricula", "")))
         self._vars["emailInst"].set(row.get("emailInst", ""))
         self._vars["tel"].set(row.get("tel", "") or "")
-        self._vars["tipo"].set(row.get("tipo", ""))
+        tipo_name = row.get("tipo", "")
+        tipo_values = [r["nombreTipoUsuario"] for r in self._tipos]
+        if tipo_name and tipo_name not in tipo_values:
+            self._field_widgets["tipo"].configure(values=[tipo_name] + tipo_values)
+        self._vars["tipo"].set(tipo_name)
         self._vars["unidad"].set(row.get("unidad", ""))
         self._vars["estado"].set(row.get("estado", "activo"))
 
@@ -497,6 +520,15 @@ class UserDetailOverlay(ctk.CTkFrame):
             fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
             hover_color="#1e8449" if is_inactive else "#922b21",
         )
+        # Only superadmin can edit the superadmin account; revoke edit access for plain admins.
+        if is_target_superadmin and not is_superadmin():
+            self._can_edit = False
+            self.btn_edit.configure(
+                text=t("common.read_only"),
+                fg_color=PALETTE["BORDER"],
+                command=None,
+            )
+
         if is_target_superadmin and not is_inactive:
             self.btn_delete.configure(
                 text=t("users.protected"),
@@ -589,7 +621,22 @@ class UserDetailOverlay(ctk.CTkFrame):
 
         tipo_name   = self._vars["tipo"].get()
         unidad_name = self._vars["unidad"].get()
-        tipo_id   = next((t["idTipoUsuario"]     for t in self._tipos    if t["nombreTipoUsuario"] == tipo_name),   None)
+
+        # Block assigning the superadmin role to a user who isn't already superadmin.
+        # When editing the actual superadmin's data the tipo field is disabled and stays
+        # as ROLE_SUPERADMIN, so we must not block that case.
+        target_role = normalize_user_type_name((self._user or {}).get("tipo", ""))
+        if normalize_user_type_name(tipo_name) == ROLE_SUPERADMIN and target_role != ROLE_SUPERADMIN:
+            self.lbl_err.configure(
+                text=t("users.err_superadmin_locked"),
+                text_color=PALETTE["DANGER"],
+            )
+            return
+
+        tipo_id   = next((tp["idTipoUsuario"]    for tp in self._tipos    if tp["nombreTipoUsuario"] == tipo_name),   None)
+        # superadmin is excluded from the filtered _tipos list; fall back to the stored value.
+        if tipo_id is None and target_role == ROLE_SUPERADMIN:
+            tipo_id = (self._user or {}).get("idTipoUsuario")
         unidad_id = next((u["idUnidadAcademica"] for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
 
         if not tipo_id or not unidad_id:
@@ -701,8 +748,11 @@ class UserDetailOverlay(ctk.CTkFrame):
             active = False
         self._edit_mode = active
         state = "normal" if active else "disabled"
-        for w in self._field_widgets.values():
-            w.configure(state=state)
+        target_role = normalize_user_type_name((self._user or {}).get("tipo", ""))
+        for key, w in self._field_widgets.items():
+            # El tipo de un superadmin está siempre bloqueado (solo puede haber uno)
+            field_state = "disabled" if (key == "tipo" and target_role == ROLE_SUPERADMIN) else state
+            w.configure(state=field_state)
         btn_color = PALETTE["ACCENT_HOVER"] if active else PALETTE["BORDER"]
         self.btn_edit.configure(
             text=t("common.cancel") if active else t("common.edit"),
@@ -712,6 +762,13 @@ class UserDetailOverlay(ctk.CTkFrame):
             self.btn_save.pack(fill="x", padx=4, pady=(16, 8), before=self.btn_delete)
         else:
             self.btn_save.pack_forget()
+
+    def _update_pin(self) -> None:
+        """Abre el diálogo para cambiar el PIN del usuario."""
+        if not self._can_edit:
+            return
+        nombre_str = self._vars.get("nombre", tk.StringVar()).get().strip()
+        _PinUpdateDialog(self, self.user_id, nombre_str)
 
     def _reregister_face(self) -> None:
         """Navega al flujo de captura facial para actualizar el rostro del usuario."""
@@ -789,3 +846,98 @@ class _ConfirmDialog(ctk.CTkFrame):
             text_color=PALETTE["WHITE"],
             command=lambda: (on_confirm(), self.destroy()),
         ).pack(side="right", expand=True, fill="x", padx=(6, 0))
+
+
+# ── Diálogo para cambiar PIN ──────────────────────────────────────────────────
+
+class _PinUpdateDialog(ctk.CTkFrame):
+    """Overlay para cambiar el PIN de un usuario."""
+
+    def __init__(self, parent, user_id: int, user_name: str = ""):
+        root = parent.winfo_toplevel()
+        super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+        self.lift()
+        self._user_id = user_id
+
+        card = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], corner_radius=20,
+                            width=420, height=360)
+        card.pack(expand=True)
+        card.pack_propagate(False)
+
+        ctk.CTkLabel(
+            card,
+            text=f"Cambiar PIN{': ' + user_name if user_name else ''}",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=PALETTE["ACCENT"], fg_color="transparent",
+        ).pack(pady=(22, 4))
+
+        ctk.CTkLabel(
+            card, text="Ingresa el nuevo PIN de 4 dígitos.",
+            font=ctk.CTkFont(size=13),
+            text_color=PALETTE["MUTED"], fg_color="transparent",
+        ).pack(pady=(0, 14))
+
+        self._pin_var    = tk.StringVar()
+        self._confirm_var = tk.StringVar()
+
+        def _only_digits(var, maxlen=4):
+            def _cb(*_):
+                val = var.get()
+                clean = "".join(c for c in val if c.isdigit())[:maxlen]
+                if clean != val:
+                    var.set(clean)
+            return _cb
+
+        self._pin_var.trace_add("write", _only_digits(self._pin_var))
+        self._confirm_var.trace_add("write", _only_digits(self._confirm_var))
+
+        for label, var in (("Nuevo PIN", self._pin_var),
+                           ("Confirmar PIN", self._confirm_var)):
+            ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=12),
+                         text_color=PALETTE["MUTED"],
+                         fg_color="transparent").pack(anchor="w", padx=24, pady=(6, 2))
+            ctk.CTkEntry(card, textvariable=var, show="*",
+                         font=ctk.CTkFont(size=18),
+                         fg_color=PALETTE["BG"], border_color=PALETTE["BORDER"],
+                         text_color=PALETTE["TEXT"], height=46,
+                         ).pack(fill="x", padx=24)
+
+        self._lbl_err = ctk.CTkLabel(card, text="",
+                                     font=ctk.CTkFont(size=12),
+                                     text_color=PALETTE["DANGER"],
+                                     fg_color="transparent")
+        self._lbl_err.pack(pady=(6, 0))
+
+        btn_row = ctk.CTkFrame(card, fg_color="transparent", height=58)
+        btn_row.pack(fill="x", padx=24, pady=(6, 18))
+        btn_row.pack_propagate(False)
+
+        ctk.CTkButton(btn_row, text="Cancelar", height=48,
+                      fg_color=PALETTE["BORDER"], hover_color=PALETTE["MUTED"],
+                      text_color=PALETTE["TEXT"],
+                      command=self.destroy,
+                      ).pack(side="left", expand=True, fill="x", padx=(0, 6))
+
+        ctk.CTkButton(btn_row, text="Guardar PIN", height=48,
+                      fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"],
+                      text_color=PALETTE["WHITE"],
+                      command=self._save,
+                      ).pack(side="right", expand=True, fill="x", padx=(6, 0))
+
+    def _save(self) -> None:
+        pin = self._pin_var.get().strip()
+        confirm = self._confirm_var.get().strip()
+        if len(pin) != 4 or not pin.isdigit():
+            self._lbl_err.configure(text="El PIN debe tener exactamente 4 dígitos.")
+            return
+        if pin != confirm:
+            self._lbl_err.configure(text="Los PINs no coinciden.")
+            return
+        try:
+            from services import user_service
+            user_service.update_pin(self._user_id, pin)
+        except Exception as exc:
+            self._lbl_err.configure(text=f"Error: {str(exc)[:60]}")
+            return
+        self.destroy()

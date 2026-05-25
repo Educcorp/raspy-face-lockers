@@ -29,12 +29,26 @@ from services import user_service
 from ui.admin_app import PALETTE
 from ui.i18n import t as _t
 from auth.session import can_create_users, filter_assignable_user_types
+from core.face_recognition import filter_close_faces
 from utils.validators import (
     validate_name, validate_matricula, validate_email, validate_tel,
     limit_var, MAX_NOMBRE, MAX_APELLIDO, MAX_EMAIL, MAX_TEL,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _largest_face(faces: list) -> dict | None:
+    """Selecciona el rostro más cercano (caja más grande) de la lista detectada."""
+    if not faces:
+        return None
+    return max(faces, key=lambda f: (
+        (f.get("box") or (0, 0, 0, 0))[2] * (f.get("box") or (0, 0, 0, 0))[3]
+    ))
+
+
+def _filter_close_faces(faces: list, frame) -> list:
+    return filter_close_faces(faces, frame)
 
 # cv2 y numpy se importan de forma lazy en _Step4FaceCapture para no bloquear
 # si OpenCV no está instalado en el entorno de desarrollo.
@@ -480,6 +494,11 @@ class _Step3PIN(ctk.CTkFrame):
         if len(self._pin) < self.MAX_DIGITS:
             self.lbl_err.configure(text=f"Ingresa {self.MAX_DIGITS} dígitos")
             return
+        if any(self._pin[i] == self._pin[i - 1] for i in range(1, len(self._pin))):
+            self.lbl_err.configure(text="El PIN no puede tener numeros repetidos consecutivos")
+            self._pin = ""
+            self._refresh()
+            return
         # Hashear PIN con SHA-256
         pin_hash = hashlib.sha256(self._pin.encode()).hexdigest()
         self.lbl_err.configure(text="")
@@ -769,11 +788,12 @@ class _Step4FaceCapture(ctk.CTkFrame):
                     continue
 
                 self._current_frame = frame
-                faces = self._face_mgr.face_detector.detect(frame)
+                all_faces = self._face_mgr.face_detector.detect(frame)
+                faces = _filter_close_faces(all_faces, frame)
                 self._detected_faces = faces
 
                 if faces:
-                    box = faces[0].get("box")
+                    box = (_largest_face(faces) or {}).get("box")
                     self._current_landmarks = self._face_mgr.get_landmarks(frame, box) or [] if box else []
                 else:
                     self._current_landmarks = []
@@ -801,7 +821,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         import time
         if not faces or self._face_mgr is None:
             return
-        box = faces[0].get("box")
+        box = (_largest_face(faces) or {}).get("box")
         if not box:
             return
 
@@ -879,16 +899,31 @@ class _Step4FaceCapture(ctk.CTkFrame):
             return
 
         if self._current_frame is not None:
-            frame_rgb = cv2.flip(cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB), 1)
+            backend = getattr(self._face_mgr, "backend_type", "picamera2")
+            if backend == "opencv":
+                frame_rgb = cv2.cvtColor(self._current_frame, cv2.COLOR_BGR2RGB)
+            else:
+                frame_rgb = self._current_frame
+
+            frame_rgb = cv2.flip(frame_rgb, 1)
             h, w = frame_rgb.shape[:2]
-            scale = min(WIN_W / w, self.CANVAS_H / h)
-            new_w, new_h = int(w * scale), int(h * scale)
-            frame_resized = cv2.resize(frame_rgb, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            square_size = min(WIN_W, self.CANVAS_H)
+            crop_side = min(h, w)
+            crop_x0 = (w - crop_side) // 2
+            crop_y0 = (h - crop_side) // 2
+            frame_crop = frame_rgb[crop_y0:crop_y0 + crop_side, crop_x0:crop_x0 + crop_side]
+
+            frame_resized = cv2.resize(
+                frame_crop,
+                (square_size, square_size),
+                interpolation=cv2.INTER_LINEAR,
+            )
 
             canvas_arr = np.zeros((self.CANVAS_H, WIN_W, 3), dtype=np.uint8)
-            y_off = (self.CANVAS_H - new_h) // 2
-            x_off = (WIN_W - new_w) // 2
-            canvas_arr[y_off:y_off + new_h, x_off:x_off + new_w] = frame_resized
+            y_off = (self.CANVAS_H - square_size) // 2
+            x_off = (WIN_W - square_size) // 2
+            canvas_arr[y_off:y_off + square_size, x_off:x_off + square_size] = frame_resized
 
             pil_image = Image.fromarray(canvas_arr, "RGB")
             draw = ImageDraw.Draw(pil_image)
@@ -1079,7 +1114,7 @@ class _Step5Confirm(ctk.CTkFrame):
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.grid(row=0, column=0)
 
-        ctk.CTkLabel(center, text="[OK]",
+        ctk.CTkLabel(center, text="✓",
                      font=ctk.CTkFont(size=80),
                      fg_color="transparent",
                      text_color="#27ae60").pack(pady=(0, 12))

@@ -58,13 +58,30 @@ GPIO_CONFIG = {
     "debounce_ms": 50,
 }
 
+# ── Door limit switches (KW11-3Z) ──────────────────────────────────────────
+DOOR_SWITCH_CONFIG = {
+    "pins": {
+        1: 5,   # Locker 1
+        2: 6,   # Locker 2
+        3: 12,  # Locker 3
+        4: 13,  # Locker 4
+    },
+    # Activar logica solo para lockers confirmados (por ahora solo el 3).
+    "active_lockers": [1, 2, 3, 4],
+    "close_cooldown_seconds": 5.0,
+    "close_timeout_seconds": 5.0,
+    "warning_duration_seconds": 6.0,
+    "warning_repeat_seconds": 45.0,
+    "poll_interval_ms": 200,
+}
+
 # ── UI ─────────────────────────────────────────────────────────────────────
 UI_CONFIG = {
     "width": 480,
     "height": 800,
     "theme": "Greengage",
-    "fullscreen": False,  # True en Raspberry Pi física
-    "kiosk_mode": False,  # True en RPi (sin barra de título)
+    "fullscreen": True,   # Pantalla completa en RPi
+    "kiosk_mode": True,   # Sin barra de título (modo kiosco)
 }
 
 # ── Timeouts ───────────────────────────────────────────────────────────────

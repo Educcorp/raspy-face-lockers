@@ -17,11 +17,17 @@ import customtkinter as ctk
 from database.connection import fetch_one
 from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t, lang_btn_text
-from auth.session import can_create_users, get_current_full_name, get_current_role_label
+from auth.session import (
+    can_create_users,
+    get_current_full_name,
+    get_current_role_label,
+    is_authenticated,
+    is_superadmin,
+)
 
 
 def _get_catalogs() -> list[dict]:
-    return [
+    catalogs = [
         {
             "icon":   "USR",
             "label":  t("cat.users.label"),
@@ -55,7 +61,7 @@ def _get_catalogs() -> list[dict]:
             "label":  t("cat.types.label"),
             "hint":   t("cat.types.hint"),
             "sql":    "SELECT COUNT(*) AS n FROM historial_accesos",
-            "target": "AreasCatalogScreen",
+            "target": "AccessHistoryScreen",
         },
         {
             "icon":   "ASG",
@@ -65,6 +71,12 @@ def _get_catalogs() -> list[dict]:
             "target": "LockerAssignmentScreen",
         },
     ]
+    if not is_superadmin():
+        catalogs = [
+            c for c in catalogs
+            if c.get("icon") not in {"ZNA", "UND"}
+        ]
+    return catalogs
 
 
 class _CatalogCard(ctk.CTkFrame):
@@ -210,7 +222,7 @@ class DashboardScreen(ctk.CTkFrame):
         )
         identity.pack(side="left", padx=18, pady=(8, 6))
 
-        ctk.CTkLabel(
+        self.lbl_role = ctk.CTkLabel(
             identity,
             text=get_current_role_label(),
             font=ctk.CTkFont(size=26, weight="bold"),
@@ -218,11 +230,12 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
             height=24,
             anchor="w",
-        ).pack(anchor="w", pady=(0, 2))
+        )
+        self.lbl_role.pack(anchor="w", pady=(0, 2))
 
         full_name = get_current_full_name()
         subtitle = f"{t('dash.user_prefix')} {full_name}" if full_name else f"{t('dash.user_prefix')} {t('dash.session_active')}"
-        ctk.CTkLabel(
+        self.lbl_subtitle = ctk.CTkLabel(
             identity,
             text=subtitle,
             font=ctk.CTkFont(size=12),
@@ -230,7 +243,8 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
             height=14,
             anchor="w",
-        ).pack(anchor="w")
+        )
+        self.lbl_subtitle.pack(anchor="w")
 
         ctk.CTkFrame(
             identity,
@@ -240,12 +254,16 @@ class DashboardScreen(ctk.CTkFrame):
             width=56,
         ).pack(anchor="w", pady=(6, 0))
 
-        # ── Botón cambio de idioma ────────────────────────────────────────────
+        # ── Botones del header (packed side=right → orden visual izq a der:
+        #    [logout]  [theme]  [lang]  + [kiosk-exit] flotante en esquina superior derecha
+        #    Se empaquetan en orden INVERSO porque side="right" llena de derecha a izq) ──
+
+        # 1. Idioma — más a la derecha (se empaqueta primero)
         ctk.CTkButton(
             header,
             text=lang_btn_text(),
-            font=ctk.CTkFont(size=22),
-            width=52, height=46,
+            font=ctk.CTkFont(size=13),
+            width=108, height=46,
             fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,
@@ -253,9 +271,9 @@ class DashboardScreen(ctk.CTkFrame):
             text_color=PALETTE["TEXT"],
             corner_radius=12,
             command=self.controller.toggle_lang,
-        ).pack(side="right", padx=(6, 4), pady=10)
+        ).pack(side="right", padx=(6, 58), pady=10)
 
-        # ── Botón alternar tema (iconos vectoriales) ─────────────────────────
+        # 2. Tema (modo oscuro / claro)
         _mode = getattr(self.controller, "_mode", "light")
         icon_name = "moon" if _mode == "light" else "sun"
         self._theme_icon = get_icon(icon_name, size=22, color=PALETTE["TEXT"])
@@ -272,20 +290,21 @@ class DashboardScreen(ctk.CTkFrame):
             command=self.controller.toggle_theme,
         ).pack(side="right", padx=(6, 2), pady=10)
 
+        # 3. Cerrar sesión de admin
         self._logout_icon = get_icon("logout", size=20, color=PALETTE["TEXT"])
         ctk.CTkButton(
             header,
             text="",
             image=self._logout_icon,
-            width=46,
-            height=46,
+            width=46, height=46,
             fg_color=PALETTE["BG"],
             hover_color=PALETTE["BORDER"],
             border_width=1,
             border_color=PALETTE["BORDER"],
             corner_radius=12,
             command=self._confirm_logout,
-        ).pack(side="right", padx=(0, 6), pady=10)
+        ).pack(side="right", padx=(0, 2), pady=10)
+
 
         # ── Resumen operativo ───────────────────────────────────────────────
         summary = ctk.CTkFrame(
@@ -317,13 +336,14 @@ class DashboardScreen(ctk.CTkFrame):
         )
         left_metric.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
         left_metric.pack_propagate(False)
-        ctk.CTkLabel(
+        self._lbl_total_catalogs = ctk.CTkLabel(
             left_metric,
             text=str(total_catalogs),
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=10, pady=(5, 0))
+        )
+        self._lbl_total_catalogs.pack(anchor="w", padx=10, pady=(5, 0))
         ctk.CTkLabel(
             left_metric,
             text=t("dash.modules_available"),
@@ -342,13 +362,14 @@ class DashboardScreen(ctk.CTkFrame):
         )
         right_metric.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
         right_metric.pack_propagate(False)
-        ctk.CTkLabel(
+        self._lbl_total_records = ctk.CTkLabel(
             right_metric,
             text=str(total_records),
             font=ctk.CTkFont(size=24, weight="bold"),
             text_color=PALETTE["ACCENT"],
             fg_color="transparent",
-        ).pack(anchor="w", padx=10, pady=(5, 0))
+        )
+        self._lbl_total_records.pack(anchor="w", padx=10, pady=(5, 0))
         ctk.CTkLabel(
             right_metric,
             text=t("dash.total_records"),
@@ -380,14 +401,50 @@ class DashboardScreen(ctk.CTkFrame):
             fg_color="transparent",
         ).pack(anchor="w", padx=22, pady=(0, 4))
 
-        # Grid 2×3 de tarjetas
-        grid_frame = ctk.CTkFrame(self, fg_color="transparent")
-        grid_frame.pack(fill="both", expand=True, padx=14, pady=(0, 2))
+        # Grid dinámico de tarjetas (filas ajustadas al rol activo)
+        self._grid_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._grid_frame.pack(fill="both", expand=True, padx=14, pady=(0, 2))
 
         for col in range(2):
-            grid_frame.grid_columnconfigure(col, weight=1, uniform="col")
-        for row in range(3):
-            grid_frame.grid_rowconfigure(row, weight=1, uniform="row")
+            self._grid_frame.grid_columnconfigure(col, weight=1, uniform="col")
+
+        self._cards = []
+        self._rebuild_catalog_cards()
+
+        # Botón flotante: salir del modo kiosco — esquina superior derecha
+        if hasattr(self.controller, "confirm_kiosk_exit"):
+            self._kiosk_exit_icon = get_icon("times", size=18, color=PALETTE["TEXT"])
+            _kiosk_btn = ctk.CTkButton(
+                self,
+                text="",
+                image=self._kiosk_exit_icon,
+                width=46, height=46,
+                fg_color=PALETTE["BG"],
+                hover_color=PALETTE["DANGER"],
+                border_width=1,
+                border_color=PALETTE["BORDER"],
+                corner_radius=12,
+                command=self.controller.confirm_kiosk_exit,
+            )
+            _kiosk_btn.place(x=428, y=22)
+            _kiosk_btn.lift()
+
+      
+
+    def _rebuild_catalog_cards(self) -> None:
+        """Destruye y recrea las tarjetas según el rol activo."""
+        for card in self._cards:
+            if card.winfo_exists():
+                card.destroy()
+        self._cards = []
+
+        _catalogs = _get_catalogs()
+        num_rows = max(1, (len(_catalogs) + 1) // 2)
+
+        for row in range(4):
+            self._grid_frame.grid_rowconfigure(row, weight=0, uniform="")
+        for row in range(num_rows):
+            self._grid_frame.grid_rowconfigure(row, weight=1, uniform="row")
 
         for idx, cat in enumerate(_catalogs):
             row, col = divmod(idx, 2)
@@ -398,7 +455,7 @@ class DashboardScreen(ctk.CTkFrame):
                 return lambda: self._navigate(tname)
 
             card = _CatalogCard(
-                grid_frame,
+                self._grid_frame,
                 label=cat["label"],
                 hint=cat["hint"],
                 count=count,
@@ -407,7 +464,7 @@ class DashboardScreen(ctk.CTkFrame):
             card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             self._cards.append(card)
 
-      
+        self._built_for_superadmin = is_superadmin()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -421,11 +478,14 @@ class DashboardScreen(ctk.CTkFrame):
     def _navigate(self, target_name: str | None) -> None:
         if not target_name:
             return
-        from ui.admin import users_catalog, lockers_catalog, areas_catalog, locker_assignment
+        if target_name == "AreasCatalogScreen" and not is_superadmin():
+            return
+        from ui.admin import users_catalog, lockers_catalog, areas_catalog, locker_assignment, access_history
         mapping = {
             "UsersCatalogScreen":   users_catalog.UsersCatalogScreen,
             "LockersCatalogScreen": lockers_catalog.LockersCatalogScreen,
             "AreasCatalogScreen":   areas_catalog.AreasCatalogScreen,
+            "AccessHistoryScreen":  access_history.AccessHistoryScreen,
             "LockerAssignmentScreen": locker_assignment.LockerAssignmentScreen,
         }
         cls = mapping.get(target_name)
@@ -446,10 +506,30 @@ class DashboardScreen(ctk.CTkFrame):
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def on_show(self, **_kwargs) -> None:
-        """Recarga los contadores cada vez que se vuelve al dashboard."""
-        for idx, cat in enumerate(_get_catalogs()):
-            count = self._get_count(cat["sql"])
-            self._cards[idx].set_count(count)
+        """Recarga contadores, actualiza encabezado y adapta el grid al rol activo."""
+        self.lbl_role.configure(text=get_current_role_label())
+        full_name = get_current_full_name()
+        subtitle = (
+            f"{t('dash.user_prefix')} {full_name}"
+            if full_name
+            else f"{t('dash.user_prefix')} {t('dash.session_active')}"
+        )
+        self.lbl_subtitle.configure(text=subtitle)
+
+        if getattr(self, "_built_for_superadmin", None) != is_superadmin():
+            self._rebuild_catalog_cards()
+        else:
+            for idx, cat in enumerate(_get_catalogs()):
+                if idx < len(self._cards):
+                    self._cards[idx].set_count(self._get_count(cat["sql"]))
+
+        _catalogs = _get_catalogs()
+        if hasattr(self, "_lbl_total_catalogs"):
+            self._lbl_total_catalogs.configure(text=str(len(_catalogs)))
+        if hasattr(self, "_lbl_total_records"):
+            self._lbl_total_records.configure(
+                text=str(sum(self._get_count(cat["sql"]) for cat in _catalogs))
+            )
 
 
 class _LogoutConfirmDialog(ctk.CTkFrame):

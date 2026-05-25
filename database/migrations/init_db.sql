@@ -141,7 +141,12 @@ CREATE TABLE IF NOT EXISTS historial_accesos (
 	idLockerAsignado INTEGER,
 	fechaHoraAcceso TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
 	accesoPermitido TEXT NOT NULL DEFAULT 'si' CHECK(accesoPermitido IN ('si', 'no')),
-	motivo TEXT CHECK(motivo IN ('facial', 'pin', 'sin_asignacion', 'limite_intentos') OR motivo IS NULL),
+	motivo TEXT CHECK(motivo IN (
+		'facial', 'pin', 'sin_asignacion', 'limite_intentos',
+		'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
+		'matricula_incorrecta', 'pin_cancelado',
+		'puerta_cerrada', 'puerta_no_cerrada'
+	) OR motivo IS NULL),
 	fechaExpiracion TEXT NOT NULL,
 	CONSTRAINT fk_historial_asignacion
 		FOREIGN KEY (idLockerAsignado) REFERENCES asignacion_locker(idLockerAsignado)

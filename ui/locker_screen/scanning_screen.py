@@ -548,28 +548,35 @@ class ScanningScreen(ctk.CTkFrame):
 
             close_faces = _filter_close_faces(all_faces, frame)
 
-            # Distance hint: computed before edge filtering so we can tell the user
-            # whether they're too far (face present but too small) or too close (face huge).
-            frame_w = frame.shape[1] if frame is not None else 480
-            if all_faces and not close_faces:
-                self._distance_hint = "closer"
-            elif close_faces:
-                largest_w = max((f.get("box") or (0, 0, 0, 0))[2] for f in close_faces)
-                self._distance_hint = "farther" if largest_w > int(frame_w * 0.55) else ""
-            else:
-                self._distance_hint = ""
-
             # Reject faces whose bounding box touches or overflows the frame edges
-            faces = close_faces
+            faces = list(close_faces)
             if faces:
                 fh, fw = frame.shape[:2]
                 edge = int(min(fh, fw) * 0.05)  # 5% margin on each side
-                complete = []
-                for f in faces:
-                    bx, by, bw, bh = f.get("box", (0, 0, 0, 0))
-                    if bx >= edge and by >= edge and bx + bw <= fw - edge and by + bh <= fh - edge:
-                        complete.append(f)
-                faces = complete
+                faces = [
+                    f for f in faces
+                    if (lambda bx, by, bw, bh:
+                        bx >= edge and by >= edge
+                        and bx + bw <= fw - edge and by + bh <= fh - edge
+                    )(*f.get("box", (0, 0, 0, 0)))
+                ]
+
+            # Distance hint — evaluated after both filters so we cover all "too close" paths:
+            #   1. Any raw detection is very wide (≥40% frame) → partially detected, too close.
+            #   2. Face passed distance filter but overflows the edge bounds → too close.
+            #   3. Faces detected but all too small for 1 m range → too far.
+            frame_w = frame.shape[1] if frame is not None else 480
+            any_large_raw = any(
+                (f.get("box") or (0, 0, 0, 0))[2] >= int(frame_w * 0.40) for f in all_faces
+            )
+            if any_large_raw or (close_faces and not faces):
+                self._distance_hint = "farther"
+            elif all_faces and not close_faces:
+                self._distance_hint = "closer"
+            elif faces:
+                self._distance_hint = ""
+            else:
+                self._distance_hint = ""
 
             self._detected_faces = faces
             self._face_detected  = len(faces) > 0

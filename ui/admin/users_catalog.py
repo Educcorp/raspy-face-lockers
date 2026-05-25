@@ -520,6 +520,15 @@ class UserDetailOverlay(ctk.CTkFrame):
             fg_color=PALETTE["SUCCESS"] if is_inactive else PALETTE["DANGER"],
             hover_color="#1e8449" if is_inactive else "#922b21",
         )
+        # Only superadmin can edit the superadmin account; revoke edit access for plain admins.
+        if is_target_superadmin and not is_superadmin():
+            self._can_edit = False
+            self.btn_edit.configure(
+                text=t("common.read_only"),
+                fg_color=PALETTE["BORDER"],
+                command=None,
+            )
+
         if is_target_superadmin and not is_inactive:
             self.btn_delete.configure(
                 text=t("users.protected"),
@@ -613,7 +622,11 @@ class UserDetailOverlay(ctk.CTkFrame):
         tipo_name   = self._vars["tipo"].get()
         unidad_name = self._vars["unidad"].get()
 
-        if normalize_user_type_name(tipo_name) == ROLE_SUPERADMIN:
+        # Block assigning the superadmin role to a user who isn't already superadmin.
+        # When editing the actual superadmin's data the tipo field is disabled and stays
+        # as ROLE_SUPERADMIN, so we must not block that case.
+        target_role = normalize_user_type_name((self._user or {}).get("tipo", ""))
+        if normalize_user_type_name(tipo_name) == ROLE_SUPERADMIN and target_role != ROLE_SUPERADMIN:
             self.lbl_err.configure(
                 text=t("users.err_superadmin_locked"),
                 text_color=PALETTE["DANGER"],
@@ -621,6 +634,9 @@ class UserDetailOverlay(ctk.CTkFrame):
             return
 
         tipo_id   = next((tp["idTipoUsuario"]    for tp in self._tipos    if tp["nombreTipoUsuario"] == tipo_name),   None)
+        # superadmin is excluded from the filtered _tipos list; fall back to the stored value.
+        if tipo_id is None and target_role == ROLE_SUPERADMIN:
+            tipo_id = (self._user or {}).get("idTipoUsuario")
         unidad_id = next((u["idUnidadAcademica"] for u in self._unidades if u["nombreUnidadAcademica"] == unidad_name), None)
 
         if not tipo_id or not unidad_id:

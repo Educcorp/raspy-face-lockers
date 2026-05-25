@@ -729,10 +729,12 @@ class LockerCreateOverlay(ctk.CTkFrame):
             return
 
         try:
+            row = fetch_one("SELECT COALESCE(MAX(idLocker), 0) + 1 AS next_id FROM lockers")
+            next_id = row["next_id"] if row else 1
             execute(
-                "INSERT INTO lockers (idUnidadAcademica, idArea, estado, creadoPor) "
-                "VALUES (?, ?, ?, 1)",
-                (unit["idUnidadAcademica"], area["idArea"], estado),
+                "INSERT INTO lockers (idLocker, idUnidadAcademica, idArea, estado, creadoPor) "
+                "VALUES (?, ?, ?, ?, 1)",
+                (next_id, unit["idUnidadAcademica"], area["idArea"], estado),
             )
         except Exception as exc:
             self._lbl_err.configure(text=f"Error al crear: {str(exc)[:80]}")

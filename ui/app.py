@@ -234,7 +234,12 @@ class LockerApp(ctk.CTk):
             PALETTE.update(LIGHT_PALETTE)
         _ICON_CACHE.clear()
         if self._admin_frames_built:
-            self._rebuild_admin_frames()
+            # Put up a solid veil so the user doesn't see individual frames rebuilding.
+            # Palette is already updated, so PALETTE["BG"] is the new theme's background.
+            veil = ctk.CTkFrame(self, fg_color=PALETTE["BG"], corner_radius=0)
+            veil.place(x=0, y=0, relwidth=1, relheight=1)
+            veil.lift()
+            self.after(20, lambda: self._rebuild_admin_frames(veil))
 
     def toggle_lang(self) -> None:
         from ui.i18n import toggle as i18n_toggle
@@ -269,7 +274,7 @@ class LockerApp(ctk.CTk):
 
     # ── Rebuild admin ─────────────────────────────────────────────────────────
 
-    def _rebuild_admin_frames(self) -> None:
+    def _rebuild_admin_frames(self, veil: ctk.CTkFrame | None = None) -> None:
         from ui.admin.login_screen      import LoginScreen
         from ui.admin.dashboard         import DashboardScreen
         from ui.admin.users_catalog     import UsersCatalogScreen
@@ -292,10 +297,14 @@ class LockerApp(ctk.CTk):
                 del self._frames[cls]
         self._admin_frames_built = False
         self.ensure_admin_frames()
+        if veil and veil.winfo_exists():
+            veil.lift()
         if is_authenticated():
             self.show_frame(DashboardScreen)
         else:
             self.show_frame(LoginScreen)
+        if veil and veil.winfo_exists():
+            veil.destroy()
 
     # ── Rebuild all (cambio de idioma) ────────────────────────────────────────
 

@@ -98,6 +98,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._face_first_seen_ts: float = 0.0   # cuando el rostro apareció por primera vez
         self._scan_progress_pct: int = 0         # 0-100, para barra de progreso en UI
         self._last_close_face_ts: float = 0.0   # última vez que se detectó cara cercana
+        self._distance_hint: str = ""            # "closer" | "farther" | ""
         self._liveness_passed = False
         self._passive_liveness_ok = False
         self._active_liveness_ok = False
@@ -182,6 +183,19 @@ class ScanningScreen(ctk.CTkFrame):
             width=390,
         )
         self.lbl_status.place(relx=0.5, y=104, anchor="center")
+
+        # ── Pista de distancia (acérquese / aléjese) ──────────────────────────
+        self.lbl_hint = ctk.CTkLabel(
+            self,
+            text="",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color="#FFD54F",
+            fg_color="#1A1A2E",
+            corner_radius=8,
+            height=32,
+            width=360,
+        )
+        self.lbl_hint.place(relx=0.5, y=142, anchor="center")
 
         # ── Contador de intentos ──────────────────────────────────────────────
         self.lbl_attempts = ctk.CTkLabel(
@@ -532,9 +546,21 @@ class ScanningScreen(ctk.CTkFrame):
                 logger.debug("Detection error: %s", err)
                 all_faces = []
 
-            faces = _filter_close_faces(all_faces, frame)
+            close_faces = _filter_close_faces(all_faces, frame)
+
+            # Distance hint: computed before edge filtering so we can tell the user
+            # whether they're too far (face present but too small) or too close (face huge).
+            frame_w = frame.shape[1] if frame is not None else 480
+            if all_faces and not close_faces:
+                self._distance_hint = "closer"
+            elif close_faces:
+                largest_w = max((f.get("box") or (0, 0, 0, 0))[2] for f in close_faces)
+                self._distance_hint = "farther" if largest_w > int(frame_w * 0.55) else ""
+            else:
+                self._distance_hint = ""
 
             # Reject faces whose bounding box touches or overflows the frame edges
+            faces = close_faces
             if faces:
                 fh, fw = frame.shape[:2]
                 edge = int(min(fh, fw) * 0.05)  # 5% margin on each side
@@ -785,6 +811,17 @@ class ScanningScreen(ctk.CTkFrame):
                         text=t("scan.position_frame"),
                         text_color="#FFFFFF",
                     )
+
+                # Distance hint (shown regardless of liveness state)
+                hint = self._distance_hint
+                if hint == "closer":
+                    self.lbl_hint.configure(text="↔  " + t("scan.hint_closer"))
+                elif hint == "farther":
+                    self.lbl_hint.configure(text="↔  " + t("scan.hint_farther"))
+                else:
+                    self.lbl_hint.configure(text="")
+            else:
+                self.lbl_hint.configure(text="")
         except Exception as e:
             logger.error(f"Error mostrando imagen: {e}")
 
@@ -813,10 +850,12 @@ class ScanningScreen(ctk.CTkFrame):
             self.after_cancel(self._door_wait_job)
             self._door_wait_job = None
         self._reset_liveness_state()
+        self._distance_hint = ""
         self._pin_fail_count = 0
         self._pin_matricula_fail_count = 0
         self._last_failed_closest = None
         self._found_user = None
+        self.lbl_hint.configure(text="")
         self.lbl_status.configure(text=t("scan.starting_camera"), text_color="#FFFFFF")
         self.lbl_attempts.configure(text="")
         self.scan_progress_bar.set(0)

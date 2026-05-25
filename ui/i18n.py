@@ -138,6 +138,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Rostro no reconocido ({a}/{m})",
         "en": "Face not recognized ({a}/{m})",
     },
+    "scan.hint_closer": {
+        "es": "Acérquese más a la cámara",
+        "en": "Move closer to the camera",
+    },
+    "scan.hint_farther": {
+        "es": "Aléjese un poco de la cámara",
+        "en": "Move a bit farther from the camera",
+    },
 
     # ── Locker: ScanningScreen – overlay PIN ─────────────────────────────────
     "pin.step1": {

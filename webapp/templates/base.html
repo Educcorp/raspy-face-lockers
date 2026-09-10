@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Panel Smart Locker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  {% if g.user %}
+  <div class="topbar">
+    <div class="brand">Smart Locker · Panel Web</div>
+    <nav>
+      <a href="{{ url_for('dashboard.index') }}">Inicio</a>
+      <a href="{{ url_for('users.list_users') }}">Usuarios</a>
+      <a href="{{ url_for('lockers.list_lockers') }}">Lockers</a>
+      <a href="{{ url_for('lockers.assignments') }}">Asignaciones</a>
+      <a href="{{ url_for('history.list_history') }}">Historial</a>
+      {% if g.user.role == 'superadmin' %}
+      <a href="{{ url_for('catalogs.tipos_usuario') }}">Tipos</a>
+      <a href="{{ url_for('catalogs.unidades') }}">Unidades</a>
+      <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
+      {% endif %}
+    </nav>
+    <div class="user-info">
+      {{ g.user.full_name }} ({{ g.user.role }}) ·
+      <a href="{{ url_for('auth.logout') }}">Salir</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

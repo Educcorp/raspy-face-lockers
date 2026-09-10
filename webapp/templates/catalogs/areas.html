@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Áreas de lockers · Smart Locker{% endblock %}
+{% block content %}
+<h2>Áreas de lockers</h2>
+
+<div class="card" style="max-width:480px;">
+  <h3 style="margin-top:0;">Nueva área</h3>
+  <form method="post">
+    <div class="form-row">
+      <label>Nombre</label>
+      <input type="text" name="nombreArea" required maxlength="30">
+    </div>
+    <div class="form-row">
+      <label>Unidad académica (opcional)</label>
+      <select name="idUnidadAcademica">
+        <option value="">—</option>
+        {% for u in unidades %}
+        <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Crear</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Nombre</th><th>Unidad</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for a in areas %}
+      <tr>
+        <td>{{ a.nombrearea }}</td>
+        <td>{{ a.nombreunidad or '—' }}</td>
+        <td><span class="badge {{ a.estado }}">{{ a.estado }}</span></td>
+        <td>
+          <form method="post" style="display:inline">
+            <input type="hidden" name="idArea" value="{{ a.idarea }}">
+            <input type="hidden" name="nombreArea" value="{{ a.nombrearea }}">
+            <input type="hidden" name="idUnidadAcademica" value="{{ a.idunidadacademica or '' }}">
+            <input type="hidden" name="estado" value="{{ 'inactivo' if a.estado=='activo' else 'activo' }}">
+            <button class="btn btn-sm btn-muted" type="submit">
+              {{ 'Desactivar' if a.estado=='activo' else 'Activar' }}
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('catalogs.delete_area', area_id=a.idarea) }}"
+                style="display:inline" onsubmit="return confirm('¿Eliminar esta área permanentemente?');">
+            <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

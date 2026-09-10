@@ -1,0 +1,81 @@
+from __future__ import annotations
+
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+
+from webapp.auth import can_edit_catalogs, login_required
+from webapp.services import catalog_service, locker_service, user_service
+
+bp = Blueprint("lockers", __name__, url_prefix="/lockers")
+
+
+def _actor_id() -> int:
+    return (g.user or {}).get("idusuario") or 1
+
+
+@bp.route("/", methods=["GET", "POST"])
+@login_required
+def list_lockers():
+    if request.method == "POST":
+        if not can_edit_catalogs():
+            flash("No tienes permiso para esta acción.", "danger")
+            return redirect(url_for("lockers.list_lockers"))
+        unidad_id = request.form.get("idUnidadAcademica", type=int)
+        area_id = request.form.get("idArea", type=int)
+        if not unidad_id or not area_id:
+            flash("Selecciona unidad académica y área.", "danger")
+        else:
+            locker_service.create_locker(unidad_id, area_id, _actor_id())
+            flash("Locker creado.", "success")
+        return redirect(url_for("lockers.list_lockers"))
+
+    return render_template(
+        "lockers/list.html",
+        lockers=locker_service.get_all_lockers(),
+        unidades=catalog_service.get_active_unidades(),
+        areas=catalog_service.get_active_areas(),
+    )
+
+
+@bp.route("/<int:locker_id>/estado", methods=["POST"])
+@login_required
+def set_status(locker_id: int):
+    if not can_edit_catalogs():
+        flash("No tienes permiso para esta acción.", "danger")
+        return redirect(url_for("lockers.list_lockers"))
+    estado = request.form.get("estado", "activo")
+    locker_service.set_locker_status(locker_id, estado, _actor_id())
+    flash("Estado del locker actualizado.", "success")
+    return redirect(url_for("lockers.list_lockers"))
+
+
+@bp.route("/asignaciones", methods=["GET", "POST"])
+@login_required
+def assignments():
+    if request.method == "POST":
+        if not can_edit_catalogs():
+            flash("No tienes permiso para esta acción.", "danger")
+            return redirect(url_for("lockers.assignments"))
+
+        action = request.form.get("action")
+        if action == "assign":
+            user_id = request.form.get("idUsuario", type=int)
+            locker_id = request.form.get("idLocker", type=int)
+            try:
+                locker_service.assign_locker(user_id, locker_id, _actor_id())
+                flash(f"Locker {locker_id} asignado.", "success")
+            except ValueError as exc:
+                flash(str(exc), "danger")
+        elif action == "release":
+            assignment_id = request.form.get("idLockerAsignado", type=int)
+            if locker_service.release_assignment(assignment_id):
+                flash("Asignación liberada.", "success")
+            else:
+                flash("No se encontró la asignación.", "warning")
+        return redirect(url_for("lockers.assignments"))
+
+    return render_template(
+        "lockers/assignments.html",
+        assignments=locker_service.get_active_assignments(),
+        available_lockers=locker_service.get_available_lockers(),
+        users=user_service.get_all_users(),
+    )

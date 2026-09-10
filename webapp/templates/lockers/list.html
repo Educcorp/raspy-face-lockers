@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Lockers · Smart Locker{% endblock %}
+{% block content %}
+<h2>Lockers</h2>
+
+<div class="card" style="max-width:480px;">
+  <h3 style="margin-top:0;">Nuevo locker</h3>
+  <form method="post">
+    <div class="form-row">
+      <label>Unidad académica</label>
+      <select name="idUnidadAcademica" required>
+        {% for u in unidades %}
+        <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Área</label>
+      <select name="idArea" required>
+        {% for a in areas %}
+        <option value="{{ a.idarea }}">{{ a.nombrearea }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Crear</button>
+  </form>
+  <p style="color:var(--muted); font-size:0.85rem;">
+    Esto solo registra el locker en la base de datos. El relevador físico se
+    activa desde el dispositivo de la Raspberry Pi, no desde este panel.
+  </p>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>ID</th><th>Unidad</th><th>Área</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for l in lockers %}
+      <tr>
+        <td>{{ l.idlocker }}</td>
+        <td>{{ l.unidad }}</td>
+        <td>{{ l.area }}</td>
+        <td><span class="badge {{ l.estado }}">{{ l.estado }}</span></td>
+        <td>
+          <form method="post" action="{{ url_for('lockers.set_status', locker_id=l.idlocker) }}" style="display:inline">
+            <select name="estado" onchange="this.form.submit()">
+              {% for opt in ['activo', 'inactivo', 'mantenimiento'] %}
+              <option value="{{ opt }}" {% if l.estado==opt %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

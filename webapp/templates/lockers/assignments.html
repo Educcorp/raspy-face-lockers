@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Asignaciones · Smart Locker{% endblock %}
+{% block content %}
+<h2>Asignación de lockers</h2>
+
+<div class="card" style="max-width:520px;">
+  <h3 style="margin-top:0;">Asignar locker</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="assign">
+    <div class="form-row">
+      <label>Usuario</label>
+      <select name="idUsuario" required>
+        {% for u in users %}
+        <option value="{{ u.idusuario }}">{{ u.nombre }} {{ u.appaterno }} · Matr. {{ u.matricula }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Locker disponible</label>
+      <select name="idLocker" required>
+        {% for l in available_lockers %}
+        <option value="{{ l.idlocker }}">Locker {{ l.idlocker }} · {{ l.nombrearea }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn" type="submit">Asignar</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Asignaciones activas</h3>
+  <table>
+    <thead><tr><th>Locker</th><th>Usuario</th><th>Matrícula</th><th>Desde</th><th></th></tr></thead>
+    <tbody>
+      {% for a in assignments %}
+      <tr>
+        <td>{{ a.idlocker }} ({{ a.area }})</td>
+        <td>{{ a.nombre }} {{ a.appaterno }} {{ a.apmaterno or '' }}</td>
+        <td>{{ a.matricula }}</td>
+        <td>{{ a.fechahorareg }}</td>
+        <td>
+          <form method="post" onsubmit="return confirm('¿Liberar este locker?');">
+            <input type="hidden" name="action" value="release">
+            <input type="hidden" name="idLockerAsignado" value="{{ a.idlockerasignado }}">
+            <button class="btn btn-sm btn-danger" type="submit">Liberar</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No hay asignaciones activas.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

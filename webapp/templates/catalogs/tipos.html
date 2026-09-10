@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Tipos de usuario · Smart Locker{% endblock %}
+{% block content %}
+<h2>Tipos de usuario</h2>
+
+<div class="card" style="max-width:480px;">
+  <h3 style="margin-top:0;">Nuevo tipo</h3>
+  <form method="post">
+    <div class="form-row">
+      <label>Nombre</label>
+      <input type="text" name="nombreTipoUsuario" required maxlength="60">
+    </div>
+    <button class="btn" type="submit">Crear</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for t in tipos %}
+      <tr>
+        <td>{{ t.nombretipousuario }}</td>
+        <td><span class="badge {{ t.estado }}">{{ t.estado }}</span></td>
+        <td>
+          <form method="post" style="display:inline">
+            <input type="hidden" name="idTipoUsuario" value="{{ t.idtipousuario }}">
+            <input type="hidden" name="nombreTipoUsuario" value="{{ t.nombretipousuario }}">
+            <input type="hidden" name="estado" value="{{ 'inactivo' if t.estado=='activo' else 'activo' }}">
+            <button class="btn btn-sm btn-muted" type="submit">
+              {{ 'Desactivar' if t.estado=='activo' else 'Activar' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

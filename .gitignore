@@ -20,3 +20,5 @@ database/migrations/raspi-face-lockers.db
 
 # Virtual environment
 venv/
+webapp/.venv/
+webapp/.env

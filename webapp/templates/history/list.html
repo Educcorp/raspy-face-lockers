@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Historial de accesos · Smart Locker{% endblock %}
+{% block content %}
+<h2>Historial de accesos</h2>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Fecha</th><th>Usuario</th><th>Matrícula</th><th>Locker</th><th>Área</th><th>Resultado</th><th>Motivo</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.fechahoraacceso }}</td>
+        <td>{{ r.nombrecompleto }}</td>
+        <td>{{ r.matricula or '—' }}</td>
+        <td>{{ r.idlocker or '—' }}</td>
+        <td>{{ r.nombrearea or '—' }}</td>
+        <td>
+          {% if r.accesopermitido == 'si' %}
+            <span class="badge activo">Permitido</span>
+          {% else %}
+            <span class="badge suspendido">Denegado</span>
+          {% endif %}
+        </td>
+        <td>{{ labels.get(r.motivo, r.motivo or '—') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">Sin registros.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

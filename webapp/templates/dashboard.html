@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Inicio · Smart Locker{% endblock %}
+{% block content %}
+<h2>Resumen</h2>
+<div class="stat-grid">
+  <div class="card"><div class="stat-value">{{ stats.usuarios }}</div><div class="stat-label">Usuarios activos</div></div>
+  <div class="card"><div class="stat-value">{{ stats.pendientes }}</div><div class="stat-label">Pendientes de registro facial</div></div>
+  <div class="card"><div class="stat-value">{{ stats.lockers }}</div><div class="stat-label">Lockers activos</div></div>
+  <div class="card"><div class="stat-value">{{ stats.asignaciones }}</div><div class="stat-label">Asignaciones activas</div></div>
+  <div class="card"><div class="stat-value">{{ stats.accesos_hoy }}</div><div class="stat-label">Accesos hoy</div></div>
+</div>
+
+{% if stats.pendientes > 0 %}
+<div class="card" style="margin-top:20px;">
+  <strong>{{ stats.pendientes }} usuario(s) esperan registro facial.</strong>
+  <p style="color:var(--muted); margin:6px 0 0;">
+    Fueron dados de alta desde este panel pero aún no tienen rostro capturado.
+    Un operador debe indicarles que se acerquen al dispositivo del locker para
+    completar su registro ahí — el reconocimiento facial solo puede realizarse
+    físicamente en la Raspberry Pi.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

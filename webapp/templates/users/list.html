@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Usuarios · Smart Locker{% endblock %}
+{% block content %}
+<div class="actions-bar">
+  <h2>Usuarios</h2>
+  <a class="btn" href="{{ url_for('users.new_user') }}">+ Nuevo usuario</a>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Nombre</th><th>Matrícula</th><th>Tipo</th><th>Unidad</th>
+        <th>Estado</th><th>Rostro</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.nombre }} {{ u.appaterno }} {{ u.apmaterno or '' }}</td>
+        <td>{{ u.matricula }}</td>
+        <td>{{ u.tipo or '—' }}</td>
+        <td>{{ u.unidad or '—' }}</td>
+        <td><span class="badge {{ u.estado }}">{{ u.estado }}</span></td>
+        <td>
+          {% if u.n_encodings and u.n_encodings > 0 %}
+            <span class="badge activo">Registrado</span>
+          {% else %}
+            <span class="badge pendiente">Pendiente</span>
+          {% endif %}
+        </td>
+        <td><a class="btn btn-sm" href="{{ url_for('users.edit_user', user_id=u.idusuario) }}">Editar</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">No hay usuarios registrados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

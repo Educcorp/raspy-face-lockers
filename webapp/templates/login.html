@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión · Smart Locker{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="card login-card">
+    <h1>Panel Smart Locker</h1>
+    <form method="post">
+      <div class="form-row">
+        <label for="matricula">Matrícula</label>
+        <input type="text" id="matricula" name="matricula" required autofocus>
+      </div>
+      <div class="form-row">
+        <label for="pin">PIN</label>
+        <input type="password" id="pin" name="pin" required>
+      </div>
+      <button class="btn" type="submit" style="width:100%">Entrar</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

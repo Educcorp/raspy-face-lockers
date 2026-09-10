@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Unidades académicas · Smart Locker{% endblock %}
+{% block content %}
+<h2>Unidades académicas</h2>
+
+<div class="card" style="max-width:480px;">
+  <h3 style="margin-top:0;">Nueva unidad</h3>
+  <form method="post">
+    <div class="form-row">
+      <label>Nombre</label>
+      <input type="text" name="nombreUnidadAcademica" required maxlength="100">
+    </div>
+    <div class="form-row">
+      <label>Zona (opcional)</label>
+      <input type="text" name="zona" maxlength="100">
+    </div>
+    <button class="btn" type="submit">Crear</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Nombre</th><th>Zona</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+      {% for u in unidades %}
+      <tr>
+        <td>{{ u.nombreunidadacademica }}</td>
+        <td>{{ u.zona or '—' }}</td>
+        <td><span class="badge {{ u.estado }}">{{ u.estado }}</span></td>
+        <td>
+          <form method="post" style="display:inline">
+            <input type="hidden" name="idUnidadAcademica" value="{{ u.idunidadacademica }}">
+            <input type="hidden" name="nombreUnidadAcademica" value="{{ u.nombreunidadacademica }}">
+            <input type="hidden" name="zona" value="{{ u.zona or '' }}">
+            <input type="hidden" name="estado" value="{{ 'inactivo' if u.estado=='activo' else 'activo' }}">
+            <button class="btn btn-sm btn-muted" type="submit">
+              {{ 'Desactivar' if u.estado=='activo' else 'Activar' }}
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('catalogs.delete_unidad', unidad_id=u.idunidadacademica) }}"
+                style="display:inline" onsubmit="return confirm('¿Eliminar esta unidad permanentemente?');">
+            <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

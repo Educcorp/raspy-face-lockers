@@ -18,6 +18,13 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# dlib se compila con soporte de GUI (enlaza contra libX11) en el stage
+# builder; sin esta librería en el runtime, el import falla en silencio
+# y todo el sistema cae al detector Haar + embedding fallback.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libx11-6 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 

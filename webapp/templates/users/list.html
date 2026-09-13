@@ -26,7 +26,8 @@
           {% if u.n_encodings and u.n_encodings > 0 %}
             <span class="badge activo">Registrado</span>
           {% else %}
-            <span class="badge pendiente">Pendiente</span>
+            <a class="badge pendiente" style="text-decoration:none;"
+               href="{{ url_for('face.capture_page', user_id=u.idusuario) }}">Pendiente</a>
           {% endif %}
         </td>
         <td><a class="btn btn-sm" href="{{ url_for('users.edit_user', user_id=u.idusuario) }}">Editar</a></td>

@@ -22,7 +22,7 @@ import sys
 import site
 
 from config import (
-    CAMERA_CONFIG, FACE_DETECTION_CONFIG, FACE_RECOGNITION_CONFIG, MODELS_DIR,
+    ANTI_SPOOF_CONFIG, CAMERA_CONFIG, FACE_DETECTION_CONFIG, FACE_RECOGNITION_CONFIG, MODELS_DIR,
 )
 
 logger = logging.getLogger(__name__)
@@ -483,6 +483,116 @@ class FaceEmbeddingExtractor:
         return float(np.linalg.norm(emb_a - emb_b))
 
 
+try:
+    import onnxruntime as ort
+    _ORT_AVAILABLE = True
+except ImportError as e:
+    ort = None  # type: ignore
+    _ORT_AVAILABLE = False
+    logger.warning(f"⚠ onnxruntime no disponible ({e}); anti-spoofing deshabilitado")
+
+
+# ── Anti-Spoofing (Silent-Face-Anti-Spoofing / MiniFASNet) ──────────────────
+
+class AntiSpoofDetector:
+    """
+    Clasificador de "vida" (rostro real vs. foto impresa / pantalla) usando
+    MiniFASNet (Silent-Face-Anti-Spoofing, minivision-ai, Apache-2.0), vía
+    ONNX Runtime — los .onnx se generan una sola vez con
+    tools/antispoof/convert_to_onnx.py a partir de los pesos .pth originales.
+
+    Corre dos modelos con distinto "zoom" alrededor del bbox de la cara
+    (scale 2.7 y 4.0), suma sus softmax de 3 clases y decide "real" solo si
+    la clase 1 (real) gana Y su confianza supera ANTI_SPOOF_CONFIG["score_threshold"]
+    — el repo original solo hace argmax sin piso de confianza, insuficiente
+    para control de acceso.
+    """
+
+    def __init__(self):
+        self._sessions: List[Tuple["ort.InferenceSession", float, int]] = []
+        self._loaded = False
+        self._load_models()
+
+    def _load_models(self) -> None:
+        if not _ORT_AVAILABLE:
+            return
+        for spec in ANTI_SPOOF_CONFIG["models"]:
+            path = Path(spec["path"])
+            if not path.exists():
+                logger.error(f"✗ Modelo anti-spoof no encontrado: {path}")
+                continue
+            try:
+                sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+                self._sessions.append((sess, spec["scale"], spec["size"]))
+            except Exception as e:
+                logger.error(f"✗ Error cargando {path.name}: {e}")
+
+        expected = len(ANTI_SPOOF_CONFIG["models"])
+        self._loaded = len(self._sessions) == expected
+        if self._loaded:
+            logger.info(f"✓ AntiSpoofDetector: {len(self._sessions)} modelos cargados")
+        elif self._sessions:
+            logger.error(
+                f"✗ AntiSpoofDetector: solo {len(self._sessions)}/{expected} modelos "
+                "cargaron; se considera NO listo (fail-closed)"
+            )
+
+    @property
+    def is_ready(self) -> bool:
+        return self._loaded
+
+    @staticmethod
+    def _crop_box(src_w: int, src_h: int, bbox: tuple, scale: float) -> tuple:
+        """Idéntico a CropImage._get_new_box del repo original: expande el
+        bbox por `scale` centrado, con clamp a los bordes de la imagen."""
+        x, y, box_w, box_h = bbox
+        scale = min((src_h - 1) / box_h, min((src_w - 1) / box_w, scale))
+        new_w, new_h = box_w * scale, box_h * scale
+        cx, cy = x + box_w / 2, y + box_h / 2
+        x1, y1 = cx - new_w / 2, cy - new_h / 2
+        x2, y2 = cx + new_w / 2, cy + new_h / 2
+        if x1 < 0:
+            x2 -= x1
+            x1 = 0
+        if y1 < 0:
+            y2 -= y1
+            y1 = 0
+        if x2 > src_w - 1:
+            x1 -= (x2 - src_w + 1)
+            x2 = src_w - 1
+        if y2 > src_h - 1:
+            y1 -= (y2 - src_h + 1)
+            y2 = src_h - 1
+        return int(x1), int(y1), int(x2), int(y2)
+
+    def _prep(self, frame_bgr: np.ndarray, face_box: tuple, scale: float, size: int) -> np.ndarray:
+        h, w = frame_bgr.shape[:2]
+        x1, y1, x2, y2 = self._crop_box(w, h, face_box, scale)
+        crop = frame_bgr[y1:y2 + 1, x1:x2 + 1]
+        crop = cv2.resize(crop, (size, size))
+        # NOTA: el modelo original se entrenó con imágenes BGR (cv2.imread
+        # directo, sin conversión a RGB) — NO convertir color aquí.
+        arr = crop.astype(np.float32) / 255.0
+        return np.transpose(arr, (2, 0, 1))[None, ...]  # HWC -> NCHW
+
+    def predict(self, frame_bgr: np.ndarray, face_box: tuple) -> Tuple[bool, float]:
+        """Retorna (es_real, score). Fail-closed: sin modelos listos -> (False, 0.0)."""
+        if not self._loaded:
+            return False, 0.0
+
+        total = np.zeros(3, dtype=np.float32)
+        for sess, scale, size in self._sessions:
+            inp = self._prep(frame_bgr, face_box, scale, size)
+            logits = sess.run(None, {sess.get_inputs()[0].name: inp})[0][0]
+            exp = np.exp(logits - np.max(logits))
+            total += exp / exp.sum()
+
+        label = int(np.argmax(total))
+        score = float(total[label] / len(self._sessions))
+        is_real = (label == ANTI_SPOOF_CONFIG["real_label"]) and (score >= ANTI_SPOOF_CONFIG["score_threshold"])
+        return is_real, score
+
+
 # ── Camera Manager ─────────────────────────────────────────────────────────
 
 class CameraManager:
@@ -657,6 +767,47 @@ class CameraManager:
         logger.info("✓ Singleton global resetado")
 
 
+class DevCameraManager(CameraManager):
+    """
+    CameraManager para desarrollo en laptop (sin Raspberry Pi / picamera2):
+    usa cv2.VideoCapture con la webcam integrada. Comparte detección de
+    rostros, embeddings y anti-spoofing con la clase base — solo cambia
+    de dónde vienen los frames. Se activa con CAMERA_CONFIG["backend"] = "opencv".
+    """
+
+    def initialize(self) -> bool:
+        with self._lock:
+            if self.initialized:
+                return True
+            index = CAMERA_CONFIG.get("camera_index", 0)
+            self.cam = cv2.VideoCapture(index)
+            if not self.cam.isOpened():
+                logger.error(f"✗ No se pudo abrir la webcam (índice {index})")
+                self.initialized = False
+                return False
+            self.initialized = True
+            logger.info(f"✓ DevCameraManager (webcam índice {index}) inicializada")
+            return True
+
+    def get_frame(self) -> Optional[np.ndarray]:
+        if not self.initialized or self.cam is None:
+            return None
+        ok, frame = self.cam.read()
+        if not ok:
+            logger.warning("Error capturando frame de la webcam")
+            return None
+        return frame
+
+    def release(self) -> None:
+        with self._lock:
+            if self.cam is not None:
+                self.cam.release()
+            self.initialized = False
+            self.cam = None
+        global _camera_manager
+        _camera_manager = None
+
+
 # ── Singleton Global ──────────────────────────────────────────────────────
 
 _camera_manager: Optional[CameraManager] = None
@@ -664,13 +815,23 @@ _camera_lock = threading.Lock()
 
 
 def get_camera_manager() -> CameraManager:
-    """Obtiene la instancia global del gestor de cámara."""
+    """Obtiene la instancia global del gestor de cámara.
+
+    Usa DevCameraManager (webcam vía cv2.VideoCapture) si
+    CAMERA_CONFIG["backend"] == "opencv" — útil para desarrollar/probar
+    en laptop antes de tener el Raspberry Pi. En cualquier otro caso usa
+    CameraManager (picamera2), el backend real del locker.
+    """
     global _camera_manager
     if _camera_manager is None:
         with _camera_lock:
             if _camera_manager is None:
-                _camera_manager = CameraManager()
-                logger.info("Creada nueva instancia de CameraManager")
+                if CAMERA_CONFIG.get("backend") == "opencv":
+                    _camera_manager = DevCameraManager()
+                    logger.info("Creada nueva instancia de DevCameraManager (webcam)")
+                else:
+                    _camera_manager = CameraManager()
+                    logger.info("Creada nueva instancia de CameraManager (picamera2)")
     return _camera_manager
 
 
@@ -688,6 +849,7 @@ class FaceRecognitionManager:
         self.initialized = False
         self.face_detector = self.manager.face_detector
         self.embedding_extractor = self.manager.embedding_extractor
+        self.anti_spoof = AntiSpoofDetector()
 
     def initialize(self) -> bool:
         """Inicializa el manager."""
@@ -695,8 +857,28 @@ class FaceRecognitionManager:
             self.initialized = True
             logger.info("✓ FaceRecognitionManager inicializado")
             logger.info(f"  Embeddings dlib: {'OK' if self.embedding_extractor.is_ready else 'NO DISPONIBLE'}")
+            logger.info(f"  Anti-spoofing: {'OK' if self.anti_spoof.is_ready else 'NO DISPONIBLE'}")
             return True
         return False
+
+    def check_liveness(self, frame: np.ndarray, face_box: tuple) -> Tuple[bool, float]:
+        """
+        Verifica que el rostro sea real (no foto/pantalla) con MiniFASNet.
+
+        Fail-closed por configuración: si ANTI_SPOOF_CONFIG["required"] es True
+        y los modelos no cargaron, niega el acceso en vez de degradar en
+        silencio (a diferencia del fallback de embeddings, que sí degrada
+        silenciosamente — comportamiento que NO se quiere repetir aquí).
+        """
+        if not ANTI_SPOOF_CONFIG.get("enabled"):
+            return True, 1.0
+        if not self.anti_spoof.is_ready:
+            if ANTI_SPOOF_CONFIG.get("required"):
+                logger.critical("Anti-spoof requerido pero no cargado — bloqueando acceso")
+                return False, 0.0
+            logger.warning("Anti-spoof no cargado y no es requerido — omitiendo verificación")
+            return True, 1.0
+        return self.anti_spoof.predict(frame, face_box)
 
     def get_frame(self) -> Optional[np.ndarray]:
         """Captura un frame."""

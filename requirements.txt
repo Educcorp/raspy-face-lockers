@@ -1,6 +1,6 @@
 # Core Python dependencies
 customtkinter==5.2.2
-opencv-python>=4.8.0
+opencv-python>=4.8.0,<5  # 5.0 eliminó cv2.CascadeClassifier y el importador Caffe (usados como fallback)
 numpy>=1.24.0
 Pillow>=10.0.0      # Para procesar imágenes (ImageTk, PIL)
 
@@ -17,8 +17,10 @@ gpiozero>=2.0.0  # Abstracción de GPIO recomendada
 # libcamera           # Necesario para picamera2
 
 # Face Recognition / ML
-# mediapipe>=0.10.0  # Alternativa de detección de rostros
-# dlib>=19.24        # Para reconocimiento de rostros avanzado
+dlib>=19.24            # Detección HOG + embeddings 128-dim (requerido, no opcional:
+                        # sin esto el sistema cae a un fallback trivial de 16x8 px)
+onnxruntime>=1.17.0     # Anti-spoofing (MiniFASNet) — ver core/face_recognition.py
+# mediapipe>=0.10.0     # Alternativa de detección de rostros (no usado actualmente)
 
 # Development & Testing
 pytest>=7.0.0

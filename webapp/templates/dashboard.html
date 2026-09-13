@@ -14,10 +14,10 @@
 <div class="card" style="margin-top:20px;">
   <strong>{{ stats.pendientes }} usuario(s) esperan registro facial.</strong>
   <p style="color:var(--muted); margin:6px 0 0;">
-    Fueron dados de alta desde este panel pero aún no tienen rostro capturado.
-    Un operador debe indicarles que se acerquen al dispositivo del locker para
-    completar su registro ahí — el reconocimiento facial solo puede realizarse
-    físicamente en la Raspberry Pi.
+    Fueron dados de alta pero aún no tienen rostro capturado. Ve a
+    <a href="{{ url_for('users.list_users') }}">Usuarios</a> y presiona "Pendiente"
+    para capturar su rostro con la cámara de este equipo. La autenticación en el
+    locker sigue usando la cámara física de la Raspberry Pi.
   </p>
 </div>
 {% endif %}

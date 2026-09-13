@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS encoding (
     vector BYTEA NOT NULL,
     dimension INTEGER NOT NULL DEFAULT 128 CHECK (dimension > 0),
     hashVector TEXT CHECK (length(hashVector) = 64),
-    tipoParte TEXT NOT NULL DEFAULT 'frontal' CHECK (tipoParte IN ('frontal', 'izquierda', 'derecha')),
+    tipoParte TEXT NOT NULL DEFAULT 'frontal' CHECK (tipoParte IN ('frontal', 'izquierda', 'derecha', 'arriba')),
     vectorDtype TEXT NOT NULL DEFAULT 'float32' CHECK (vectorDtype IN ('float32', 'float64')),
     modelo TEXT NOT NULL CHECK (length(modelo) <= 100),
     modeloVersion TEXT NOT NULL CHECK (length(modeloVersion) <= 100),

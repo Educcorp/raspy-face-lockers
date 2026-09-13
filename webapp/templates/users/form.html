@@ -5,8 +5,9 @@
 
 {% if row and pending %}
 <div class="flash warning">
-  Este usuario aún no tiene rostro registrado. Pídele que se acerque al
-  dispositivo del locker; ahí un operador completará su registro facial.
+  Este usuario aún no tiene rostro registrado.
+  <a href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">Registrar rostro ahora</a>
+  usando la cámara de este equipo.
 </div>
 {% endif %}
 
@@ -78,6 +79,10 @@
 {% if row %}
 <div class="card" style="max-width:520px;">
   <h3 style="margin-top:0;">Acciones</h3>
+  <a class="btn" style="display:block; text-align:center; margin-bottom:10px;"
+     href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">
+    {{ 'Volver a capturar rostro' if not pending else 'Registrar rostro' }}
+  </a>
   <form method="post" action="{{ url_for('users.reset_pin', user_id=row.idusuario) }}" style="margin-bottom:10px;">
     <button class="btn btn-muted" type="submit">Generar nuevo PIN</button>
   </form>

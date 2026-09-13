@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Registrar rostro · Smart Locker{% endblock %}
+{% block content %}
+<h2>Registrar rostro — {{ row.nombre }} {{ row.appaterno }}</h2>
+<p style="color:var(--muted);">
+  Usa la cámara de este equipo para capturar el rostro de <strong>{{ row.nombre }}</strong>.
+  Se pedirán {{ total }} tomas. La autenticación en el locker seguirá usando la
+  cámara física del dispositivo — esto solo registra el rostro en la base de datos.
+</p>
+
+<div class="card" style="max-width:520px;">
+  <div id="pose-list" style="display:flex; gap:8px; margin-bottom:14px;">
+    {% for p in poses %}
+    <span class="badge {{ 'activo' if loop.index0 < done_count else 'inactivo' }}" data-pose="{{ p.tipoParte }}">
+      {{ p.icon }} {{ p.tipoParte }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <div id="camera-wrap" style="position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio:4/3;">
+    <video id="video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+  </div>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <p id="instruction" style="text-align:center; font-weight:600; margin:14px 0 4px;"></p>
+  <p id="feedback" style="text-align:center; color:var(--danger); min-height:20px;"></p>
+
+  <div id="controls" style="display:flex; gap:10px;">
+    <button id="btn-capture" class="btn" style="flex:1;">Capturar</button>
+  </div>
+
+  <div id="done-controls" style="display:none; gap:10px; margin-top:10px;">
+    <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}" style="flex:1;">
+      <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
+    </form>
+  </div>
+
+  <form method="post" action="{{ url_for('face.cancel', user_id=row.idusuario) }}" style="margin-top:10px;">
+    <button class="btn btn-muted" type="submit" style="width:100%;">Cancelar</button>
+  </form>
+</div>
+
+<script>
+const userId = {{ row.idusuario }};
+const captureUrl = "{{ url_for('face.capture_pose', user_id=row.idusuario) }}";
+let nextPose = {{ (next_pose.tipoParte if next_pose else '') | tojson }};
+let allDone = {{ 'true' if all_done else 'false' }};
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const btnCapture = document.getElementById('btn-capture');
+const controls = document.getElementById('controls');
+const doneControls = document.getElementById('done-controls');
+const instruction = document.getElementById('instruction');
+const feedback = document.getElementById('feedback');
+
+const POSE_LABELS = {
+  {% for p in poses %}"{{ p.tipoParte }}": {{ p.label | tojson }},{% endfor %}
+};
+
+function refreshUI() {
+  if (allDone) {
+    instruction.textContent = "¡Todas las poses capturadas!";
+    controls.style.display = "none";
+    doneControls.style.display = "flex";
+  } else {
+    instruction.textContent = POSE_LABELS[nextPose] || "";
+    controls.style.display = "flex";
+    doneControls.style.display = "none";
+  }
+}
+refreshUI();
+
+let stream = null;
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+    video.srcObject = stream;
+  } catch (err) {
+    feedback.textContent = "No se pudo acceder a la cámara: " + err.message;
+  }
+}
+startCamera();
+
+window.addEventListener('beforeunload', () => {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+});
+
+btnCapture.addEventListener('click', async () => {
+  if (!nextPose) return;
+  btnCapture.disabled = true;
+  feedback.textContent = "";
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  canvas.toBlob(async (blob) => {
+    const form = new FormData();
+    form.append('tipoParte', nextPose);
+    form.append('foto', blob, 'pose.jpg');
+
+    try {
+      const resp = await fetch(captureUrl, { method: 'POST', body: form });
+      const data = await resp.json();
+      if (data.ok) {
+        const badge = document.querySelector(`[data-pose="${nextPose}"]`);
+        if (badge) { badge.classList.remove('inactivo'); badge.classList.add('activo'); }
+        nextPose = data.next_pose;
+        allDone = data.all_done;
+        refreshUI();
+      } else {
+        feedback.textContent = ({
+          no_face: "No se detectó ningún rostro. Acércate e inténtalo de nuevo.",
+          extraction_failed: "No se pudo procesar el rostro. Intenta de nuevo con mejor luz.",
+          rostro_duplicado: `Este rostro ya está registrado a nombre de ${data.nombre || 'otro usuario'}.`,
+        })[data.reason] || "No se pudo capturar. Intenta de nuevo.";
+      }
+    } catch (err) {
+      feedback.textContent = "Error de conexión: " + err.message;
+    } finally {
+      btnCapture.disabled = false;
+    }
+  }, 'image/jpeg', 0.9);
+});
+</script>
+{% endblock %}

@@ -27,6 +27,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     from webapp.blueprints.catalogs_bp import bp as catalogs_bp
     from webapp.blueprints.lockers_bp import bp as lockers_bp
     from webapp.blueprints.history_bp import bp as history_bp
+    from webapp.blueprints.face_bp import bp as face_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -34,6 +35,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(catalogs_bp)
     app.register_blueprint(lockers_bp)
     app.register_blueprint(history_bp)
+    app.register_blueprint(face_bp)
 
     @app.route("/")
     def index():

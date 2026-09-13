@@ -7,14 +7,21 @@ depender del panel de escritorio ni de estar frente a la Raspberry Pi.
 ## Qué SÍ hace y qué NO hace
 
 - Administra: usuarios, tipos de usuario, unidades académicas, áreas,
-  lockers, asignaciones y consulta de historial.
-- **No** hace captura de cámara, reconocimiento facial ni control de GPIO.
-  Eso sigue siendo responsabilidad exclusiva del software que corre en la
-  Raspberry Pi (`ui/`, `core/`, `services/` en la raíz del repo), que seguirá
-  ejecutándose ahí bajo RaspiOS.
-- Un usuario creado desde este panel queda **pendiente de registro facial**
-  (sin filas en `encoding`) hasta que un operador lo capture físicamente en
-  el kiosco del locker.
+  lockers, asignaciones, historial de accesos, **y captura de rostro**.
+- El **registro** del rostro (capturar los embeddings de un usuario) se hace
+  desde aquí, usando la cámara del navegador del equipo del administrador
+  (`webapp/face_processing.py` + `webapp/blueprints/face_bp.py`).
+- La **autenticación** (comparar un rostro en vivo contra los ya
+  registrados para abrir un locker) sigue siendo responsabilidad exclusiva
+  del software que corre en la Raspberry Pi (`ui/`, `core/`, `services/` en
+  la raíz del repo, bajo RaspiOS) — eso no se tocó.
+- Para que ambos lados generen embeddings comparables, `webapp/face_processing.py`
+  reutiliza directamente las clases `FaceDetector`/`FaceEmbeddingExtractor` de
+  `core/face_recognition.py` (mismos modelos dlib: `shape_predictor_68_face_landmarks`
+  + `dlib_face_recognition_resnet_model_v1`, embeddings 128-dim).
+- Un usuario creado desde `/usuarios/nuevo` queda **pendiente de registro
+  facial** (sin filas en `encoding`) hasta que un administrador le captura
+  el rostro desde `/usuarios/<id>/rostro`.
 
 ## Arquitectura
 
@@ -75,21 +82,29 @@ cambio aislado a `database/connection.py` y no debería requerir tocar
 `execute`, `db_session`). Ese trabajo queda fuera de este panel web y debe
 hacerse (y probarse) directamente sobre RaspiOS.
 
-## Flujo de alta de usuario (panel web + Pi)
+## Flujo de alta de usuario (100% web)
 
 1. Un administrador crea al usuario desde `/usuarios/nuevo` (datos + PIN).
-   Queda marcado como "pendiente de registro facial" en el dashboard y en
-   la lista de usuarios.
-2. Se le indica a la persona que se presente físicamente ante el
-   dispositivo del locker.
-3. En el Pi, un operador usa el flujo existente de captura de rostro
-   (hoy en `ui/admin/register_user.py` en la app de escritorio) para
-   completar el registro de ese usuario ya existente en la base remota.
-4. Una vez capturado el rostro, el badge cambia a "Registrado" en el panel
-   web automáticamente (se basa en si existen filas activas en `encoding`).
+   Queda marcado como "Pendiente" en el dashboard y en la lista de usuarios.
+2. Desde la lista de usuarios (o el propio formulario de edición), entra a
+   "Registrar rostro" (`/usuarios/<id>/rostro`) y captura 4 poses con la
+   cámara del navegador: frontal, derecha, izquierda y arriba — al estilo
+   del enrollment de Face ID.
+3. Cada pose se valida en el servidor (detección + extracción del embedding
+   con dlib) y se compara contra los rostros ya registrados de otros
+   usuarios para evitar duplicados, antes de guardarse.
+4. Al completar las 4 poses y presionar "Guardar rostro", se reemplazan los
+   encodings del usuario en una sola transacción y el badge cambia a
+   "Registrado" automáticamente.
+5. La app del Pi (`ui/admin/register_user.py`) sigue existiendo tal cual —
+   no se tocó — pero ya no es la vía esperada para dar de alta rostros
+   nuevos; el flujo oficial es el de este panel.
 
-Nota: el flujo de captura en el Pi actualmente está pensado para alta
-conjunta (usuario + rostro en un solo paso). Falta un ajuste puntual ahí
-para que también pueda **seleccionar un usuario ya existente y pendiente**
-y completarle solo el rostro — no se modificó en este cambio porque es
-código exclusivo del dispositivo físico.
+## Nota sobre el Dockerfile
+
+`dlib` no tiene wheel precompilado para este entorno, así que el Dockerfile
+usa un build multi-stage: una etapa `builder` con `cmake`/`build-essential`
+compila las dependencias en un venv, y la imagen final (`python:3.12-slim`)
+solo copia ese venv ya compilado — así el build tarda más (~5-10 min por
+compilar dlib) pero la imagen final se mantiene liviana. Los modelos dlib
+se descargan durante el build (`RUN python download_models.py`).

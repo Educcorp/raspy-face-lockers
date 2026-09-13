@@ -1,10 +1,16 @@
-"""Operaciones de negocio sobre usuarios (panel web — sin captura facial)."""
+"""Operaciones de negocio sobre usuarios, incluida la biometría facial."""
 
 from __future__ import annotations
 
 import hashlib
+import logging
+from typing import Optional
 
-from webapp.db import execute, execute_returning, fetch_all, fetch_one
+import numpy as np
+
+from webapp.db import cursor, execute, execute_returning, fetch_all, fetch_one
+
+logger = logging.getLogger(__name__)
 
 
 def get_all_users() -> list[dict]:
@@ -155,3 +161,124 @@ def nombre_completo_exists(
         params += (exclude_user_id,)
     sql += " LIMIT 1"
     return fetch_one(sql, params) is not None
+
+
+# ── Biometría facial (captura desde el navegador) ─────────────────────────────
+
+def get_active_face_encodings(exclude_user_id: Optional[int] = None) -> list[dict]:
+    """
+    Carga los encodings activos de usuarios activos, deserializando el vector
+    BYTEA a numpy. Se usa para el chequeo de duplicados al registrar un rostro.
+    """
+    rows = fetch_all(
+        """
+        SELECT e.idUsuario, e.vector, e.dimension, e.vectorDtype, e.modelo,
+               u.nombre, u.apPaterno, u.matricula
+        FROM encoding e
+        JOIN usuarios u ON u.idUsuario = e.idUsuario
+        WHERE e.estado = 'activo' AND u.estado = 'activo'
+        """
+    )
+
+    parsed: list[dict] = []
+    for row in rows:
+        if exclude_user_id is not None and row.get("idusuario") == exclude_user_id:
+            continue
+        raw = row.get("vector")
+        if raw is None:
+            continue
+        dim = int(row.get("dimension") or 128)
+        dtype = np.float64 if (row.get("vectordtype") or "float32").strip().lower() == "float64" else np.float32
+
+        vector_np = np.frombuffer(bytes(raw), dtype=dtype)
+        if vector_np.size != dim:
+            logger.warning(
+                "Encoding inválido usuario=%s esperado=%s real=%s",
+                row.get("idusuario"), dim, vector_np.size,
+            )
+            continue
+        if dtype != np.float32:
+            vector_np = vector_np.astype(np.float32)
+
+        row["vector_np"] = vector_np
+        parsed.append(row)
+
+    return parsed
+
+
+def threshold_for_model(model_prefix: Optional[str]) -> float:
+    """Umbral de distancia euclidiana según modelo de embedding."""
+    if (model_prefix or "").startswith("fallback"):
+        return 0.75
+    return 0.44
+
+
+def find_best_face_match(
+    probe_embedding: np.ndarray,
+    model_prefix: str,
+    candidates: list[dict],
+) -> tuple[dict | None, dict | None]:
+    """
+    Busca el mejor candidato facial aplicando umbral y filtro de margen
+    (idéntica lógica a services/user_service.py del Pi, para mantener
+    consistencia en el chequeo antifraude de rostros duplicados).
+    """
+    MIN_MARGIN = 0.10
+    threshold = threshold_for_model(model_prefix)
+
+    user_best: dict[int, dict] = {}
+    for candidate in candidates:
+        if not (candidate.get("modelo") or "").startswith(model_prefix):
+            continue
+        stored_vec = candidate.get("vector_np")
+        if stored_vec is None:
+            continue
+        dist = float(np.linalg.norm(probe_embedding - stored_vec))
+        uid = int(candidate["idusuario"])
+        if uid not in user_best or dist < user_best[uid]["distance"]:
+            user_best[uid] = {"candidate": candidate, "distance": dist}
+
+    if not user_best:
+        return None, None
+
+    ranked = sorted(user_best.values(), key=lambda x: x["distance"])
+    best_distance = ranked[0]["distance"]
+    second_distance = ranked[1]["distance"] if len(ranked) > 1 else float("inf")
+    closest = ranked[0]["candidate"]
+
+    if best_distance > threshold:
+        return None, closest
+
+    if len(ranked) > 1 and (second_distance - best_distance) < MIN_MARGIN:
+        return None, closest
+
+    return closest, closest
+
+
+def save_face_encodings(user_id: int, poses: list[dict]) -> None:
+    """
+    Reemplaza los encodings faciales de un usuario en una transacción.
+
+    poses: lista de {"tipoParte": str, "embedding": np.ndarray, "modelo": str}
+    """
+    with cursor() as cur:
+        cur.execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
+        for pose in poses:
+            vec = pose["embedding"].astype(np.float32, copy=False)
+            vec_bytes = vec.tobytes()
+            vec_hash = hashlib.sha256(
+                vec_bytes + f"{user_id}_{pose['tipoParte']}".encode()
+            ).hexdigest()
+            cur.execute(
+                """
+                INSERT INTO encoding
+                    (idUsuario, estado, vector, dimension, hashVector,
+                     tipoParte, vectorDtype, modelo, modeloVersion)
+                VALUES (%s, 'activo', %s, %s, %s, %s, 'float32', %s, '1.0')
+                """,
+                (
+                    user_id, vec_bytes, int(len(vec)),
+                    vec_hash, pose["tipoParte"], pose["modelo"],
+                ),
+            )
+    logger.info("Encodings guardados para usuario id=%s (%d poses)", user_id, len(poses))

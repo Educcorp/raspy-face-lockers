@@ -46,12 +46,15 @@ def filter_close_faces(faces: list, frame) -> list:
     return [f for f in faces if (f.get("box") or (0, 0, 0, 0))[2] >= min_w]
 
 
+_DLIB_IMPORT_ERROR: str | None = None
 try:
     import dlib
     _DLIB_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     dlib = None  # type: ignore
     _DLIB_AVAILABLE = False
+    _DLIB_IMPORT_ERROR = str(e)
+    logger.error(f"✗ dlib no se pudo importar: {e}")
 
 
 # ── Helper: Corrección de iluminación mejorada ──────────────────────────────
@@ -157,7 +160,7 @@ class FaceDetector:
         if _DLIB_AVAILABLE:
             logger.info("✓ FaceDetector inicializado (dlib HOG + Haar fallback)")
         else:
-            logger.warning("⚠ dlib no disponible; FaceDetector usará solo Haar cascade")
+            logger.warning(f"⚠ dlib no disponible ({_DLIB_IMPORT_ERROR}); FaceDetector usará solo Haar cascade")
 
     def detect(self, frame: np.ndarray) -> List[Dict]:
         """Detecta rostros en un frame BGR. Retorna lista de dicts con 'box'."""
@@ -242,7 +245,7 @@ class FaceEmbeddingExtractor:
     def _load_models(self) -> None:
         if not _DLIB_AVAILABLE:
             self._using_fallback = True
-            logger.warning("⚠ dlib no disponible; usando embedding fallback (grayscale 16x8)")
+            logger.warning(f"⚠ dlib no disponible ({_DLIB_IMPORT_ERROR}); usando embedding fallback (grayscale 16x8)")
             return
 
         sp_path = Path(FACE_RECOGNITION_CONFIG["shape_predictor"])

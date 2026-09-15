@@ -3,28 +3,30 @@
 {% block content %}
 <h2>Lockers</h2>
 
-<div class="card" style="max-width:480px;">
-  <h3 style="margin-top:0;">Nuevo locker</h3>
+<div class="card">
+  <h3>Nuevo locker</h3>
   <form method="post">
-    <div class="form-row">
-      <label>Unidad académica</label>
-      <select name="idUnidadAcademica" required>
-        {% for u in unidades %}
-        <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-row">
-      <label>Área</label>
-      <select name="idArea" required>
-        {% for a in areas %}
-        <option value="{{ a.idarea }}">{{ a.nombrearea }}</option>
-        {% endfor %}
-      </select>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Unidad académica</label>
+        <select name="idUnidadAcademica" required>
+          {% for u in unidades %}
+          <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Área</label>
+        <select name="idArea" required>
+          {% for a in areas %}
+          <option value="{{ a.idarea }}">{{ a.nombrearea }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
     <button class="btn" type="submit">Crear</button>
   </form>
-  <p style="color:var(--muted); font-size:0.85rem;">
+  <p style="color:var(--muted); font-size:0.85rem; margin-top:14px;">
     Esto solo registra el locker en la base de datos. El relevador físico se
     activa desde el dispositivo de la Raspberry Pi, no desde este panel.
   </p>

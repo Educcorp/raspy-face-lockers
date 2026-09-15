@@ -4,32 +4,108 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Panel Smart Locker{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
   {% if g.user %}
-  <div class="topbar">
-    <div class="brand">Smart Locker · Panel Web</div>
-    <nav>
-      <a href="{{ url_for('dashboard.index') }}">Inicio</a>
-      <a href="{{ url_for('users.list_users') }}">Usuarios</a>
-      <a href="{{ url_for('lockers.list_lockers') }}">Lockers</a>
-      <a href="{{ url_for('lockers.assignments') }}">Asignaciones</a>
-      <a href="{{ url_for('history.list_history') }}">Historial</a>
-      {% if g.user.role == 'superadmin' %}
-      <a href="{{ url_for('catalogs.tipos_usuario') }}">Tipos</a>
-      <a href="{{ url_for('catalogs.unidades') }}">Unidades</a>
-      <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
-      {% endif %}
-    </nav>
-    <div class="user-info">
-      {{ g.user.full_name }} ({{ g.user.role }}) ·
-      <a href="{{ url_for('auth.logout') }}">Salir</a>
-    </div>
-  </div>
-  {% endif %}
+  <input type="checkbox" id="nav-toggle" class="nav-toggle-input">
 
-  <div class="container">
+  <div class="topbar-wrap">
+    <header class="topbar">
+      <a href="{{ url_for('dashboard.index') }}" class="brand">
+        <span class="brand-mark">SL</span>
+        <span class="brand-text">Smart Locker</span>
+      </a>
+
+      <nav class="topbar-nav">
+        <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.blueprint == 'dashboard' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+          Inicio
+        </a>
+        <a href="{{ url_for('users.list_users') }}" class="{{ 'active' if request.blueprint == 'users' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Usuarios
+        </a>
+        <a href="{{ url_for('lockers.list_lockers') }}" class="{{ 'active' if request.endpoint == 'lockers.list_lockers' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 4v6"/></svg>
+          Lockers
+        </a>
+        <a href="{{ url_for('lockers.assignments') }}" class="{{ 'active' if request.endpoint == 'lockers.assignments' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="8" height="8" rx="1.5"/><rect x="13" y="5" width="8" height="8" rx="1.5"/><path d="M11 15h2a2 2 0 0 0 2-2v-1"/></svg>
+          Asignaciones
+        </a>
+        <a href="{{ url_for('history.list_history') }}" class="{{ 'active' if request.blueprint == 'history' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+          Historial
+        </a>
+        {% if g.user.role == 'superadmin' %}
+        <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
+          <summary>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.34-4.34a2 2 0 0 0 .01-2.83Z"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
+            Catálogos
+            <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="dropdown-panel">
+            <a href="{{ url_for('catalogs.tipos_usuario') }}">Tipos de usuario</a>
+            <a href="{{ url_for('catalogs.unidades') }}">Unidades académicas</a>
+            <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
+          </div>
+        </details>
+        {% endif %}
+      </nav>
+
+      <div class="topbar-right">
+        <details class="nav-dropdown user-menu">
+          <summary>
+            <span class="user-avatar">{{ g.user.full_name[:1] }}</span>
+            <div class="user-meta">
+              <span class="user-name">{{ g.user.full_name }}</span>
+              <span class="user-role">{{ g.user.role }}</span>
+            </div>
+            <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="dropdown-panel">
+            <a href="{{ url_for('users.edit_user', user_id=g.user.idusuario) }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>
+              Mi perfil
+            </a>
+            <div class="dropdown-divider"></div>
+            <a href="{{ url_for('auth.logout') }}" class="danger-link">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+              Cerrar sesión
+            </a>
+          </div>
+        </details>
+        <label for="nav-toggle" class="nav-toggle-btn" aria-label="Abrir menú">&#9776;</label>
+      </div>
+    </header>
+
+    <nav class="mobile-panel">
+      <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.blueprint == 'dashboard' else '' }}">Inicio</a>
+      <a href="{{ url_for('users.list_users') }}" class="{{ 'active' if request.blueprint == 'users' else '' }}">Usuarios</a>
+      <a href="{{ url_for('lockers.list_lockers') }}" class="{{ 'active' if request.endpoint == 'lockers.list_lockers' else '' }}">Lockers</a>
+      <a href="{{ url_for('lockers.assignments') }}" class="{{ 'active' if request.endpoint == 'lockers.assignments' else '' }}">Asignaciones</a>
+      <a href="{{ url_for('history.list_history') }}" class="{{ 'active' if request.blueprint == 'history' else '' }}">Historial</a>
+      {% if g.user.role == 'superadmin' %}
+      <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
+        <summary>Catálogos <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+        <div class="dropdown-panel">
+          <a href="{{ url_for('catalogs.tipos_usuario') }}">Tipos de usuario</a>
+          <a href="{{ url_for('catalogs.unidades') }}">Unidades académicas</a>
+          <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
+        </div>
+      </details>
+      {% endif %}
+      <div class="dropdown-divider"></div>
+      <a href="{{ url_for('users.edit_user', user_id=g.user.idusuario) }}">Mi perfil</a>
+      <a href="{{ url_for('auth.logout') }}">Cerrar sesión</a>
+    </nav>
+  </div>
+
+  <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
         <div class="flash {{ category }}">{{ message }}</div>
@@ -37,6 +113,40 @@
     {% endwith %}
 
     {% block content %}{% endblock %}
+  </main>
+  <script>
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.nav-dropdown[open]').forEach((el) => {
+        if (!el.contains(e.target)) el.removeAttribute('open');
+      });
+    });
+
+    (() => {
+      const topbarWrap = document.querySelector('.topbar-wrap');
+      if (!topbarWrap) return;
+      let lastScroll = window.scrollY;
+      window.addEventListener('scroll', () => {
+        const current = window.scrollY;
+        if (current > lastScroll && current > 60) {
+          topbarWrap.classList.add('topbar-hidden');
+          topbarWrap.querySelectorAll('.nav-dropdown[open]').forEach((el) => el.removeAttribute('open'));
+        } else {
+          topbarWrap.classList.remove('topbar-hidden');
+        }
+        lastScroll = current;
+      }, { passive: true });
+    })();
+  </script>
+  {% else %}
+  <div class="container-plain">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:50;">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {{ self.content() }}
   </div>
+  {% endif %}
 </body>
 </html>

@@ -11,87 +11,90 @@
 </div>
 {% endif %}
 
-<div class="card" style="max-width:520px;">
+<div class="card">
   <form method="post">
-    <div class="form-row">
-      <label>Nombre(s)</label>
-      <input type="text" name="nombre" required value="{{ row.nombre if row else '' }}">
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Nombre(s)</label>
+        <input type="text" name="nombre" required value="{{ row.nombre if row else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Apellido paterno</label>
+        <input type="text" name="apPaterno" required value="{{ row.appaterno if row else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Apellido materno</label>
+        <input type="text" name="apMaterno" value="{{ row.apmaterno if row else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Matrícula</label>
+        <input type="text" name="matricula" required value="{{ row.matricula if row else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Correo institucional</label>
+        <input type="email" name="emailInst" required value="{{ row.emailinst if row else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Teléfono (opcional)</label>
+        <input type="text" name="tel" value="{{ row.tel if row else '' }}">
+      </div>
+      <div class="form-row">
+        <label>Tipo de usuario</label>
+        <select name="idTipoUsuario" required>
+          {% for t in tipos %}
+          <option value="{{ t.idtipousuario }}" {% if row and row.idtipousuario==t.idtipousuario %}selected{% endif %}>
+            {{ t.nombretipousuario }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Unidad académica</label>
+        <select name="idUnidadAcademica" required>
+          {% for u in unidades %}
+          <option value="{{ u.idunidadacademica }}" {% if row and row.idunidadacademica==u.idunidadacademica %}selected{% endif %}>
+            {{ u.nombreunidadacademica }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if row %}
+      <div class="form-row">
+        <label>Estado</label>
+        <select name="estado">
+          {% for opt in ['activo', 'inactivo', 'suspendido'] %}
+          <option value="{{ opt }}" {% if row.estado==opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% else %}
+      <div class="form-row">
+        <label>PIN inicial (4 a 8 dígitos)</label>
+        <input type="password" name="pin" required minlength="4" maxlength="8">
+      </div>
+      {% endif %}
     </div>
-    <div class="form-row">
-      <label>Apellido paterno</label>
-      <input type="text" name="apPaterno" required value="{{ row.appaterno if row else '' }}">
-    </div>
-    <div class="form-row">
-      <label>Apellido materno</label>
-      <input type="text" name="apMaterno" value="{{ row.apmaterno if row else '' }}">
-    </div>
-    <div class="form-row">
-      <label>Matrícula</label>
-      <input type="text" name="matricula" required value="{{ row.matricula if row else '' }}">
-    </div>
-    <div class="form-row">
-      <label>Correo institucional</label>
-      <input type="email" name="emailInst" required value="{{ row.emailinst if row else '' }}">
-    </div>
-    <div class="form-row">
-      <label>Teléfono (opcional)</label>
-      <input type="text" name="tel" value="{{ row.tel if row else '' }}">
-    </div>
-    <div class="form-row">
-      <label>Tipo de usuario</label>
-      <select name="idTipoUsuario" required>
-        {% for t in tipos %}
-        <option value="{{ t.idtipousuario }}" {% if row and row.idtipousuario==t.idtipousuario %}selected{% endif %}>
-          {{ t.nombretipousuario }}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-row">
-      <label>Unidad académica</label>
-      <select name="idUnidadAcademica" required>
-        {% for u in unidades %}
-        <option value="{{ u.idunidadacademica }}" {% if row and row.idunidadacademica==u.idunidadacademica %}selected{% endif %}>
-          {{ u.nombreunidadacademica }}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-    {% if row %}
-    <div class="form-row">
-      <label>Estado</label>
-      <select name="estado">
-        {% for opt in ['activo', 'inactivo', 'suspendido'] %}
-        <option value="{{ opt }}" {% if row.estado==opt %}selected{% endif %}>{{ opt }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% else %}
-    <div class="form-row">
-      <label>PIN inicial (4 a 8 dígitos)</label>
-      <input type="password" name="pin" required minlength="4" maxlength="8">
-    </div>
-    {% endif %}
     <button class="btn" type="submit">Guardar</button>
   </form>
 </div>
 
 {% if row %}
-<div class="card" style="max-width:520px;">
-  <h3 style="margin-top:0;">Acciones</h3>
-  <a class="btn" style="display:block; text-align:center; margin-bottom:10px;"
-     href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">
-    {{ 'Volver a capturar rostro' if not pending else 'Registrar rostro' }}
-  </a>
-  <form method="post" action="{{ url_for('users.reset_pin', user_id=row.idusuario) }}" style="margin-bottom:10px;">
-    <button class="btn btn-muted" type="submit">Generar nuevo PIN</button>
-  </form>
-  {% if g.user.role == 'superadmin' %}
-  <form method="post" action="{{ url_for('users.delete_user', user_id=row.idusuario) }}"
-        onsubmit="return confirm('¿Eliminar este usuario permanentemente? Esta acción no se puede deshacer.');">
-    <button class="btn btn-danger" type="submit">Eliminar permanentemente</button>
-  </form>
-  {% endif %}
+<div class="card">
+  <h3>Acciones</h3>
+  <div class="actions-row">
+    <a class="btn" href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">
+      {{ 'Volver a capturar rostro' if not pending else 'Registrar rostro' }}
+    </a>
+    <form method="post" action="{{ url_for('users.reset_pin', user_id=row.idusuario) }}">
+      <button class="btn btn-muted" type="submit">Generar nuevo PIN</button>
+    </form>
+    {% if g.user.role == 'superadmin' %}
+    <form method="post" action="{{ url_for('users.delete_user', user_id=row.idusuario) }}"
+          onsubmit="return confirm('¿Eliminar este usuario permanentemente? Esta acción no se puede deshacer.');">
+      <button class="btn btn-danger" type="submit">Eliminar permanentemente</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 {% endif %}
 {% endblock %}

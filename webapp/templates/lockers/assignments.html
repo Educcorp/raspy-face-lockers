@@ -3,25 +3,27 @@
 {% block content %}
 <h2>Asignación de lockers</h2>
 
-<div class="card" style="max-width:520px;">
-  <h3 style="margin-top:0;">Asignar locker</h3>
+<div class="card">
+  <h3>Asignar locker</h3>
   <form method="post">
     <input type="hidden" name="action" value="assign">
-    <div class="form-row">
-      <label>Usuario</label>
-      <select name="idUsuario" required>
-        {% for u in users %}
-        <option value="{{ u.idusuario }}">{{ u.nombre }} {{ u.appaterno }} · Matr. {{ u.matricula }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-row">
-      <label>Locker disponible</label>
-      <select name="idLocker" required>
-        {% for l in available_lockers %}
-        <option value="{{ l.idlocker }}">Locker {{ l.idlocker }} · {{ l.nombrearea }}</option>
-        {% endfor %}
-      </select>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Usuario</label>
+        <select name="idUsuario" required>
+          {% for u in users %}
+          <option value="{{ u.idusuario }}">{{ u.nombre }} {{ u.appaterno }} · Matr. {{ u.matricula }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Locker disponible</label>
+        <select name="idLocker" required>
+          {% for l in available_lockers %}
+          <option value="{{ l.idlocker }}">Locker {{ l.idlocker }} · {{ l.nombrearea }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
     <button class="btn" type="submit">Asignar</button>
   </form>

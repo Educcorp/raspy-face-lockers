@@ -3,22 +3,57 @@
 {% block content %}
 <h2>Resumen</h2>
 <div class="stat-grid">
-  <div class="card"><div class="stat-value">{{ stats.usuarios }}</div><div class="stat-label">Usuarios activos</div></div>
-  <div class="card"><div class="stat-value">{{ stats.pendientes }}</div><div class="stat-label">Pendientes de registro facial</div></div>
-  <div class="card"><div class="stat-value">{{ stats.lockers }}</div><div class="stat-label">Lockers activos</div></div>
-  <div class="card"><div class="stat-value">{{ stats.asignaciones }}</div><div class="stat-label">Asignaciones activas</div></div>
-  <div class="card"><div class="stat-value">{{ stats.accesos_hoy }}</div><div class="stat-label">Accesos hoy</div></div>
+  <div class="card">
+    <span class="stat-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+    </span>
+    <div class="stat-value">{{ stats.usuarios }}</div>
+    <div class="stat-label">Usuarios activos</div>
+  </div>
+  <div class="card">
+    <span class="stat-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+    </span>
+    <div class="stat-value">{{ stats.pendientes }}</div>
+    <div class="stat-label">Pendientes de registro facial</div>
+  </div>
+  <div class="card">
+    <span class="stat-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 4v6"/></svg>
+    </span>
+    <div class="stat-value">{{ stats.lockers }}</div>
+    <div class="stat-label">Lockers activos</div>
+  </div>
+  <div class="card">
+    <span class="stat-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="8" height="8" rx="1.5"/><rect x="13" y="5" width="8" height="8" rx="1.5"/><path d="M11 15h2a2 2 0 0 0 2-2v-1"/></svg>
+    </span>
+    <div class="stat-value">{{ stats.asignaciones }}</div>
+    <div class="stat-label">Asignaciones activas</div>
+  </div>
+  <div class="card">
+    <span class="stat-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.24 7.76 2.83-2.83"/><path d="M18 12h4"/><path d="m16.24 16.24 2.83 2.83"/><path d="M12 18v4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M2 12h4"/><path d="m4.93 4.93 2.83 2.83"/></svg>
+    </span>
+    <div class="stat-value">{{ stats.accesos_hoy }}</div>
+    <div class="stat-label">Accesos hoy</div>
+  </div>
 </div>
 
 {% if stats.pendientes > 0 %}
-<div class="card" style="margin-top:20px;">
-  <strong>{{ stats.pendientes }} usuario(s) esperan registro facial.</strong>
-  <p style="color:var(--muted); margin:6px 0 0;">
-    Fueron dados de alta pero aún no tienen rostro capturado. Ve a
-    <a href="{{ url_for('users.list_users') }}">Usuarios</a> y presiona "Pendiente"
-    para capturar su rostro con la cámara de este equipo. La autenticación en el
-    locker sigue usando la cámara física de la Raspberry Pi.
-  </p>
+<div class="card notice-card" style="margin-top:20px;">
+  <span class="stat-icon">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+  </span>
+  <div>
+    <strong>{{ stats.pendientes }} usuario(s) esperan registro facial.</strong>
+    <p>
+      Fueron dados de alta pero aún no tienen rostro capturado. Ve a
+      <a href="{{ url_for('users.list_users') }}">Usuarios</a> y presiona "Pendiente"
+      para capturar su rostro con la cámara de este equipo. La autenticación en el
+      locker seguirá usando la cámara física de la Raspberry Pi.
+    </p>
+  </div>
 </div>
 {% endif %}
 {% endblock %}

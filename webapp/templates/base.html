@@ -49,7 +49,6 @@
             <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </summary>
           <div class="dropdown-panel">
-            <a href="{{ url_for('catalogs.tipos_usuario') }}">Tipos de usuario</a>
             <a href="{{ url_for('catalogs.unidades') }}">Unidades académicas</a>
             <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
           </div>
@@ -93,7 +92,6 @@
       <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
         <summary>Catálogos <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
         <div class="dropdown-panel">
-          <a href="{{ url_for('catalogs.tipos_usuario') }}">Tipos de usuario</a>
           <a href="{{ url_for('catalogs.unidades') }}">Unidades académicas</a>
           <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
         </div>
@@ -116,7 +114,7 @@
   </main>
   <script>
     document.addEventListener('click', (e) => {
-      document.querySelectorAll('.nav-dropdown[open]').forEach((el) => {
+      document.querySelectorAll('.nav-dropdown[open], .row-edit[open]').forEach((el) => {
         if (!el.contains(e.target)) el.removeAttribute('open');
       });
     });

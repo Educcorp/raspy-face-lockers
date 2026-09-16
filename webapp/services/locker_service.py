@@ -41,6 +41,25 @@ def set_locker_status(locker_id: int, estado: str, modificado_por: int) -> None:
     )
 
 
+def update_locker_location(locker_id: int, unidad_id: int, area_id: int, modificado_por: int) -> None:
+    execute(
+        "UPDATE lockers SET idUnidadAcademica=%s, idArea=%s, modificadoPor=%s WHERE idLocker=%s",
+        (unidad_id, area_id, modificado_por, locker_id),
+    )
+
+
+def get_protected_locker_ids() -> set[int]:
+    """Los 4 lockers físicos originales (los de menor idLocker) no se pueden eliminar:
+    el sistema debe poder mostrarse escalando a más lockers, pero solo hay 4 gabinetes
+    reales, así que esos siempre deben seguir existiendo en el catálogo."""
+    rows = fetch_all("SELECT idLocker FROM lockers ORDER BY idLocker ASC LIMIT 4")
+    return {r["idlocker"] for r in rows}
+
+
+def delete_locker(locker_id: int) -> None:
+    execute("DELETE FROM lockers WHERE idLocker=%s", (locker_id,))
+
+
 def get_available_lockers() -> list[dict]:
     return fetch_all("SELECT * FROM v_lockers_disponibles")
 

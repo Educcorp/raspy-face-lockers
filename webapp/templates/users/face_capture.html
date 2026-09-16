@@ -9,56 +9,65 @@
   dispositivo; esto solo registra el rostro en la base de datos.
 </p>
 
-<div class="card" style="max-width:560px;">
-  <div id="pose-list" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
-    {% for p in poses %}
-    <span class="badge {{ 'activo' if loop.index0 < done_count else 'inactivo' }}" data-pose="{{ p.tipoParte }}">
-      {{ p.icon }} {{ p.tipoParte }}
-    </span>
-    {% endfor %}
-  </div>
-
-  <div class="pose-sphere-wrap">
-    <div id="sphere" class="pose-sphere">
-      <div id="sphere-target" class="sphere-target"></div>
-      <div id="sphere-dot" class="sphere-dot"></div>
-      <div id="sphere-noface" class="no-face">Buscando tu rostro…</div>
+<div class="face-capture-layout">
+  <div class="card face-capture-main">
+    <div id="pose-list" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+      {% for p in poses %}
+      <span class="badge {{ 'activo' if loop.index0 < done_count else 'inactivo' }}" data-pose="{{ p.tipoParte }}">
+        {{ p.icon }} {{ p.tipoParte }}
+      </span>
+      {% endfor %}
     </div>
-    <p id="instruction" style="text-align:center; font-weight:700; font-family:'Fraunces',serif; font-size:1.05rem; margin:2px 0 0;"></p>
-    <p id="hint" style="text-align:center; color:var(--muted); font-size:0.82rem; margin:2px 0 0; min-height:18px;"></p>
+
+    <div class="pose-sphere-wrap">
+      <div id="sphere" class="pose-sphere">
+        <div id="sphere-target" class="sphere-target"></div>
+        <div id="sphere-dot" class="sphere-dot"></div>
+        <div id="sphere-noface" class="no-face">Buscando tu rostro…</div>
+      </div>
+      <p id="instruction" style="text-align:center; font-weight:700; font-family:'Fraunces',serif; font-size:1.05rem; margin:2px 0 0;"></p>
+      <p id="hint" style="text-align:center; color:var(--muted); font-size:0.82rem; margin:2px 0 0; min-height:18px;"></p>
+    </div>
+
+    <div id="camera-wrap" style="position:relative; background:#000; border-radius:var(--radius-sm); overflow:hidden; aspect-ratio:4/3;">
+      <video id="video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+      <div id="capture-flash" class="capture-flash"></div>
+    </div>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <p id="capture-progress-label" class="capture-progress-label"></p>
+    <div class="capture-progress-track">
+      <div id="capture-progress-fill" class="capture-progress-fill"></div>
+    </div>
+
+    <p id="feedback" style="text-align:center; color:var(--danger); min-height:20px; font-size:0.85rem;"></p>
   </div>
 
-  <div id="camera-wrap" style="position:relative; background:#000; border-radius:var(--radius-sm); overflow:hidden; aspect-ratio:4/3;">
-    <video id="video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
-    <div id="capture-flash" class="capture-flash"></div>
-  </div>
-  <canvas id="canvas" style="display:none;"></canvas>
+  <div class="card face-capture-side">
+    <h3>Progreso</h3>
+    <p style="color:var(--muted); font-size:0.85rem; margin-top:-8px;">
+      {{ done_count }} de {{ total }} poses capturadas.
+    </p>
 
-  <p id="capture-progress-label" class="capture-progress-label"></p>
-  <div class="capture-progress-track">
-    <div id="capture-progress-fill" class="capture-progress-fill"></div>
-  </div>
+    <div id="done-controls" style="display:none; flex-direction:column; gap:10px; margin-top:6px;">
+      <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}">
+        <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
+      </form>
+    </div>
 
-  <p id="feedback" style="text-align:center; color:var(--danger); min-height:20px; font-size:0.85rem;"></p>
+    <details id="manual-fallback" style="margin-top:14px;">
+      <summary style="cursor:pointer; color:var(--muted); font-size:0.82rem; font-weight:600;">
+        ¿Problemas para que te detecte? Captura manual
+      </summary>
+      <button id="btn-capture-manual" class="btn btn-muted" style="width:100%; margin-top:10px;">
+        Capturar esta pose ahora
+      </button>
+    </details>
 
-  <div id="done-controls" style="display:none; gap:10px; margin-top:6px;">
-    <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}" style="flex:1;">
-      <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
+    <form method="post" action="{{ url_for('face.cancel', user_id=row.idusuario) }}" style="margin-top:10px;">
+      <button class="btn btn-muted" type="submit" style="width:100%;">Cancelar</button>
     </form>
   </div>
-
-  <details id="manual-fallback" style="margin-top:14px;">
-    <summary style="cursor:pointer; color:var(--muted); font-size:0.82rem; font-weight:600;">
-      ¿Problemas para que te detecte? Captura manual
-    </summary>
-    <button id="btn-capture-manual" class="btn btn-muted" style="width:100%; margin-top:10px;">
-      Capturar esta pose ahora
-    </button>
-  </details>
-
-  <form method="post" action="{{ url_for('face.cancel', user_id=row.idusuario) }}" style="margin-top:10px;">
-    <button class="btn btn-muted" type="submit" style="width:100%;">Cancelar</button>
-  </form>
 </div>
 
 <script type="module">

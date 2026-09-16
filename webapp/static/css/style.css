@@ -369,6 +369,156 @@ tbody tr:hover { background: var(--surface-alt); }
 .notice-card strong { font-family: "Fraunces", serif; font-weight: 600; font-size: 1.02rem; }
 .notice-card p { color: var(--muted); margin: 6px 0 0; font-size: 0.88rem; line-height: 1.55; }
 
+/* ── Face capture: two-column layout ──────────────────────────────────── */
+.face-capture-layout {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 22px;
+  align-items: start;
+  max-width: 960px;
+}
+.face-capture-main, .face-capture-side { margin-bottom: 0; }
+.face-capture-side { position: sticky; top: 90px; }
+.face-capture-side h3 { margin-bottom: 2px; }
+
+@media (max-width: 860px) {
+  .face-capture-layout { grid-template-columns: 1fr; }
+  .face-capture-side { position: static; }
+}
+
+/* ── Face capture: sphere guide + progress ────────────────────────────── */
+.pose-sphere-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-bottom: 18px; }
+
+.pose-sphere {
+  width: 132px; height: 132px;
+  border-radius: 50%;
+  position: relative;
+  background: radial-gradient(circle at 32% 28%, #fffdfb, var(--accent-soft) 55%, var(--accent-soft-strong) 100%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 -12px 22px rgba(44, 36, 29, 0.08), var(--shadow-sm);
+  transition: box-shadow 0.25s ease;
+  flex-shrink: 0;
+}
+.pose-sphere.matched {
+  box-shadow: inset 0 -12px 22px rgba(44, 36, 29, 0.08), 0 0 0 6px var(--success-soft), var(--shadow);
+}
+
+.sphere-target {
+  position: absolute;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 2px dashed var(--accent);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  transition: transform 0.25s ease, border-color 0.2s ease;
+  pointer-events: none;
+}
+.pose-sphere.matched .sphere-target { border-color: var(--success); border-style: solid; }
+
+.sphere-dot {
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--text);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  transition: background 0.2s ease;
+  box-shadow: 0 0 0 3px rgba(255, 253, 251, 0.75);
+  pointer-events: none;
+}
+.pose-sphere.matched .sphere-dot { background: var(--success); }
+
+.no-face {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; color: var(--muted); text-align: center; padding: 12px;
+  font-weight: 600;
+}
+
+.capture-progress-label { font-size: 0.78rem; font-weight: 700; color: var(--accent-hover); text-align: center; margin: 12px 0 4px; min-height: 16px; }
+.capture-progress-track { width: 100%; height: 8px; border-radius: 999px; background: var(--surface-alt); overflow: hidden; margin-bottom: 10px; }
+.capture-progress-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 999px; transition: width 0.08s linear; }
+
+.capture-flash {
+  position: absolute; inset: 0;
+  background: var(--success);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.capture-flash.flash-on { opacity: 0.35; }
+
+/* ── Inline status select (tables) ────────────────────────────────────── */
+.status-select {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 32px 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  background-color: var(--surface-alt);
+  color: var(--text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238c7c6b' stroke-width='1.5' fill='none' fill-rule='evenodd' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.status-select:hover { box-shadow: 0 0 0 1px var(--border); }
+.status-select:focus { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.status-select.st-activo { background-color: var(--success-soft); color: var(--success); }
+.status-select.st-inactivo { background-color: var(--surface-alt); color: var(--muted); }
+.status-select.st-mantenimiento, .status-select.st-vencido { background-color: var(--warn-soft); color: var(--warn); }
+.status-select.st-suspendido { background-color: var(--danger-soft); color: var(--danger); }
+
+.inline-select {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 30px 7px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  background-color: var(--card);
+  color: var(--text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238c7c6b' stroke-width='1.5' fill='none' fill-rule='evenodd' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.inline-select:hover { border-color: var(--accent); }
+.inline-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ── Inline row-edit panel (tables) ───────────────────────────────────── */
+.row-edit summary {
+  list-style: none;
+  display: inline-flex;
+}
+.row-edit summary::-webkit-details-marker { display: none; }
+
+.row-edit-panel {
+  position: absolute;
+  z-index: 25;
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  min-width: 240px;
+}
+.row-edit { position: relative; }
+.row-edit-panel .form-row:last-of-type { margin-bottom: 0; }
+
+.btn:disabled, .btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: var(--muted);
+}
+.btn:disabled:hover, .btn[disabled]:hover { background: var(--muted); }
+
 /* ── Page header / actions bar ────────────────────────────────────────── */
 .actions-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
 .actions-bar h2 { margin: 0; }

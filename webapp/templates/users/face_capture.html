@@ -3,93 +3,287 @@
 {% block content %}
 <h2>Registrar rostro — {{ row.nombre }} {{ row.appaterno }}</h2>
 <p style="color:var(--muted);">
-  Usa la cámara de este equipo para capturar el rostro de <strong>{{ row.nombre }}</strong>.
-  Se pedirán {{ total }} tomas. La autenticación en el locker seguirá usando la
-  cámara física del dispositivo — esto solo registra el rostro en la base de datos.
+  Colócate frente a la cámara de este equipo. El sistema detecta solo la posición,
+  el giro y el encuadre de tu rostro — cuando estés en la pose correcta, se captura
+  automáticamente. La autenticación en el locker sigue usando la cámara física del
+  dispositivo; esto solo registra el rostro en la base de datos.
 </p>
 
-<div class="card" style="max-width:520px;">
-  <div id="pose-list" style="display:flex; gap:8px; margin-bottom:14px;">
-    {% for p in poses %}
-    <span class="badge {{ 'activo' if loop.index0 < done_count else 'inactivo' }}" data-pose="{{ p.tipoParte }}">
-      {{ p.icon }} {{ p.tipoParte }}
-    </span>
-    {% endfor %}
+<div class="face-capture-layout">
+  <div class="card face-capture-main">
+    <div id="pose-list" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+      {% for p in poses %}
+      <span class="badge {{ 'activo' if loop.index0 < done_count else 'inactivo' }}" data-pose="{{ p.tipoParte }}">
+        {{ p.icon }} {{ p.tipoParte }}
+      </span>
+      {% endfor %}
+    </div>
+
+    <div class="pose-sphere-wrap">
+      <div id="sphere" class="pose-sphere">
+        <div id="sphere-target" class="sphere-target"></div>
+        <div id="sphere-dot" class="sphere-dot"></div>
+        <div id="sphere-noface" class="no-face">Buscando tu rostro…</div>
+      </div>
+      <p id="instruction" style="text-align:center; font-weight:700; font-family:'Fraunces',serif; font-size:1.05rem; margin:2px 0 0;"></p>
+      <p id="hint" style="text-align:center; color:var(--muted); font-size:0.82rem; margin:2px 0 0; min-height:18px;"></p>
+    </div>
+
+    <div id="camera-wrap" style="position:relative; background:#000; border-radius:var(--radius-sm); overflow:hidden; aspect-ratio:4/3;">
+      <video id="video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+      <div id="capture-flash" class="capture-flash"></div>
+    </div>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <p id="capture-progress-label" class="capture-progress-label"></p>
+    <div class="capture-progress-track">
+      <div id="capture-progress-fill" class="capture-progress-fill"></div>
+    </div>
+
+    <p id="feedback" style="text-align:center; color:var(--danger); min-height:20px; font-size:0.85rem;"></p>
   </div>
 
-  <div id="camera-wrap" style="position:relative; background:#000; border-radius:12px; overflow:hidden; aspect-ratio:4/3;">
-    <video id="video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
-  </div>
-  <canvas id="canvas" style="display:none;"></canvas>
+  <div class="card face-capture-side">
+    <h3>Progreso</h3>
+    <p style="color:var(--muted); font-size:0.85rem; margin-top:-8px;">
+      {{ done_count }} de {{ total }} poses capturadas.
+    </p>
 
-  <p id="instruction" style="text-align:center; font-weight:600; margin:14px 0 4px;"></p>
-  <p id="feedback" style="text-align:center; color:var(--danger); min-height:20px;"></p>
+    <div id="done-controls" style="display:none; flex-direction:column; gap:10px; margin-top:6px;">
+      <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}">
+        <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
+      </form>
+    </div>
 
-  <div id="controls" style="display:flex; gap:10px;">
-    <button id="btn-capture" class="btn" style="flex:1;">Capturar</button>
-  </div>
+    <details id="manual-fallback" style="margin-top:14px;">
+      <summary style="cursor:pointer; color:var(--muted); font-size:0.82rem; font-weight:600;">
+        ¿Problemas para que te detecte? Captura manual
+      </summary>
+      <button id="btn-capture-manual" class="btn btn-muted" style="width:100%; margin-top:10px;">
+        Capturar esta pose ahora
+      </button>
+    </details>
 
-  <div id="done-controls" style="display:none; gap:10px; margin-top:10px;">
-    <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}" style="flex:1;">
-      <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
+    <form method="post" action="{{ url_for('face.cancel', user_id=row.idusuario) }}" style="margin-top:10px;">
+      <button class="btn btn-muted" type="submit" style="width:100%;">Cancelar</button>
     </form>
   </div>
-
-  <form method="post" action="{{ url_for('face.cancel', user_id=row.idusuario) }}" style="margin-top:10px;">
-    <button class="btn btn-muted" type="submit" style="width:100%;">Cancelar</button>
-  </form>
 </div>
 
-<script>
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+
 const userId = {{ row.idusuario }};
 const captureUrl = "{{ url_for('face.capture_pose', user_id=row.idusuario) }}";
 let nextPose = {{ (next_pose.tipoParte if next_pose else '') | tojson }};
 let allDone = {{ 'true' if all_done else 'false' }};
 
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const btnCapture = document.getElementById('btn-capture');
-const controls = document.getElementById('controls');
-const doneControls = document.getElementById('done-controls');
-const instruction = document.getElementById('instruction');
-const feedback = document.getElementById('feedback');
-
 const POSE_LABELS = {
   {% for p in poses %}"{{ p.tipoParte }}": {{ p.label | tojson }},{% endfor %}
 };
 
-function refreshUI() {
+/* ── Calibración: si un giro se ve invertido al probar con tu cámara, ────
+   cambia estos dos signos (1 <-> -1). No afecta lo que se guarda en la
+   base de datos (el servidor no valida la pose real), solo la UI. ────── */
+const YAW_SIGN = 1;
+const PITCH_SIGN = 1;
+
+const YAW_NORMALIZE = 0.16;
+const PITCH_NORMALIZE = 0.10;
+const YAW_MATCH_T = 0.45;
+const PITCH_MATCH_T = 0.4;
+const CENTER_T = 0.28;
+const HOLD_MS = 850;
+
+const TARGET_POS = {
+  frontal:   { x: 0,  y: 0 },
+  derecha:   { x: 1,  y: 0 },
+  izquierda: { x: -1, y: 0 },
+  arriba:    { x: 0,  y: -1 },
+};
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const instruction = document.getElementById('instruction');
+const hint = document.getElementById('hint');
+const feedback = document.getElementById('feedback');
+const doneControls = document.getElementById('done-controls');
+const sphere = document.getElementById('sphere');
+const sphereTarget = document.getElementById('sphere-target');
+const sphereDot = document.getElementById('sphere-dot');
+const sphereNoFace = document.getElementById('sphere-noface');
+const progressFill = document.getElementById('capture-progress-fill');
+const progressLabel = document.getElementById('capture-progress-label');
+const captureFlash = document.getElementById('capture-flash');
+const btnManual = document.getElementById('btn-capture-manual');
+const manualFallback = document.getElementById('manual-fallback');
+
+let baseYaw = null, basePitch = null, calibFrames = [];
+let holdStart = null;
+let isCapturing = false;
+let loopHandle = null;
+let landmarker = null;
+
+function refreshInstruction() {
   if (allDone) {
     instruction.textContent = "¡Todas las poses capturadas!";
-    controls.style.display = "none";
+    hint.textContent = "";
     doneControls.style.display = "flex";
+    sphere.style.display = "none";
+    manualFallback.style.display = "none";
   } else {
     instruction.textContent = POSE_LABELS[nextPose] || "";
-    controls.style.display = "flex";
-    doneControls.style.display = "none";
+    positionTarget(nextPose);
   }
 }
-refreshUI();
+refreshInstruction();
+
+function positionTarget(pose) {
+  const t = TARGET_POS[pose] || { x: 0, y: 0 };
+  const MAX = 42;
+  sphereTarget.style.transform = `translate(calc(-50% + ${t.x * MAX}px), calc(-50% + ${t.y * MAX}px))`;
+}
+
+function setProgress(pct, label) {
+  progressFill.style.width = Math.max(0, Math.min(100, pct)) + "%";
+  progressLabel.textContent = label || "";
+}
 
 let stream = null;
 async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
     video.srcObject = stream;
+    await video.play();
   } catch (err) {
     feedback.textContent = "No se pudo acceder a la cámara: " + err.message;
   }
 }
-startCamera();
 
 window.addEventListener('beforeunload', () => {
   if (stream) stream.getTracks().forEach(t => t.stop());
+  if (loopHandle) cancelAnimationFrame(loopHandle);
 });
 
-btnCapture.addEventListener('click', async () => {
-  if (!nextPose) return;
-  btnCapture.disabled = true;
+async function initDetector() {
+  try {
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+    );
+    landmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU",
+      },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: false,
+      outputFacialTransformationMatrixes: false,
+    });
+    detectLoop();
+  } catch (err) {
+    hint.textContent = "No se pudo cargar la detección automática — usa la captura manual de abajo.";
+    sphereNoFace.textContent = "Detección no disponible";
+    manualFallback.open = true;
+  }
+}
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+function detectLoop() {
+  loopHandle = requestAnimationFrame(detectLoop);
+  if (!landmarker || video.readyState < 2 || isCapturing || allDone) return;
+
+  const result = landmarker.detectForVideo(video, performance.now());
+  const lm = result.faceLandmarks && result.faceLandmarks[0];
+
+  if (!lm) {
+    sphereNoFace.style.display = "flex";
+    sphereDot.style.display = "none";
+    sphere.classList.remove('matched');
+    hint.textContent = "No detecto tu rostro — acércate y mira a la cámara.";
+    holdStart = null;
+    setProgress(0, "");
+    return;
+  }
+  sphereNoFace.style.display = "none";
+  sphereDot.style.display = "block";
+
+  // Encuadre: caja del rostro en coords normalizadas 0..1
+  let minX = 1, maxX = 0, minY = 1, maxY = 0;
+  for (const p of lm) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const faceWidth = maxX - minX;
+  const framingOk = centerX > 0.32 && centerX < 0.68 && centerY > 0.26 && centerY < 0.78
+    && faceWidth > 0.22 && faceWidth < 0.75;
+
+  // Pose: proporciones nariz vs contorno de la cara
+  const nose = lm[1], forehead = lm[10], chin = lm[152], faceL = lm[234], faceR = lm[454];
+  const rawYaw = (nose.x - faceL.x) / (faceR.x - faceL.x);
+  const rawPitch = (nose.y - forehead.y) / (chin.y - forehead.y);
+
+  if (baseYaw === null) {
+    calibFrames.push([rawYaw, rawPitch]);
+    hint.textContent = "Calibrando… mantente frente a la cámara.";
+    if (calibFrames.length >= 15) {
+      baseYaw = calibFrames.reduce((s, f) => s + f[0], 0) / calibFrames.length;
+      basePitch = calibFrames.reduce((s, f) => s + f[1], 0) / calibFrames.length;
+    }
+    return;
+  }
+
+  const yawSignal = clamp(YAW_SIGN * (rawYaw - baseYaw) / YAW_NORMALIZE, -1, 1);
+  const pitchSignal = clamp(PITCH_SIGN * -(rawPitch - basePitch) / PITCH_NORMALIZE, -1, 1);
+
+  const MAX = 42;
+  sphereDot.style.transform = `translate(calc(-50% + ${yawSignal * MAX}px), calc(-50% + ${-pitchSignal * MAX}px))`;
+
+  const poseOk = poseMatches(nextPose, yawSignal, pitchSignal);
+  const ready = framingOk && poseOk;
+
+  sphere.classList.toggle('matched', ready);
+
+  if (!framingOk) {
+    hint.textContent = faceWidth >= 0.75 ? "Aléjate un poco de la cámara" : faceWidth <= 0.22 ? "Acércate un poco a la cámara" : "Céntrate en el cuadro";
+    holdStart = null;
+    setProgress(0, "");
+  } else if (!poseOk) {
+    hint.textContent = "Sigue la esfera hacia la posición indicada";
+    holdStart = null;
+    setProgress(0, "");
+  } else {
+    hint.textContent = "¡Perfecto, mantente así!";
+    if (holdStart === null) holdStart = performance.now();
+    const elapsed = performance.now() - holdStart;
+    setProgress((elapsed / HOLD_MS) * 100, "Capturando rostro…");
+    if (elapsed >= HOLD_MS) {
+      holdStart = null;
+      captureCurrentPose();
+    }
+  }
+}
+
+function poseMatches(pose, yaw, pitch) {
+  switch (pose) {
+    case 'frontal': return Math.abs(yaw) < CENTER_T && Math.abs(pitch) < CENTER_T;
+    case 'derecha': return yaw > YAW_MATCH_T;
+    case 'izquierda': return yaw < -YAW_MATCH_T;
+    case 'arriba': return pitch > PITCH_MATCH_T;
+    default: return false;
+  }
+}
+
+async function captureCurrentPose() {
+  if (isCapturing || !nextPose) return;
+  isCapturing = true;
   feedback.textContent = "";
+  setProgress(100, "Capturando rostro…");
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -109,22 +303,39 @@ btnCapture.addEventListener('click', async () => {
       if (data.ok) {
         const badge = document.querySelector(`[data-pose="${nextPose}"]`);
         if (badge) { badge.classList.remove('inactivo'); badge.classList.add('activo'); }
+        flashSuccess();
         nextPose = data.next_pose;
         allDone = data.all_done;
-        refreshUI();
+        setTimeout(() => {
+          setProgress(0, "");
+          refreshInstruction();
+          isCapturing = false;
+        }, 550);
       } else {
         feedback.textContent = ({
-          no_face: "No se detectó ningún rostro. Acércate e inténtalo de nuevo.",
+          no_face: "No se detectó ningún rostro al capturar. Inténtalo de nuevo.",
           extraction_failed: "No se pudo procesar el rostro. Intenta de nuevo con mejor luz.",
           rostro_duplicado: `Este rostro ya está registrado a nombre de ${data.nombre || 'otro usuario'}.`,
         })[data.reason] || "No se pudo capturar. Intenta de nuevo.";
+        setProgress(0, "");
+        isCapturing = false;
       }
     } catch (err) {
       feedback.textContent = "Error de conexión: " + err.message;
-    } finally {
-      btnCapture.disabled = false;
+      setProgress(0, "");
+      isCapturing = false;
     }
   }, 'image/jpeg', 0.9);
-});
+}
+
+function flashSuccess() {
+  captureFlash.classList.add('flash-on');
+  setTimeout(() => captureFlash.classList.remove('flash-on'), 350);
+}
+
+btnManual.addEventListener('click', () => captureCurrentPose());
+
+startCamera();
+initDetector();
 </script>
 {% endblock %}

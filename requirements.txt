@@ -33,3 +33,4 @@ python-dotenv>=1.0.0
 
 # Utilities
 
+psycopg2-binary

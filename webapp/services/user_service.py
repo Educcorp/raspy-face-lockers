@@ -16,16 +16,17 @@ logger = logging.getLogger(__name__)
 def get_all_users() -> list[dict]:
     return fetch_all(
         """
-        SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
-               u.matricula, u.emailInst, u.tel, u.estado,
-               t.nombreTipoUsuario AS tipo,
-               ua.nombreUnidadAcademica AS unidad,
+        SELECT u.idusuario, u.nombre, u.appaterno, u.apmaterno,
+               u.matricula, u.emailinst, u.tel, u.estado,
+               u.permisoactivacion,
+               t.nombretipousuario AS tipo,
+               ua.nombreunidadacademica AS unidad,
                (SELECT COUNT(*) FROM encoding e
-                 WHERE e.idUsuario = u.idUsuario AND e.estado = 'activo') AS n_encodings
+                 WHERE e.idusuario = u.idusuario AND e.estado = 'activo') AS n_encodings
         FROM usuarios u
-        LEFT JOIN tipo_usuarios t ON t.idTipoUsuario = u.idTipoUsuario
-        LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = u.idUnidadAcademica
-        ORDER BY u.nombre, u.apPaterno
+        LEFT JOIN tipo_usuarios t ON t.idtipousuario = u.idtipousuario
+        LEFT JOIN unidad_academica ua ON ua.idunidadacademica = u.idunidadacademica
+        ORDER BY u.nombre, u.appaterno
         """
     )
 
@@ -63,15 +64,16 @@ def create_user_pending_encoding(data: dict) -> int:
         """
         INSERT INTO usuarios
             (nombre, apPaterno, apMaterno, idTipoUsuario, idUnidadAcademica,
-             emailInst, tel, matricula, pin, creadoPor)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             emailInst, tel, matricula, pin, permisoActivacion, creadoPor)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING idUsuario
         """,
         (
             data["nombre"], data["apPaterno"], data.get("apMaterno"),
             data["idTipoUsuario"], data["idUnidadAcademica"],
             data["emailInst"], data.get("tel"),
-            data["matricula"], data["pin_hash"], data["creadoPor"],
+            data["matricula"], data["pin_hash"],
+            data.get("permisoActivacion", "locker"), data["creadoPor"],
         ),
     )
     return row["idusuario"]
@@ -84,14 +86,15 @@ def update_user(user_id: int, data: dict) -> None:
             nombre=%s, apPaterno=%s, apMaterno=%s,
             matricula=%s, emailInst=%s, tel=%s,
             idTipoUsuario=%s, idUnidadAcademica=%s,
-            estado=%s, modificadoPor=%s
+            estado=%s, permisoActivacion=%s, modificadoPor=%s
         WHERE idUsuario=%s
         """,
         (
             data["nombre"], data["apPaterno"], data.get("apMaterno"),
             data["matricula"], data["emailInst"], data.get("tel"),
             data["idTipoUsuario"], data["idUnidadAcademica"],
-            data.get("estado", "activo"), data["modificadoPor"],
+            data.get("estado", "activo"),
+            data.get("permisoActivacion", "locker"), data["modificadoPor"],
             user_id,
         ),
     )

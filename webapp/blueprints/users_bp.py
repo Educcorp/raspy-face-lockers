@@ -79,6 +79,7 @@ def _validate_and_save(user_id: int | None) -> str | None:
     tipo_id = request.form.get("idTipoUsuario", type=int)
     unidad_id = request.form.get("idUnidadAcademica", type=int)
     estado = request.form.get("estado", "activo")
+    permiso_activacion = request.form.get("permisoactivacion", "").strip()
 
     for err in (
         validate_name(nombre, "Nombre", MAX_NOMBRE),
@@ -92,6 +93,9 @@ def _validate_and_save(user_id: int | None) -> str | None:
 
     if not tipo_id or not unidad_id:
         return "Selecciona un tipo de usuario y una unidad académica."
+    
+    if permiso_activacion not in ("recurso_compartido", "locker", "ambos"):
+        return "Selecciona permisos de activación válidos."
 
     assignable_ids = {t["idtipousuario"] for t in filter_assignable_user_types(
         catalog_service.get_all_tipos_usuario()
@@ -119,13 +123,15 @@ def _validate_and_save(user_id: int | None) -> str | None:
             "idTipoUsuario": tipo_id, "idUnidadAcademica": unidad_id,
             "emailInst": email, "tel": tel, "matricula": int(matricula),
             "pin_hash": pin_hash, "creadoPor": actor_id or 1,
+            "permisoActivacion": permiso_activacion,
         })
     else:
         user_service.update_user(user_id, {
             "nombre": nombre, "apPaterno": ap_paterno, "apMaterno": ap_materno,
             "idTipoUsuario": tipo_id, "idUnidadAcademica": unidad_id,
             "emailInst": email, "tel": tel, "matricula": int(matricula),
-            "estado": estado, "modificadoPor": actor_id or 1,
+            "estado": estado, "permisoActivacion": permiso_activacion,
+            "modificadoPor": actor_id or 1,
         })
     return None
 

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     tel TEXT CHECK (length(tel) <= 20),
     matricula INTEGER NOT NULL,
     pin TEXT NOT NULL CHECK (length(pin) = 64),
+    permisoActivacion TEXT NOT NULL DEFAULT 'locker' CHECK (permisoActivacion IN ('recurso_compartido', 'locker', 'ambos')),
     fechaHoraReg TIMESTAMPTZ NOT NULL DEFAULT now(),
     fechaHoraAct TIMESTAMPTZ NOT NULL DEFAULT now(),
     creadoPor INTEGER NOT NULL,

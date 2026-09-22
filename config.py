@@ -73,6 +73,26 @@ GPIO_CONFIG = {
     "debounce_ms": 50,
 }
 
+# ── Relay de herramientas (canal 5+, ej. interlock del taladro) ─────────────
+# Este relay NO switchea directo el AC del taladro: activa la bobina de un
+# contactor/toma controlada (12V, misma fuente que ya alimenta los solenoides
+# de los lockers), y es ese contactor el que sí switchea la corriente de pared
+# hacia la herramienta. Mismo patrón activo-bajo que los relays de locker.
+TOOL_GPIO_CONFIG = {
+    "mode": "BCM",
+    "relay_active_low": True,
+    # Segundos que el contactor permanece habilitado por activación.
+    # A diferencia del locker (pulso corto para liberar un pestillo), aquí
+    # es tiempo de USO real de la herramienta — ajusta según el caso de uso
+    # real (o cámbialo por lógica de "mientras el usuario esté presente"
+    # cuando se integre con el módulo de permisos).
+    "activation_seconds": 300,
+    "pins": {
+        "taladro": 24,  # BCM24 / pin físico 18 — libre, no usado por lockers ni door switches
+    },
+    "debounce_ms": 50,
+}
+
 # ── Door limit switches (KW11-3Z) ──────────────────────────────────────────
 DOOR_SWITCH_CONFIG = {
     "pins": {

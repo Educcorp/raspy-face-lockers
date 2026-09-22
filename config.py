@@ -5,14 +5,19 @@ Configuración centralizada del sistema Smart Locker.
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # ── Rutas ──────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent
 ASSETS_DIR   = PROJECT_ROOT / "assets"
 MODELS_DIR   = ASSETS_DIR / "models"
 FONTS_DIR    = ASSETS_DIR / "fonts"
 
+load_dotenv(PROJECT_ROOT / ".env")
+
 # ── Base de datos ──────────────────────────────────────────────────────────
-DATABASE_URL = "sqlite:///locker_system.db"
+# Misma base de datos Postgres (Railway) que usa webapp/ — ver .env.example.
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # ── Cámara / Visión ───────────────────────────────────────────────────────
 # En Raspberry Pi 5, usa libcamera para acceso a cámaras

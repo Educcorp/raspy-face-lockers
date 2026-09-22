@@ -36,7 +36,7 @@ def register_access(
             """
             INSERT INTO historial_accesos
                 (idLockerAsignado, idUsuario, accesoPermitido, motivo, fechaExpiracion)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (
                 locker_assignment_id,
@@ -55,19 +55,19 @@ def get_access_history(limit: int = 200) -> list[dict]:
     return fetch_all(
         """
         SELECT
-            h.idAcceso,
+            h.idAcceso AS "idAcceso",
             COALESCE(
                 u1.nombre || ' ' || u1.apPaterno,
                 u2.nombre || ' ' || u2.apPaterno,
                 'Desconocido'
-            ) AS nombreCompleto,
+            ) AS "nombreCompleto",
             COALESCE(u1.matricula, u2.matricula) AS matricula,
-            l.idLocker,
-            a.nombreArea,
-            h.fechaHoraAcceso,
-            h.accesoPermitido,
+            l.idLocker AS "idLocker",
+            a.nombreArea AS "nombreArea",
+            h.fechaHoraAcceso AS "fechaHoraAcceso",
+            h.accesoPermitido AS "accesoPermitido",
             h.motivo,
-            h.fechaExpiracion
+            h.fechaExpiracion AS "fechaExpiracion"
         FROM historial_accesos h
         LEFT JOIN asignacion_locker al ON h.idLockerAsignado = al.idLockerAsignado
         LEFT JOIN usuarios u1 ON al.idUsuario = u1.idUsuario
@@ -75,7 +75,7 @@ def get_access_history(limit: int = 200) -> list[dict]:
         LEFT JOIN lockers l ON al.idLocker = l.idLocker
         LEFT JOIN area_lockers a ON l.idArea = a.idArea
         ORDER BY h.fechaHoraAcceso DESC
-        LIMIT ?
+        LIMIT %s
         """,
         (limit,),
     )

@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 def get_all_users() -> list[dict]:
     """Lista todos los usuarios con tipo y unidad académica."""
     return fetch_all("""
-        SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
-               u.matricula, u.emailInst, u.tel, u.estado,
+        SELECT u.idUsuario AS "idUsuario", u.nombre, u.apPaterno AS "apPaterno",
+               u.apMaterno AS "apMaterno", u.matricula, u.emailInst AS "emailInst",
+               u.tel, u.estado,
                t.nombreTipoUsuario AS tipo,
                ua.nombreUnidadAcademica AS unidad
         FROM usuarios u
@@ -35,19 +36,25 @@ def get_all_users() -> list[dict]:
 def get_user_by_id(user_id: int) -> dict | None:
     """Devuelve un usuario con tipo y unidad por su ID."""
     return fetch_one("""
-        SELECT u.*, t.nombreTipoUsuario AS tipo,
+        SELECT u.idUsuario AS "idUsuario", u.nombre, u.apPaterno AS "apPaterno",
+               u.apMaterno AS "apMaterno", u.idTipoUsuario AS "idTipoUsuario",
+               u.idUnidadAcademica AS "idUnidadAcademica", u.estado,
+               u.emailInst AS "emailInst", u.tel, u.matricula, u.pin,
+               u.fechaHoraReg AS "fechaHoraReg", u.fechaHoraAct AS "fechaHoraAct",
+               u.creadoPor AS "creadoPor", u.modificadoPor AS "modificadoPor",
+               t.nombreTipoUsuario AS tipo,
                ua.nombreUnidadAcademica AS unidad
         FROM usuarios u
         LEFT JOIN tipo_usuarios t  ON t.idTipoUsuario = u.idTipoUsuario
         LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = u.idUnidadAcademica
-        WHERE u.idUsuario = ?
+        WHERE u.idUsuario = %s
     """, (user_id,))
 
 
 def count_face_encodings(user_id: int) -> int:
     """Número de encodings faciales activos de un usuario."""
     row = fetch_one(
-        "SELECT COUNT(*) AS n FROM encoding WHERE idUsuario=? AND estado='activo'",
+        "SELECT COUNT(*) AS n FROM encoding WHERE idUsuario=%s AND estado='activo'",
         (user_id,),
     )
     return row["n"] if row else 0
@@ -62,13 +69,12 @@ def update_user(user_id: int, data: dict) -> None:
     """
     execute("""
         UPDATE usuarios SET
-            nombre=?, apPaterno=?, apMaterno=?,
-            matricula=?, emailInst=?, tel=?,
-            idTipoUsuario=?, idUnidadAcademica=?,
-            estado=?,
-            fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'),
+            nombre=%s, apPaterno=%s, apMaterno=%s,
+            matricula=%s, emailInst=%s, tel=%s,
+            idTipoUsuario=%s, idUnidadAcademica=%s,
+            estado=%s,
             modificadoPor=1
-        WHERE idUsuario=?
+        WHERE idUsuario=%s
     """, (
         data["nombre"], data["apPaterno"], data.get("apMaterno"),
         data["matricula"], data["emailInst"], data.get("tel"),
@@ -82,9 +88,7 @@ def update_pin(user_id: int, new_pin: str) -> None:
     """Actualiza el PIN de un usuario. new_pin es el texto plano (se hashea con SHA-256)."""
     hashed = hashlib.sha256(new_pin.strip().encode()).hexdigest()
     execute(
-        "UPDATE usuarios SET pin=?, "
-        "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-        "modificadoPor=1 WHERE idUsuario=?",
+        "UPDATE usuarios SET pin=%s, modificadoPor=1 WHERE idUsuario=%s",
         (hashed, user_id),
     )
 
@@ -92,9 +96,7 @@ def update_pin(user_id: int, new_pin: str) -> None:
 def set_user_status(user_id: int, estado: str) -> None:
     """Cambia el estado de un usuario: 'activo', 'inactivo' o 'suspendido'."""
     execute(
-        "UPDATE usuarios SET estado=?, "
-        "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-        "modificadoPor=1 WHERE idUsuario=?",
+        "UPDATE usuarios SET estado=%s, modificadoPor=1 WHERE idUsuario=%s",
         (estado, user_id),
     )
 
@@ -106,9 +108,9 @@ def delete_user_permanent(user_id: int) -> None:
     borra encodings, y finalmente borra el usuario.
     """
     with db_session() as conn:
-        conn.execute("DELETE FROM asignacion_locker WHERE idUsuario=?", (user_id,))
-        conn.execute("DELETE FROM encoding WHERE idUsuario=?", (user_id,))
-        conn.execute("DELETE FROM usuarios WHERE idUsuario=?", (user_id,))
+        conn.execute("DELETE FROM asignacion_locker WHERE idUsuario=%s", (user_id,))
+        conn.execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
+        conn.execute("DELETE FROM usuarios WHERE idUsuario=%s", (user_id,))
     logger.info("✓ Usuario id=%s eliminado definitivamente", user_id)
 
 
@@ -120,7 +122,7 @@ def update_face_encodings(user_id: int, poses: list[dict]) -> None:
     poses: lista de {"tipoParte": str, "embedding": np.ndarray, "modelo": str}
     """
     with db_session() as conn:
-        conn.execute("DELETE FROM encoding WHERE idUsuario=?", (user_id,))
+        conn.execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
         for pose in poses:
             vec = pose["embedding"].astype(np.float32, copy=False)
             vec_bytes = vec.tobytes()
@@ -131,7 +133,7 @@ def update_face_encodings(user_id: int, poses: list[dict]) -> None:
                 INSERT INTO encoding
                     (idUsuario, estado, vector, dimension, hashVector,
                      tipoParte, vectorDtype, modelo, modeloVersion)
-                VALUES (?, 'activo', ?, ?, ?, ?, 'float32', ?, '1.0')
+                VALUES (%s, 'activo', %s, %s, %s, %s, 'float32', %s, '1.0')
             """, (
                 user_id, vec_bytes, int(len(vec)),
                 vec_hash, pose["tipoParte"], pose["modelo"],
@@ -154,14 +156,15 @@ def create_user_with_encodings(data: dict, poses: list[dict]) -> int:
             INSERT INTO usuarios
                 (nombre, apPaterno, apMaterno, idTipoUsuario, idUnidadAcademica,
                  emailInst, tel, matricula, pin, creadoPor)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+            RETURNING idUsuario AS "idUsuario"
         """, (
             data["nombre"], data["apPaterno"], data.get("apMaterno"),
             data["idTipoUsuario"], data["idUnidadAcademica"],
             data["emailInst"], data.get("tel"),
             data["matricula"], data["pin_hash"],
         ))
-        user_id = cur.lastrowid
+        user_id = cur.fetchone()["idUsuario"]
 
         for pose in poses:
             vec = pose["embedding"].astype(np.float32, copy=False)
@@ -173,7 +176,7 @@ def create_user_with_encodings(data: dict, poses: list[dict]) -> int:
                 INSERT INTO encoding
                     (idUsuario, estado, vector, dimension, hashVector,
                      tipoParte, vectorDtype, modelo, modeloVersion)
-                VALUES (?, 'activo', ?, ?, ?, ?, 'float32', ?, '1.0')
+                VALUES (%s, 'activo', %s, %s, %s, %s, 'float32', %s, '1.0')
             """, (
                 user_id, vec_bytes, int(len(vec)),
                 vec_hash, pose["tipoParte"], pose["modelo"],
@@ -192,17 +195,17 @@ def get_active_face_encodings() -> list[dict]:
     """
     rows = fetch_all("""
         SELECT
-            e.idUsuario,
+            e.idUsuario AS "idUsuario",
             e.vector,
             e.dimension,
-            e.vectorDtype,
+            e.vectorDtype AS "vectorDtype",
             e.modelo,
             u.nombre,
-            u.apPaterno,
-            u.apMaterno,
+            u.apPaterno AS "apPaterno",
+            u.apMaterno AS "apMaterno",
             u.matricula,
-            a.idLockerAsignado,
-            l.idLocker
+            a.idLockerAsignado AS "idLockerAsignado",
+            l.idLocker AS "idLocker"
         FROM encoding e
         JOIN usuarios u
             ON u.idUsuario = e.idUsuario
@@ -247,16 +250,16 @@ def get_user_by_matricula(matricula: str) -> dict | None:
     Usado en el primer paso del flujo de autenticación por PIN del locker.
     """
     return fetch_one("""
-        SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
-               u.matricula, u.estado, u.pin,
-               a.idLockerAsignado,
-               l.idLocker
+        SELECT u.idUsuario AS "idUsuario", u.nombre, u.apPaterno AS "apPaterno",
+               u.apMaterno AS "apMaterno", u.matricula, u.estado, u.pin,
+               a.idLockerAsignado AS "idLockerAsignado",
+               l.idLocker AS "idLocker"
         FROM usuarios u
         LEFT JOIN asignacion_locker a
             ON a.idUsuario = u.idUsuario AND a.estado = 'activo'
         LEFT JOIN lockers l
             ON l.idLocker = a.idLocker
-        WHERE CAST(u.matricula AS TEXT) = ?
+        WHERE CAST(u.matricula AS TEXT) = %s
           AND u.estado = 'activo'
         LIMIT 1
     """, (str(matricula).strip(),))
@@ -268,16 +271,16 @@ def authenticate_user_by_pin(matricula: str, pin: str) -> dict | None:
     Retorna dict con datos + locker asignado, o None si las credenciales no son válidas.
     """
     row = fetch_one("""
-        SELECT u.idUsuario, u.nombre, u.apPaterno, u.apMaterno,
-               u.matricula, u.estado, u.pin,
-               a.idLockerAsignado,
-               l.idLocker
+        SELECT u.idUsuario AS "idUsuario", u.nombre, u.apPaterno AS "apPaterno",
+               u.apMaterno AS "apMaterno", u.matricula, u.estado, u.pin,
+               a.idLockerAsignado AS "idLockerAsignado",
+               l.idLocker AS "idLocker"
         FROM usuarios u
         LEFT JOIN asignacion_locker a
             ON a.idUsuario = u.idUsuario AND a.estado = 'activo'
         LEFT JOIN lockers l
             ON l.idLocker = a.idLocker
-        WHERE CAST(u.matricula AS TEXT) = ?
+        WHERE CAST(u.matricula AS TEXT) = %s
         LIMIT 1
     """, (str(matricula).strip(),))
 
@@ -301,12 +304,12 @@ def email_exists(email: str, exclude_user_id: int | None = None) -> bool:
     """Devuelve True si el correo ya está registrado (excluye al usuario indicado)."""
     if exclude_user_id is not None:
         row = fetch_one(
-            "SELECT 1 FROM usuarios WHERE emailInst=? AND idUsuario!=? LIMIT 1",
+            "SELECT 1 FROM usuarios WHERE emailInst=%s AND idUsuario!=%s LIMIT 1",
             (email.strip(), exclude_user_id),
         )
     else:
         row = fetch_one(
-            "SELECT 1 FROM usuarios WHERE emailInst=? LIMIT 1",
+            "SELECT 1 FROM usuarios WHERE emailInst=%s LIMIT 1",
             (email.strip(),),
         )
     return row is not None
@@ -316,12 +319,12 @@ def matricula_exists(matricula: int | str, exclude_user_id: int | None = None) -
     """Devuelve True si la matrícula ya está registrada (excluye al usuario indicado)."""
     if exclude_user_id is not None:
         row = fetch_one(
-            "SELECT 1 FROM usuarios WHERE matricula=? AND idUsuario!=? LIMIT 1",
+            "SELECT 1 FROM usuarios WHERE matricula=%s AND idUsuario!=%s LIMIT 1",
             (int(matricula), exclude_user_id),
         )
     else:
         row = fetch_one(
-            "SELECT 1 FROM usuarios WHERE matricula=? LIMIT 1",
+            "SELECT 1 FROM usuarios WHERE matricula=%s LIMIT 1",
             (int(matricula),),
         )
     return row is not None
@@ -337,18 +340,18 @@ def nombre_completo_exists(
     if ap_materno:
         sql = (
             "SELECT 1 FROM usuarios "
-            "WHERE nombre=? AND apPaterno=? AND apMaterno=?"
+            "WHERE nombre=%s AND apPaterno=%s AND apMaterno=%s"
         )
         params: tuple = (nombre, ap_paterno, ap_materno)
     else:
         sql = (
             "SELECT 1 FROM usuarios "
-            "WHERE nombre=? AND apPaterno=? AND (apMaterno IS NULL OR apMaterno='')"
+            "WHERE nombre=%s AND apPaterno=%s AND (apMaterno IS NULL OR apMaterno='')"
         )
         params = (nombre, ap_paterno)
 
     if exclude_user_id is not None:
-        sql += " AND idUsuario!=?"
+        sql += " AND idUsuario!=%s"
         params += (exclude_user_id,)
     sql += " LIMIT 1"
     return fetch_one(sql, params) is not None

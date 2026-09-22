@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def get_all_lockers() -> list[dict]:
     """Lista todos los lockers con su unidad académica y área."""
     return fetch_all("""
-        SELECT l.idLocker, l.estado,
+        SELECT l.idLocker AS "idLocker", l.estado,
                ua.nombreUnidadAcademica AS unidad,
                a.nombreArea AS area
         FROM lockers l
@@ -29,16 +29,20 @@ def get_all_lockers() -> list[dict]:
 def get_available_lockers() -> list[dict]:
     """Lista los lockers sin asignación activa."""
     return fetch_all("""
-        SELECT * FROM v_lockers_disponibles
+        SELECT idLocker AS "idLocker",
+               nombreUnidadAcademica AS "nombreUnidadAcademica",
+               nombreArea AS "nombreArea",
+               estado
+        FROM v_lockers_disponibles
     """)
 
 
 def get_active_assignments() -> list[dict]:
     """Lista todas las asignaciones activas con datos de usuario y locker."""
     return fetch_all("""
-        SELECT al.idLockerAsignado, al.estado,
-               u.nombre, u.apPaterno, u.matricula,
-               l.idLocker,
+        SELECT al.idLockerAsignado AS "idLockerAsignado", al.estado,
+               u.nombre, u.apPaterno AS "apPaterno", u.matricula,
+               l.idLocker AS "idLocker",
                a.nombreArea AS area
         FROM asignacion_locker al
         JOIN usuarios u ON u.idUsuario = al.idUsuario

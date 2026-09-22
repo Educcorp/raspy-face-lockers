@@ -60,6 +60,15 @@
           {% endfor %}
         </select>
       </div>
+      <div class="form-row">
+        <label>Permisos de activación</label>
+        <select name="permisoactivacion" required>
+          <option value="">Selecciona los permisos</option>
+          <option value="recurso_compartido" {% if row and row.permisoactivacion=='recurso_compartido' %}selected{% endif %}>Recurso compartido</option>
+          <option value="locker" {% if row and row.permisoactivacion=='locker' %}selected{% endif %}>Locker</option>
+          <option value="ambos" {% if row and row.permisoactivacion=='ambos' %}selected{% endif %}>Ambos</option>
+        </select>
+      </div>
       {% if row %}
       <div class="form-row">
         <label>Estado</label>

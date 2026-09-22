@@ -21,6 +21,7 @@ Uso desde main.py (--mode locker):
 import os
 import customtkinter as ctk
 from config import UI_CONFIG
+from ui import theme
 
 _THEME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "School.json")
 
@@ -36,6 +37,7 @@ class LockerApp(ctk.CTk):
 
     def __init__(self) -> None:
         super().__init__()
+        theme.init_fonts()
 
         # Ocultar mientras se configura para evitar ventana inicial miniatura.
         self.withdraw()
@@ -225,14 +227,14 @@ class LockerApp(ctk.CTk):
     # ── Tema / Idioma ─────────────────────────────────────────────────────────
 
     def toggle_theme(self) -> None:
-        from ui.admin_app import PALETTE, LIGHT_PALETTE, DARK_PALETTE, _ICON_CACHE
+        from ui.theme import PALETTE
         if self._mode == "light":
             self._mode = "dark"
-            PALETTE.update(DARK_PALETTE)
+            theme.apply_dark()
         else:
             self._mode = "light"
-            PALETTE.update(LIGHT_PALETTE)
-        _ICON_CACHE.clear()
+            theme.apply_light()
+        theme.clear_icon_cache()
         if self._admin_frames_built:
             # Put up a solid veil so the user doesn't see individual frames rebuilding.
             # Palette is already updated, so PALETTE["BG"] is the new theme's background.
@@ -250,7 +252,7 @@ class LockerApp(ctk.CTk):
 
     def _create_veil(self, text: str = "", icon: str = "") -> ctk.CTkFrame:
         """Frame opaco que cubre la ventana mientras se reconstruyen las pantallas."""
-        from ui.admin_app import PALETTE
+        from ui.theme import PALETTE
         bg  = PALETTE["BG"]
         txt = PALETTE["TEXT"]
         mut = PALETTE["MUTED"]
@@ -433,7 +435,7 @@ class LockerApp(ctk.CTk):
 
     def confirm_kiosk_exit(self) -> None:
         """Diálogo modal: confirma antes de salir del modo kiosco."""
-        from ui.admin_app import PALETTE
+        from ui.theme import PALETTE
 
         # Fondo semitransparente oscuro
         overlay = ctk.CTkFrame(self, fg_color="#000000", corner_radius=0)

@@ -5,31 +5,28 @@ Resolución fija: 480×800 px  (igual que la pantalla física del locker).
 Toda la navegación es interna (tkraise), sin abrir ventanas nuevas.
 Todo está diseñado para ser touchable (botones ≥ 52 px de alto).
 
-Paleta de colores (modo claro – locker-style):
-    BG        #F5F0EB   Fondo crema claro escolar
-    CARD      #EDE8E2   Cards
-    ACCENT    #5B8C5A   Verde pizarrón (igual que locker)
-    TEXT      #3D3D3D   Texto oscuro legible
-    MUTED     #8C8279   Texto secundario cálido
-    BORDER    #CCC5BC   Bordes suaves
-
-Paleta de colores (modo oscuro):
-    BG        #0c112f   Fondo principal
-    CARD      #151d3b   Cards / elementos elevados
-    ACCENT    #33a8a3   Verde-azulado principal
-    TEXT      #c7cfd5   Texto principal
-    MUTED     #6b7a8a   Texto secundario
-    BORDER    #1e2d4a   Bordes sutiles
+La paleta de colores, la tipografía y los íconos viven en ui/theme.py
+(traducidos de webapp/static/css/style.css, para que esta app se vea como el
+panel web). PALETTE/LIGHT_PALETTE/DARK_PALETTE/get_icon se re-exportan aquí
+por compatibilidad, porque las pantallas existentes en ui/admin/*.py y
+ui/app.py hacen `from ui.admin_app import PALETTE, get_icon`.
 """
 
 import os
 import customtkinter as ctk
-from PIL import Image, ImageDraw, ImageFont
 from auth.session import (
     clear_session,
     get_current_role_label,
     is_authenticated,
 )
+from ui import theme
+from ui.theme import (  # noqa: F401  (re-exportados para las pantallas existentes)
+    PALETTE,
+    LIGHT_PALETTE,
+    DARK_PALETTE,
+    get_icon,
+)
+from ui.theme import _ICON_CACHE  # noqa: F401  (idem, usado por ui/app.py)
 
 # ── Tema base (mismo que la pantalla física del locker) ───────────────────────
 _THEME = os.path.join(
@@ -84,37 +81,6 @@ def _ctk_sf_patched_init(self, *args, **kwargs):
 
 ctk.CTkScrollableFrame.__init__ = _ctk_sf_patched_init
 
-# ── Paletas ───────────────────────────────────────────────────────────────────
-LIGHT_PALETTE = {
-    "BG":          "#F4F1EC",
-    "CARD":        "#E9E4DE",
-    "ACCENT":      "#6E7F63",
-    "ACCENT_HOVER":"#5F7155",
-    "DANGER":      "#AE655C",
-    "WARN":        "#B99662",
-    "TEXT":        "#3F3E3B",
-    "MUTED":       "#8B847C",
-    "BORDER":      "#D2CBC3",
-    "WHITE":       "#ffffff",
-    "SUCCESS":     "#6E7F63",
-}
-
-DARK_PALETTE = {
-    "BG":          "#111726",
-    "CARD":        "#1A2233",
-    "ACCENT":      "#5E8F8B",
-    "ACCENT_HOVER":"#4F7D79",
-    "DANGER":      "#A86761",
-    "WARN":        "#B29463",
-    "TEXT":        "#C4CCD3",
-    "MUTED":       "#72808F",
-    "BORDER":      "#253046",
-    "WHITE":       "#ffffff",
-    "SUCCESS":     "#5E8F8B",
-}
-
-# ── Paleta activa (mutable – todas las pantallas la referencian) ──────────────
-PALETTE: dict = dict(LIGHT_PALETTE)
 ctk.set_appearance_mode("light")
 
 # ── Teclado en pantalla ───────────────────────────────────────────────────────
@@ -287,188 +253,6 @@ def _entry_patched_init(self, *args, **kwargs):
 ctk.CTkEntry.__init__ = _entry_patched_init
 
 
-_ICON_CACHE: dict[tuple[str, int, str], ctk.CTkImage] = {}
-_FA_FONT_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "assets", "fonts", "fa-solid-900.ttf"
-)
-_FA_GLYPHS = {
-    "sun": "\uf185",
-    "moon": "\uf186",
-    "user": "\uf007",
-    "lock": "\uf023",
-    "logout": "\uf2f5",
-    "eye": "\uf06e",
-    "eye-off": "\uf070",
-    "search": "\uf002",   # lupa / magnifying glass
-    "times":  "\uf00d",   # \u2715  salir / kiosk exit
-}
-_FA_ICON_SCALE = {
-    "sun": 0.90,
-    "moon": 0.90,
-    "user": 0.78,
-    "lock": 0.86,
-    "logout": 0.86,
-    "eye": 0.84,
-    "eye-off": 0.84,
-    "search": 0.86,
-    "times":  0.80,
-}
-_FA_ICON_Y_OFFSET = {
-    "user": 1,
-}
-
-
-def _icon_canvas(size: int) -> Image.Image:
-    return Image.new("RGBA", (size, size), (0, 0, 0, 0))
-
-
-def _draw_fontawesome_icon(name: str, size: int, color: str) -> Image.Image | None:
-    """Renderiza íconos oficiales de Font Awesome si la fuente está disponible."""
-    glyph = _FA_GLYPHS.get(name)
-    if not glyph or not os.path.exists(_FA_FONT_PATH):
-        return None
-
-    scale = _FA_ICON_SCALE.get(name, 0.88)
-    try:
-        font = ImageFont.truetype(_FA_FONT_PATH, size=max(10, int(size * scale)))
-    except Exception:
-        return None
-
-    img = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    bbox = draw.textbbox((0, 0), glyph, font=font)
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    x = (size - w) / 2 - bbox[0]
-    y = (size - h) / 2 - bbox[1] + _FA_ICON_Y_OFFSET.get(name, 0)
-    draw.text((x, y), glyph, font=font, fill=color)
-    return img
-
-
-def _draw_sun(size: int, color: str) -> Image.Image:
-    img = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    cx = cy = size / 2
-    core = max(3, int(size * 0.2))
-    ray_inner = int(size * 0.36)
-    ray_outer = int(size * 0.47)
-    for dx, dy in ((1, 0), (0, 1), (-1, 0), (0, -1), (0.7, 0.7), (-0.7, 0.7), (-0.7, -0.7), (0.7, -0.7)):
-        x0 = cx + dx * ray_inner
-        y0 = cy + dy * ray_inner
-        x1 = cx + dx * ray_outer
-        y1 = cy + dy * ray_outer
-        draw.line((x0, y0, x1, y1), fill=color, width=max(1, int(size * 0.1)))
-    draw.ellipse((cx - core, cy - core, cx + core, cy + core), outline=color, width=max(2, int(size * 0.1)))
-    return img
-
-
-def _draw_moon(size: int, color: str) -> Image.Image:
-    img = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    r = int(size * 0.34)
-    cx = cy = size // 2
-    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color)
-    cut = int(r * 0.82)
-    offset = int(size * 0.16)
-    draw.ellipse((cx - cut + offset, cy - cut, cx + cut + offset, cy + cut), fill=(0, 0, 0, 0))
-    return img
-
-
-def _draw_user(size: int, color: str) -> Image.Image:
-    img = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    head_r = int(size * 0.18)
-    cx = size // 2
-    head_y = int(size * 0.32)
-    draw.ellipse((cx - head_r, head_y - head_r, cx + head_r, head_y + head_r), outline=color, width=max(2, int(size * 0.1)))
-    shoulder_top = int(size * 0.58)
-    shoulder_w = int(size * 0.3)
-    draw.arc((cx - shoulder_w, shoulder_top - int(size * 0.14), cx + shoulder_w, shoulder_top + int(size * 0.24)), start=200, end=-20, fill=color, width=max(2, int(size * 0.1)))
-    return img
-
-
-def _draw_lock(size: int, color: str) -> Image.Image:
-    img = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    # Cuerpo sólido del candado (más legible en tamaño pequeño).
-    body_w = int(size * 0.50)
-    body_h = int(size * 0.36)
-    x0 = (size - body_w) // 2
-    y0 = int(size * 0.50)
-    radius = max(2, int(size * 0.10))
-    draw.rounded_rectangle((x0, y0, x0 + body_w, y0 + body_h), radius=radius, fill=color)
-
-    # Arco superior del candado.
-    stroke = max(2, int(size * 0.11))
-    shackle_w = int(size * 0.34)
-    shackle_h = int(size * 0.30)
-    sx0 = (size - shackle_w) // 2
-    sy0 = int(size * 0.22)
-    draw.arc((sx0, sy0, sx0 + shackle_w, sy0 + shackle_h), start=20, end=160, fill=color, width=stroke)
-
-    # Hueco de llave simple para identificarlo como candado.
-    key_r = max(1, int(size * 0.05))
-    kc = size // 2
-    ky = y0 + int(body_h * 0.42)
-    draw.ellipse((kc - key_r, ky - key_r, kc + key_r, ky + key_r), fill=(0, 0, 0, 0))
-    draw.rectangle((kc - 1, ky, kc + 1, ky + max(2, int(size * 0.11))), fill=(0, 0, 0, 0))
-    return img
-
-
-def _draw_times(size: int, color: str) -> Image.Image:
-    """Fallback: dibuja una X (cerrar/salir)."""
-    img  = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    lw   = max(2, int(size * 0.13))
-    m    = int(size * 0.22)
-    draw.line([(m, m), (size - m, size - m)], fill=color, width=lw)
-    draw.line([(size - m, m), (m, size - m)], fill=color, width=lw)
-    return img
-
-
-def _draw_search(size: int, color: str) -> Image.Image:
-    """Fallback: dibuja una lupa (círculo + mango)."""
-    img  = _icon_canvas(size)
-    draw = ImageDraw.Draw(img)
-    r    = int(size * 0.28)
-    cx   = int(size * 0.40)
-    cy   = int(size * 0.40)
-    lw   = max(2, int(size * 0.12))
-    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=color, width=lw)
-    # mango diagonal
-    x0 = int(cx + r * 0.70)
-    y0 = int(cy + r * 0.70)
-    x1 = int(size * 0.86)
-    y1 = int(size * 0.86)
-    draw.line((x0, y0, x1, y1), fill=color, width=lw)
-    return img
-
-
-def get_icon(name: str, size: int = 20, color: str | None = None) -> ctk.CTkImage:
-    """Retorna un ícono rasterizado y cacheado para evitar archivos estáticos."""
-    icon_color = color or PALETTE["TEXT"]
-    cache_key = (name, size, icon_color)
-    if cache_key in _ICON_CACHE:
-        return _ICON_CACHE[cache_key]
-
-    img = _draw_fontawesome_icon(name, size, icon_color)
-    if img is None:
-        builders = {
-            "sun":    _draw_sun,
-            "moon":   _draw_moon,
-            "user":   _draw_user,
-            "lock":   _draw_lock,
-            "search": _draw_search,
-            "times":  _draw_times,
-        }
-        builder = builders.get(name, _draw_sun)
-        img = builder(size, icon_color)
-
-    icon = ctk.CTkImage(light_image=img, dark_image=img, size=(size, size))
-    _ICON_CACHE[cache_key] = icon
-    return icon
-
-
 class AdminApp(ctk.CTk):
     """
     Ventana raíz del panel de administración.
@@ -486,6 +270,7 @@ class AdminApp(ctk.CTk):
 
     def __init__(self) -> None:
         super().__init__()
+        theme.init_fonts()
         self._mode = "light"
         clear_session()
 
@@ -532,7 +317,8 @@ class AdminApp(ctk.CTk):
         from ui.admin.login_screen    import LoginScreen
         from ui.admin.users_catalog   import UsersCatalogScreen
         from ui.admin.lockers_catalog import LockersCatalogScreen
-        from ui.admin.areas_catalog   import AreasCatalogScreen, AccessHistoryScreen
+        from ui.admin.areas_catalog   import AreasCatalogScreen
+        from ui.admin.access_history  import AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user   import RegisterUserScreen
 
@@ -557,12 +343,12 @@ class AdminApp(ctk.CTk):
         if self._mode == "light":
             going_dark = True
             self._mode = "dark"
-            PALETTE.update(DARK_PALETTE)
+            theme.apply_dark()
         else:
             going_dark = False
             self._mode = "light"
-            PALETTE.update(LIGHT_PALETTE)
-        _ICON_CACHE.clear()
+            theme.apply_light()
+        theme.clear_icon_cache()
         label = "Cambiando a modo oscuro…" if going_dark else "Cambiando a modo claro…"
         icon  = "🌙" if going_dark else "☀️"
         self._rebuild_frames(transition_text=label, transition_icon=icon)

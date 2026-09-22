@@ -325,48 +325,47 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "No administrator permissions",
     },
 
-    # ── Admin: DashboardScreen ───────────────────────────────────────────────
+    # ── Admin: DashboardScreen (réplica de webapp/templates/dashboard.html) ──
     "dash.user_prefix": {
-        "es": "Usuario:",
-        "en": "User:",
+        "es": "Sesión:",
+        "en": "Session:",
     },
-    "dash.session_active": {
-        "es": "Sesión activa",
-        "en": "Active session",
+    "dash.summary_heading": {
+        "es": "Resumen",
+        "en": "Summary",
     },
-    "dash.modules_available": {
-        "es": "Módulos disponibles",
-        "en": "Available modules",
+    "dash.stat.usuarios": {
+        "es": "Usuarios activos",
+        "en": "Active users",
     },
-    "dash.total_records": {
-        "es": "Registros activos totales",
-        "en": "Total active records",
+    "dash.stat.pendientes": {
+        "es": "Pendientes de registro facial",
+        "en": "Pending face registration",
     },
-    "dash.register_user_btn": {
-        "es": "+  Registrar Usuario",
-        "en": "+  Register User",
+    "dash.stat.lockers": {
+        "es": "Lockers activos",
+        "en": "Active lockers",
     },
-    "dash.catalogs_section": {
-        "es": "Catálogos",
-        "en": "Catalogs",
+    "dash.stat.asignaciones": {
+        "es": "Asignaciones activas",
+        "en": "Active assignments",
     },
-    "dash.active_records": {
-        "es": "Registros activos",
-        "en": "Active records",
+    "dash.stat.accesos_hoy": {
+        "es": "Accesos hoy",
+        "en": "Accesses today",
     },
-    # Catálogos – etiquetas de tarjetas
-    "cat.users.label":      {"es": "Usuarios",        "en": "Users"},
-    "cat.users.hint":       {"es": "Gestión de cuentas", "en": "Account management"},
-    "cat.lockers.label":    {"es": "Lockers",          "en": "Lockers"},
-    "cat.lockers.hint":     {"es": "Inventario físico", "en": "Physical inventory"},
-    "cat.areas.label":      {"es": "Áreas / Zonas",    "en": "Areas / Zones"},
-    "cat.areas.hint":       {"es": "Ubicación por zona", "en": "Location by zone"},
-    "cat.units.label":      {"es": "Unidades Acad.",   "en": "Acad. Units"},
-    "cat.units.hint":       {"es": "Facultades y escuelas", "en": "Faculties and schools"},
-    "cat.types.label":      {"es": "Historial Acceso", "en": "Access History"},
-    "cat.types.hint":       {"es": "Registro de entradas", "en": "Entry log"},
-    "cat.assign.label":     {"es": "Asignaciones",     "en": "Assignments"},
-    "cat.assign.hint":      {"es": "Lockers en uso",   "en": "Lockers in use"},
+    "dash.notice_title": {
+        "es": "{n} usuario(s) sin rostro registrado",
+        "en": "{n} user(s) without a registered face",
+    },
+    "dash.notice_body": {
+        "es": "Estos usuarios no podrán acceder por reconocimiento facial hasta completar su registro.",
+        "en": "These users won't be able to access via facial recognition until registration is complete.",
+    },
+    "dash.notice_cta": {
+        "es": "Ver usuarios",
+        "en": "View users",
+    },
     # Diálogo de cierre de sesión
     "logout.dialog_title": {
         "es": "Cerrar sesión",
@@ -375,10 +374,6 @@ STRINGS: dict[str, dict[str, str]] = {
     "logout.message": {
         "es": "Estás a punto de cerrar sesión. ¿Deseas continuar?",
         "en": "You are about to sign out. Do you want to continue?",
-    },
-    "logout.note": {
-        "es": "Si eliges No, continuarás con la sesión activa.",
-        "en": "If you choose No, your session will remain active.",
     },
     "logout.no": {
         "es": "No",
@@ -562,6 +557,19 @@ STRINGS: dict[str, dict[str, str]] = {
     "register.step3_title": {"es": "Establece un PIN", "en": "Set a PIN"},
     "register.step4_label": {"es": "Paso 4 de 5", "en": "Step 4 of 5"},
     "register.step4_title": {"es": "Captura facial", "en": "Facial capture"},
+
+    # ── Nav / shell compartido (TopHeader + NavDrawer) ───────────────────────
+    "nav.inicio": {"es": "Inicio", "en": "Home"},
+    "nav.usuarios": {"es": "Usuarios", "en": "Users"},
+    "nav.lockers": {"es": "Lockers", "en": "Lockers"},
+    "nav.asignaciones": {"es": "Asignaciones", "en": "Assignments"},
+    "nav.historial": {"es": "Historial", "en": "History"},
+    "nav.catalogos": {"es": "Catálogos", "en": "Catalogs"},
+    "nav.unidades": {"es": "Unidades académicas", "en": "Academic units"},
+    "nav.areas": {"es": "Áreas", "en": "Areas"},
+    "nav.tipos_usuario": {"es": "Tipos de usuario", "en": "User types"},
+    "nav.mi_perfil": {"es": "Mi perfil", "en": "My profile"},
+    "nav.cerrar_sesion": {"es": "Cerrar sesión", "en": "Log out"},
 }
 
 

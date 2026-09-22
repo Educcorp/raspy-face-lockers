@@ -497,8 +497,9 @@ class _Step3PIN(ctk.CTkFrame):
         if len(self._pin) < self.MAX_DIGITS:
             self.lbl_err.configure(text=f"Ingresa {self.MAX_DIGITS} dígitos")
             return
-        if any(self._pin[i] == self._pin[i - 1] for i in range(1, len(self._pin))):
-            self.lbl_err.configure(text="El PIN no puede tener numeros repetidos consecutivos")
+        # Validar que no todos los dígitos sean iguales (ej: 1111, 2222)
+        if len(set(self._pin)) == 1:
+            self.lbl_err.configure(text="El PIN no puede tener todos los dígitos iguales (ej: 1111, 2222)")
             self._pin = ""
             self._refresh()
             return

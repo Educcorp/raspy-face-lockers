@@ -152,6 +152,8 @@ def _validate_and_save(user_id: int | None) -> str | None:
         pin = request.form.get("pin", "").strip()
         if len(pin) < 4:
             return "El PIN inicial debe tener al menos 4 dígitos."
+        if len(set(pin)) == 1:
+            return "El PIN no puede tener todos los dígitos iguales (ej: 1111, 2222)."
         import hashlib
         pin_hash = hashlib.sha256(pin.encode()).hexdigest()
         user_service.create_user_pending_encoding({
@@ -199,7 +201,13 @@ def reset_pin(user_id: int):
     if target and not _can_manage(target):
         flash("No tienes permiso para esta acción.", "danger")
         return redirect(url_for("users.list_users"))
-    new_pin = secrets.choice(range(1000, 9999))
+    
+    # Generar un PIN válido (sin todos los dígitos iguales)
+    while True:
+        new_pin = secrets.choice(range(1000, 9999))
+        if len(set(str(new_pin))) > 1:  # Si no todos los dígitos son iguales
+            break
+    
     actor_id = g.user["idusuario"] or 1
     user_service.update_pin(user_id, str(new_pin), actor_id)
     flash(f"Nuevo PIN generado: {new_pin} (comunícalo al usuario de forma segura).", "success")

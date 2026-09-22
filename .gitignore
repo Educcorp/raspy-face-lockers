@@ -26,11 +26,15 @@ webapp/.venv/
 webapp/.env
 node_modules/
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
 # Python tooling and local caches
 *.py[cod]
 \.pytest_cache/
 \.coverage
+=======
+.env
+>>>>>>> Stashed changes
 =======
 .env
 >>>>>>> Stashed changes

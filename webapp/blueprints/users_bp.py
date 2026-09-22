@@ -90,12 +90,22 @@ def _validate_and_save(user_id: int | None) -> str | None:
         if err:
             return err
 
+    assignable = filter_assignable_user_types(catalog_service.get_all_tipos_usuario())
+    assignable_ids = {t["idtipousuario"] for t in assignable}
+
+    if not tipo_id and not is_superadmin():
+        # El campo "Tipo de usuario" está oculto para admin (solo tiene sentido para superadmin).
+        if user_id is not None:
+            # Editando: se conserva el tipo actual del usuario, un admin no puede cambiarlo.
+            current = user_service.get_user_by_id(user_id)
+            tipo_id = current["idtipousuario"] if current else None
+        elif len(assignable) == 1:
+            # Alta nueva: único tipo permitido para admin, se asigna automático.
+            tipo_id = assignable[0]["idtipousuario"]
+
     if not tipo_id or not unidad_id:
         return "Selecciona un tipo de usuario y una unidad académica."
 
-    assignable_ids = {t["idtipousuario"] for t in filter_assignable_user_types(
-        catalog_service.get_all_tipos_usuario()
-    )}
     if user_id is None and tipo_id not in assignable_ids and not can_assign_privileged_user_types():
         return "No tienes permiso para asignar ese tipo de usuario."
 

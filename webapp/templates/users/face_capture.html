@@ -1,23 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Registrar rostro · Smart Locker{% endblock %}
 {% block content %}
-<h2>Registrar rostro — {{ row.nombre }} {{ row.appaterno }}</h2>
+<h2>Registrar rostro:  {{ row.nombre }} {{ row.appaterno }}</h2>
 <p style="color:var(--muted);">
-  Colócate frente a la cámara de este equipo. El sistema detecta solo la posición,
-  el giro y el encuadre de tu rostro — cuando estés en la pose correcta, se captura
-  automáticamente. La autenticación en el locker sigue usando la cámara física del
-  dispositivo; esto solo registra el rostro en la base de datos.
+  Pide a {{ row.nombre }} que se coloque frente a la cámara y siga la esfera, la captura es automática.
 </p>
 
 <div class="face-capture-layout">
   <div class="card face-capture-main">
-    <div id="pose-list" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
-      {% for p in poses %}
-      <span class="badge {{ 'activo' if loop.index0 < done_count else 'inactivo' }}" data-pose="{{ p.tipoParte }}">
-        {{ p.icon }} {{ p.tipoParte }}
-      </span>
-      {% endfor %}
-    </div>
+    <p id="instruction" class="capture-instruction"></p>
 
     <div class="pose-sphere-wrap">
       <div id="sphere" class="pose-sphere">
@@ -25,12 +16,11 @@
         <div id="sphere-dot" class="sphere-dot"></div>
         <div id="sphere-noface" class="no-face">Buscando tu rostro…</div>
       </div>
-      <p id="instruction" style="text-align:center; font-weight:700; font-family:'Fraunces',serif; font-size:1.05rem; margin:2px 0 0;"></p>
-      <p id="hint" style="text-align:center; color:var(--muted); font-size:0.82rem; margin:2px 0 0; min-height:18px;"></p>
+      <p id="hint" class="capture-hint"></p>
     </div>
 
-    <div id="camera-wrap" style="position:relative; background:#000; border-radius:var(--radius-sm); overflow:hidden; aspect-ratio:4/3;">
-      <video id="video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+    <div id="camera-wrap" class="capture-camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
       <div id="capture-flash" class="capture-flash"></div>
     </div>
     <canvas id="canvas" style="display:none;"></canvas>
@@ -40,25 +30,33 @@
       <div id="capture-progress-fill" class="capture-progress-fill"></div>
     </div>
 
-    <p id="feedback" style="text-align:center; color:var(--danger); min-height:20px; font-size:0.85rem;"></p>
+    <p id="feedback" class="capture-feedback"></p>
   </div>
 
   <div class="card face-capture-side">
     <h3>Progreso</h3>
-    <p style="color:var(--muted); font-size:0.85rem; margin-top:-8px;">
-      {{ done_count }} de {{ total }} poses capturadas.
-    </p>
+    <p id="progress-count" class="progress-count-text">{{ done_count }} de {{ total }} poses capturadas</p>
 
-    <div id="done-controls" style="display:none; flex-direction:column; gap:10px; margin-top:6px;">
+    <div class="pose-checklist">
+      {% for p in poses %}
+      <div class="pose-check-item" data-pose="{{ p.tipoParte }}" data-state="{{ 'done' if loop.index0 < done_count else 'pending' }}">
+        <span class="pose-check-icon">{{ p.icon }}</span>
+        <span class="pose-check-label">{{ p.tipoParte|capitalize }}</span>
+        <span class="pose-check-status">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div id="done-controls" class="face-capture-done-controls">
       <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}">
         <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
       </form>
     </div>
 
-    <details id="manual-fallback" style="margin-top:14px;">
-      <summary style="cursor:pointer; color:var(--muted); font-size:0.82rem; font-weight:600;">
-        ¿Problemas para que te detecte? Captura manual
-      </summary>
+    <details id="manual-fallback" class="manual-fallback-details">
+      <summary>¿Problemas para que te detecte? Captura manual</summary>
       <button id="btn-capture-manual" class="btn btn-muted" style="width:100%; margin-top:10px;">
         Capturar esta pose ahora
       </button>
@@ -75,6 +73,8 @@ import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 
 const userId = {{ row.idusuario }};
 const captureUrl = "{{ url_for('face.capture_pose', user_id=row.idusuario) }}";
+const TOTAL_POSES = {{ total }};
+let doneCount = {{ done_count }};
 let nextPose = {{ (next_pose.tipoParte if next_pose else '') | tojson }};
 let allDone = {{ 'true' if all_done else 'false' }};
 
@@ -114,6 +114,7 @@ const sphereDot = document.getElementById('sphere-dot');
 const sphereNoFace = document.getElementById('sphere-noface');
 const progressFill = document.getElementById('capture-progress-fill');
 const progressLabel = document.getElementById('capture-progress-label');
+const progressCount = document.getElementById('progress-count');
 const captureFlash = document.getElementById('capture-flash');
 const btnManual = document.getElementById('btn-capture-manual');
 const manualFallback = document.getElementById('manual-fallback');
@@ -125,6 +126,7 @@ let loopHandle = null;
 let landmarker = null;
 
 function refreshInstruction() {
+  progressCount.textContent = `${doneCount} de ${TOTAL_POSES} poses capturadas`;
   if (allDone) {
     instruction.textContent = "¡Todas las poses capturadas!";
     hint.textContent = "";
@@ -201,7 +203,7 @@ function detectLoop() {
     sphereNoFace.style.display = "flex";
     sphereDot.style.display = "none";
     sphere.classList.remove('matched');
-    hint.textContent = "No detecto tu rostro — acércate y mira a la cámara.";
+    hint.textContent = "No detecto tu rostro, acércate y mira a la cámara.";
     holdStart = null;
     setProgress(0, "");
     return;
@@ -301,9 +303,10 @@ async function captureCurrentPose() {
       const resp = await fetch(captureUrl, { method: 'POST', body: form });
       const data = await resp.json();
       if (data.ok) {
-        const badge = document.querySelector(`[data-pose="${nextPose}"]`);
-        if (badge) { badge.classList.remove('inactivo'); badge.classList.add('activo'); }
+        const item = document.querySelector(`.pose-check-item[data-pose="${nextPose}"]`);
+        if (item) item.dataset.state = 'done';
         flashSuccess();
+        doneCount = data.done_count;
         nextPose = data.next_pose;
         allDone = data.all_done;
         setTimeout(() => {

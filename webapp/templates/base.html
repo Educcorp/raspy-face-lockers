@@ -202,5 +202,14 @@
     {{ self.content() }}
   </div>
   {% endif %}
+
+  <script>
+    document.querySelectorAll('.flash').forEach((el) => {
+      setTimeout(() => {
+        el.classList.add('flash-hide');
+        setTimeout(() => el.remove(), 400);
+      }, 5000);
+    });
+  </script>
 </body>
 </html>

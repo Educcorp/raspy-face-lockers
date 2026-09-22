@@ -370,7 +370,9 @@ tbody tr:hover { background: var(--surface-alt); }
   font-size: 0.88rem;
   font-weight: 600;
   border-left: 3px solid transparent;
+  transition: opacity 0.4s ease, transform 0.4s ease;
 }
+.flash.flash-hide { opacity: 0; transform: translateY(-6px); }
 .flash.success { background: var(--success-soft); color: var(--success); border-color: var(--success); }
 .flash.danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
 .flash.warning { background: var(--warn-soft); color: var(--warn); border-color: var(--warn); }

@@ -7,6 +7,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import threading
+import time
 from typing import Optional
 
 import numpy as np
@@ -99,6 +101,8 @@ def set_user_status(user_id: int, estado: str) -> None:
         "UPDATE usuarios SET estado=%s, modificadoPor=1 WHERE idUsuario=%s",
         (estado, user_id),
     )
+    # El estado del usuario decide si sus encodings cuentan como activos.
+    invalidate_encodings_cache()
 
 
 def delete_user_permanent(user_id: int) -> None:
@@ -111,6 +115,7 @@ def delete_user_permanent(user_id: int) -> None:
         conn.execute("DELETE FROM asignacion_locker WHERE idUsuario=%s", (user_id,))
         conn.execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
         conn.execute("DELETE FROM usuarios WHERE idUsuario=%s", (user_id,))
+    invalidate_encodings_cache()
     logger.info("✓ Usuario id=%s eliminado definitivamente", user_id)
 
 
@@ -138,6 +143,7 @@ def update_face_encodings(user_id: int, poses: list[dict]) -> None:
                 user_id, vec_bytes, int(len(vec)),
                 vec_hash, pose["tipoParte"], pose["modelo"],
             ))
+    invalidate_encodings_cache()
     logger.info("✓ Encodings actualizados para usuario id=%s (%d poses)", user_id, len(poses))
 
 
@@ -182,17 +188,64 @@ def create_user_with_encodings(data: dict, poses: list[dict]) -> int:
                 vec_hash, pose["tipoParte"], pose["modelo"],
             ))
 
+    invalidate_encodings_cache()
     logger.info("✓ Usuario id=%s + %d encodings guardados", user_id, len(poses))
     return user_id
 
 
 # ── Autenticación facial ───────────────────────────────────────────────────────
 
-def get_active_face_encodings() -> list[dict]:
+# ── Caché de encodings ─────────────────────────────────────────────────────
+# El bucle de reconocimiento del kiosko pedía estos encodings en CADA intento
+# (uno por segundo y medio), y cada pedido era un viaje completo a la Postgres
+# remota que bloqueaba el hilo de la cámara. Los encodings cambian muy poco,
+# así que se guardan en memoria.
+#
+# El TTL existe porque el panel web puede dar de alta usuarios sin que la Pi se
+# entere: pasado ese tiempo el siguiente intento relee. Los cambios hechos
+# desde la propia Pi no esperan al TTL, invalidan el caché al instante.
+_ENCODINGS_TTL_SECONDS = 60.0
+_encodings_cache: list[dict] | None = None
+_encodings_cache_ts = 0.0
+_encodings_lock = threading.Lock()
+
+
+def invalidate_encodings_cache() -> None:
+    """Fuerza que la próxima lectura vuelva a la base de datos."""
+    global _encodings_cache, _encodings_cache_ts
+    with _encodings_lock:
+        _encodings_cache = None
+        _encodings_cache_ts = 0.0
+
+
+def get_active_face_encodings(force_refresh: bool = False) -> list[dict]:
     """
     Carga todos los encodings activos de usuarios activos.
     Deserializa los vectores numpy desde BLOB y los adjunta como 'vector_np'.
+
+    El resultado se cachea en memoria durante _ENCODINGS_TTL_SECONDS.
+    `force_refresh=True` salta el caché (útil al buscar duplicados al registrar,
+    donde leer datos rancios daría un falso negativo).
     """
+    global _encodings_cache, _encodings_cache_ts
+    if not force_refresh:
+        with _encodings_lock:
+            if (_encodings_cache is not None
+                    and (time.monotonic() - _encodings_cache_ts) < _ENCODINGS_TTL_SECONDS):
+                # Copia de la lista: los consumidores actuales solo leen, pero
+                # así un append/remove accidental no corrompe el caché.
+                return list(_encodings_cache)
+
+    parsed = _load_active_face_encodings()
+
+    with _encodings_lock:
+        _encodings_cache = parsed
+        _encodings_cache_ts = time.monotonic()
+    return list(parsed)
+
+
+def _load_active_face_encodings() -> list[dict]:
+    """Lectura real desde la base de datos, sin caché."""
     rows = fetch_all("""
         SELECT
             e.idUsuario AS "idUsuario",

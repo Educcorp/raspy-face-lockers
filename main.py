@@ -59,6 +59,14 @@ def main() -> None:
     # Pre-cargar dependencias de cámara
     _preload_camera()
 
+    # Abrir conexiones a Postgres en segundo plano: el handshake contra
+    # Railway cuesta ~918 ms y psycopg2 los serializa si varios hilos piden
+    # conexión en frío a la vez. Hacerlo aquí, en paralelo al arranque de la
+    # UI, hace que la primera pantalla ya encuentre el pool caliente.
+    import threading
+    from database.connection import warmup as _warmup_db
+    threading.Thread(target=_warmup_db, daemon=True).start()
+
     if args.mode == "locker":
         from ui.app import LockerApp
         LockerApp().mainloop()

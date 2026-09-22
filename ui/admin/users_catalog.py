@@ -296,11 +296,14 @@ class UserDetailOverlay(ctk.CTkFrame):
     def _load_catalogs(self) -> None:
         from auth.session import filter_assignable_user_types
         self._tipos = fetch_all(
-            "SELECT idTipoUsuario, nombreTipoUsuario FROM tipo_usuarios WHERE estado='activo'"
+            'SELECT idTipoUsuario AS "idTipoUsuario", nombreTipoUsuario AS "nombreTipoUsuario" '
+            "FROM tipo_usuarios WHERE estado='activo'"
         )
         self._tipos = filter_assignable_user_types(self._tipos)
         self._unidades = fetch_all(
-            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica WHERE estado='activo'"
+            'SELECT idUnidadAcademica AS "idUnidadAcademica", '
+            'nombreUnidadAcademica AS "nombreUnidadAcademica" '
+            "FROM unidad_academica WHERE estado='activo'"
         )
 
     def _build_ui(self) -> None:

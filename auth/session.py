@@ -181,13 +181,13 @@ def authenticate_admin_user(matricula: str, pin: str) -> tuple[str | None, dict 
 	"""
 	row = fetch_one(
 		"""
-		SELECT u.idUsuario, u.matricula, u.pin, u.estado,
+		SELECT u.idUsuario AS "idUsuario", u.matricula, u.pin, u.estado,
 			   u.nombre || ' ' || u.apPaterno AS full_name,
 			   t.nombreTipoUsuario AS tipo,
 			   t.estado AS tipo_estado
 		FROM usuarios u
 		LEFT JOIN tipo_usuarios t ON t.idTipoUsuario = u.idTipoUsuario
-		WHERE CAST(u.matricula AS TEXT) = ?
+		WHERE CAST(u.matricula AS TEXT) = %s
 		LIMIT 1
 		""",
 		(str(matricula).strip(),),

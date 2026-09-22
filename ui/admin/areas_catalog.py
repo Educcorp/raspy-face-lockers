@@ -168,8 +168,11 @@ class AreasCatalogScreen(ctk.CTkFrame):
 
     def _load_areas(self) -> None:
         rows = fetch_all(
-            "SELECT a.*, u.nombre||' '||u.apPaterno AS encargado, "
-            "ua.nombreUnidadAcademica AS nombreUnidad "
+            'SELECT a.idArea AS "idArea", a.nombreArea AS "nombreArea", '
+            'a.idUsuario AS "idUsuario", a.idUnidadAcademica AS "idUnidadAcademica", '
+            'a.estado, '
+            "u.nombre||' '||u.apPaterno AS encargado, "
+            'ua.nombreUnidadAcademica AS "nombreUnidad" '
             "FROM area_lockers a "
             "LEFT JOIN usuarios u ON u.idUsuario = a.idUsuario "
             "LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = a.idUnidadAcademica "
@@ -195,7 +198,11 @@ class AreasCatalogScreen(ctk.CTkFrame):
 
     def _load_unidades(self) -> None:
         rows = fetch_all(
-            "SELECT * FROM unidad_academica ORDER BY nombreUnidadAcademica"
+            'SELECT idUnidadAcademica AS "idUnidadAcademica", '
+            'nombreUnidadAcademica AS "nombreUnidadAcademica", estado, zona, '
+            'fechaHoraReg AS "fechaHoraReg", fechaHoraAct AS "fechaHoraAct", '
+            'creadoPor AS "creadoPor", modificadoPor AS "modificadoPor" '
+            "FROM unidad_academica ORDER BY nombreUnidadAcademica"
         )
         if not rows:
             ctk.CTkLabel(self._list_frame, text=t("areas.no_units"),
@@ -434,7 +441,8 @@ class AreaFormOverlay(_BaseFormOverlay):
 
         # Cargar unidades activas para el dropdown
         unidades = fetch_all(
-            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica "
+            'SELECT idUnidadAcademica AS "idUnidadAcademica", '
+            'nombreUnidadAcademica AS "nombreUnidadAcademica" FROM unidad_academica '
             "WHERE estado='activo' ORDER BY nombreUnidadAcademica"
         )
         _no_unit = t("areas.no_unidad")
@@ -480,9 +488,9 @@ class AreaFormOverlay(_BaseFormOverlay):
         # Unicidad: verificar que no exista otra área con el mismo nombre
         current_id = self._row["idArea"] if self._row else None
         dup = fetch_one(
-            "SELECT 1 FROM area_lockers WHERE nombreArea=? AND idArea!=? LIMIT 1"
+            "SELECT 1 FROM area_lockers WHERE nombreArea=%s AND idArea!=%s LIMIT 1"
             if current_id else
-            "SELECT 1 FROM area_lockers WHERE nombreArea=? LIMIT 1",
+            "SELECT 1 FROM area_lockers WHERE nombreArea=%s LIMIT 1",
             (nombre, current_id) if current_id else (nombre,),
         )
         if dup:
@@ -493,15 +501,14 @@ class AreaFormOverlay(_BaseFormOverlay):
         self._clear_err()
         if self._row:
             execute(
-                "UPDATE area_lockers SET nombreArea=?, idUnidadAcademica=?, estado=?, "
-                "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-                "modificadoPor=1 WHERE idArea=?",
+                "UPDATE area_lockers SET nombreArea=%s, idUnidadAcademica=%s, estado=%s, "
+                "modificadoPor=1 WHERE idArea=%s",
                 (nombre, unidad_id, self._estado_var.get(), self._row["idArea"])
             )
         else:
             execute(
                 "INSERT INTO area_lockers (nombreArea, idUnidadAcademica, estado, creadoPor) "
-                "VALUES (?, ?, ?, 1)",
+                "VALUES (%s, %s, %s, 1)",
                 (nombre, unidad_id, self._estado_var.get())
             )
         self._close()
@@ -510,16 +517,15 @@ class AreaFormOverlay(_BaseFormOverlay):
         current_state = (self._row.get("estado") or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(
-            "UPDATE area_lockers SET estado=?, "
-            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-            "modificadoPor=1 WHERE idArea=?",
+            "UPDATE area_lockers SET estado=%s, "
+            "modificadoPor=1 WHERE idArea=%s",
             (new_state, self._row["idArea"])
         )
         self._close()
 
     def _confirm_delete_area(self) -> None:
         area_id = self._row["idArea"]
-        count = fetch_one("SELECT COUNT(*) AS n FROM lockers WHERE idArea=?", (area_id,))
+        count = fetch_one("SELECT COUNT(*) AS n FROM lockers WHERE idArea=%s", (area_id,))
         if count and count["n"] > 0:
             _AlertDialog(
                 self,
@@ -536,7 +542,7 @@ class AreaFormOverlay(_BaseFormOverlay):
     def _do_delete_area(self) -> None:
         area_id = self._row["idArea"]
         try:
-            execute("DELETE FROM area_lockers WHERE idArea=?", (area_id,))
+            execute("DELETE FROM area_lockers WHERE idArea=%s", (area_id,))
         except Exception:
             _AlertDialog(self, "No se pudo eliminar el área.\nPuede haber dependencias.")
             return
@@ -582,9 +588,9 @@ class UnidadFormOverlay(_BaseFormOverlay):
         # Unicidad: nombre de unidad
         current_id = self._row["idUnidadAcademica"] if self._row else None
         dup = fetch_one(
-            "SELECT 1 FROM unidad_academica WHERE nombreUnidadAcademica=? AND idUnidadAcademica!=? LIMIT 1"
+            "SELECT 1 FROM unidad_academica WHERE nombreUnidadAcademica=%s AND idUnidadAcademica!=%s LIMIT 1"
             if current_id else
-            "SELECT 1 FROM unidad_academica WHERE nombreUnidadAcademica=? LIMIT 1",
+            "SELECT 1 FROM unidad_academica WHERE nombreUnidadAcademica=%s LIMIT 1",
             (nombre, current_id) if current_id else (nombre,),
         )
         if dup:
@@ -594,15 +600,14 @@ class UnidadFormOverlay(_BaseFormOverlay):
         self._clear_err()
         if self._row:
             execute(
-                "UPDATE unidad_academica SET nombreUnidadAcademica=?, "
-                "estado=?, fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-                "modificadoPor=1 WHERE idUnidadAcademica=?",
+                "UPDATE unidad_academica SET nombreUnidadAcademica=%s, "
+                "estado=%s, modificadoPor=1 WHERE idUnidadAcademica=%s",
                 (nombre, self._estado_var.get(), self._row["idUnidadAcademica"])
             )
         else:
             execute(
                 "INSERT INTO unidad_academica (nombreUnidadAcademica, estado, creadoPor) "
-                "VALUES (?, ?, 1)",
+                "VALUES (%s, %s, 1)",
                 (nombre, self._estado_var.get())
             )
         self._close()
@@ -611,9 +616,8 @@ class UnidadFormOverlay(_BaseFormOverlay):
         current_state = (self._row.get("estado") or "activo").strip().lower()
         new_state = "activo" if current_state == "inactivo" else "inactivo"
         execute(
-            "UPDATE unidad_academica SET estado=?, "
-            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-            "modificadoPor=1 WHERE idUnidadAcademica=?",
+            "UPDATE unidad_academica SET estado=%s, "
+            "modificadoPor=1 WHERE idUnidadAcademica=%s",
             (new_state, self._row["idUnidadAcademica"])
         )
         self._close()
@@ -621,7 +625,7 @@ class UnidadFormOverlay(_BaseFormOverlay):
     def _confirm_delete_unidad(self) -> None:
         uid = self._row["idUnidadAcademica"]
         ur = fetch_one(
-            "SELECT COUNT(*) AS n FROM usuarios WHERE idUnidadAcademica=? AND estado != 'eliminado'",
+            "SELECT COUNT(*) AS n FROM usuarios WHERE idUnidadAcademica=%s AND estado != 'eliminado'",
             (uid,),
         )
         if ur and ur["n"] > 0:
@@ -640,119 +644,9 @@ class UnidadFormOverlay(_BaseFormOverlay):
     def _do_delete_unidad(self) -> None:
         uid = self._row["idUnidadAcademica"]
         try:
-            execute("DELETE FROM unidad_academica WHERE idUnidadAcademica=?", (uid,))
+            execute("DELETE FROM unidad_academica WHERE idUnidadAcademica=%s", (uid,))
         except Exception:
             _AlertDialog(self, "No se pudo eliminar la unidad.\nPuede haber dependencias.")
             return
         self._close()
 
-
-# ══ Historial de Accesos (pantalla independiente) ═════════════════════════════
-
-_MOTIVO_LABELS: dict[str, str] = {
-    "facial":               "Facial",
-    "no_reconocido":        "Rostro no reconocido",
-    "pin":                  "PIN",
-    "pin_incorrecto":       "PIN incorrecto",
-    "limite_intentos_pin":  "Exceso de intentos PIN",
-    "matricula_incorrecta": "Matrícula incorrecta",
-    "sin_asignacion":       "Sin asignación de locker",
-}
-
-
-class AccessHistoryScreen(ctk.CTkFrame):
-    """Pantalla dedicada al historial de accesos del sistema."""
-
-    def __init__(self, parent, controller):
-        super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
-        self.controller = controller
-        self._build_ui()
-
-    def _build_ui(self) -> None:
-        hdr = ctk.CTkFrame(self, fg_color=PALETTE["CARD"], height=64, corner_radius=0)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-
-        ctk.CTkButton(
-            hdr, text="←", width=46, height=46,
-            font=ctk.CTkFont(size=22, weight="bold"),
-            fg_color="transparent", hover_color=PALETTE["BORDER"],
-            text_color=PALETTE["TEXT"],
-            command=self._go_back,
-        ).pack(side="left", padx=8)
-
-        ctk.CTkLabel(
-            hdr, text=t("cat.types.label"),
-            font=ctk.CTkFont(size=20, weight="bold"),
-            text_color=PALETTE["TEXT"], fg_color="transparent",
-        ).pack(side="left", padx=4)
-
-        self._list_frame = ctk.CTkScrollableFrame(
-            self, fg_color=PALETTE["BG"],
-            scrollbar_button_color=PALETTE["BORDER"],
-            scrollbar_button_hover_color=PALETTE["ACCENT"],
-        )
-        self._list_frame.pack(fill="both", expand=True, padx=10, pady=8)
-
-    def _load(self) -> None:
-        from services.access_log_service import get_access_history
-        for w in self._list_frame.winfo_children():
-            w.destroy()
-        rows = get_access_history(limit=200)
-        if not rows:
-            ctk.CTkLabel(self._list_frame, text=t("hist.no_records"),
-                         font=ctk.CTkFont(size=16),
-                         text_color=PALETTE["MUTED"],
-                         fg_color="transparent").pack(pady=40)
-            return
-        for r in rows:
-            self._make_row(r)
-
-    def _make_row(self, r: dict) -> None:
-        concedido = (r.get("accesoPermitido") or "no").strip().lower() == "si"
-        dot_color = "#27ae60" if concedido else PALETTE["DANGER"]
-
-        fecha = r.get("fechaHoraAcceso", "")
-        if fecha and "T" in fecha:
-            fecha = fecha.replace("T", "  ")
-
-        usuario = (r.get("nombreCompleto") or "").strip() or t("hist.unknown_user")
-        matricula = r.get("matricula")
-        usuario_label = f"{usuario}  ({t('common.matr_prefix')} {matricula})" if matricula else usuario
-
-        locker_num = r.get("idLocker")
-        locker_label = f"Locker {locker_num}" if locker_num else "—"
-
-        motivo_raw = (r.get("motivo") or "").strip()
-        motivo_label = _MOTIVO_LABELS.get(motivo_raw, motivo_raw or "—")
-        resultado = t("hist.granted") if concedido else t("hist.denied")
-
-        row_frame = ctk.CTkFrame(self._list_frame, fg_color=PALETTE["CARD"],
-                                 corner_radius=12, border_width=1,
-                                 border_color=PALETTE["BORDER"])
-        row_frame.pack(fill="x", padx=4, pady=4)
-
-        inner = ctk.CTkFrame(row_frame, fg_color="transparent")
-        inner.pack(fill="x", padx=14, pady=10)
-        inner.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(inner, text="●", font=ctk.CTkFont(size=14),
-                     text_color=dot_color, fg_color="transparent").grid(
-                         row=0, column=0, rowspan=2, padx=(0, 10))
-
-        ctk.CTkLabel(inner, text=f"{resultado}  ·  {locker_label}  ·  {motivo_label}",
-                     font=ctk.CTkFont(size=15, weight="bold"),
-                     text_color=dot_color, fg_color="transparent",
-                     anchor="w").grid(row=0, column=1, sticky="ew")
-
-        ctk.CTkLabel(inner, text=f"{usuario_label}  ·  {fecha}",
-                     font=ctk.CTkFont(size=12),
-                     text_color=PALETTE["MUTED"], fg_color="transparent",
-                     anchor="w").grid(row=1, column=1, sticky="ew")
-
-    def _go_back(self) -> None:
-        from ui.admin.dashboard import DashboardScreen
-        self.controller.show_frame(DashboardScreen)
-
-    def on_show(self, **_kwargs) -> None:
-        self._load()

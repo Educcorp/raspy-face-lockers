@@ -171,10 +171,10 @@ class LockersCatalogScreen(ctk.CTkFrame):
 
     def _load(self) -> None:
         self._rows = fetch_all("""
-            SELECT l.idLocker, l.estado,
+            SELECT l.idLocker AS "idLocker", l.estado,
                    a.nombreArea AS area,
                    ua.nombreUnidadAcademica AS unidad,
-                   l.idArea, l.idUnidadAcademica
+                   l.idArea AS "idArea", l.idUnidadAcademica AS "idUnidadAcademica"
             FROM lockers l
             LEFT JOIN area_lockers   a  ON a.idArea = l.idArea
             LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = l.idUnidadAcademica
@@ -424,8 +424,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
         unit = next((u for u in self._unidades if u["nombreUnidadAcademica"] == unit_name), None)
         if unit:
             self._areas = fetch_all(
-                "SELECT idArea, nombreArea FROM area_lockers "
-                "WHERE idUnidadAcademica=? AND estado='activo' ORDER BY nombreArea",
+                'SELECT idArea AS "idArea", nombreArea AS "nombreArea" FROM area_lockers '
+                "WHERE idUnidadAcademica=%s AND estado='activo' ORDER BY nombreArea",
                 (unit["idUnidadAcademica"],),
             )
         else:
@@ -437,13 +437,14 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
     def _load(self) -> None:
         row = fetch_one("""
-            SELECT l.idLocker, l.estado, l.idArea, l.idUnidadAcademica,
+            SELECT l.idLocker AS "idLocker", l.estado,
+                   l.idArea AS "idArea", l.idUnidadAcademica AS "idUnidadAcademica",
                    a.nombreArea AS area,
                    ua.nombreUnidadAcademica AS unidad
             FROM lockers l
             LEFT JOIN area_lockers   a  ON a.idArea = l.idArea
             LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = l.idUnidadAcademica
-            WHERE l.idLocker=?
+            WHERE l.idLocker=%s
         """, (self.locker_id,))
         if not row:
             self._close()
@@ -453,7 +454,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
         # Cargar unidades y configurar dropdown
         self._unidades = fetch_all(
-            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica "
+            'SELECT idUnidadAcademica AS "idUnidadAcademica", '
+            'nombreUnidadAcademica AS "nombreUnidadAcademica" FROM unidad_academica '
             "WHERE estado='activo' ORDER BY nombreUnidadAcademica"
         )
         unit_names = [u["nombreUnidadAcademica"] for u in self._unidades]
@@ -483,10 +485,10 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
         asign = fetch_one("""
             SELECT u.nombre || ' ' || u.apPaterno AS usuario,
-                   al.estado AS asignEstado
+                   al.estado AS "asignEstado"
             FROM asignacion_locker al
             JOIN usuarios u ON u.idUsuario = al.idUsuario
-            WHERE al.idLocker=? AND al.estado='activo'
+            WHERE al.idLocker=%s AND al.estado='activo'
         """, (self.locker_id,))
         if asign:
             self.lbl_asign.configure(text=f"✓ {asign['usuario']}  ({asign['asignEstado']})")
@@ -510,9 +512,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
             )
             return
         execute(
-            "UPDATE lockers SET idUnidadAcademica=?, idArea=?, estado=?, "
-            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-            "modificadoPor=1 WHERE idLocker=?",
+            "UPDATE lockers SET idUnidadAcademica=%s, idArea=%s, estado=%s, "
+            "modificadoPor=1 WHERE idLocker=%s",
             (
                 unit["idUnidadAcademica"] if unit else None,
                 area["idArea"] if area else None,
@@ -524,7 +525,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
 
     def _has_active_assignment(self) -> bool:
         row = fetch_one(
-            "SELECT COUNT(*) AS n FROM asignacion_locker WHERE idLocker=? AND estado='activo'",
+            "SELECT COUNT(*) AS n FROM asignacion_locker WHERE idLocker=%s AND estado='activo'",
             (self.locker_id,),
         )
         return bool(row and (row.get("n") or 0) > 0)
@@ -559,9 +560,8 @@ class LockerDetailOverlay(ctk.CTkFrame):
             )
             return
         execute(
-            "UPDATE lockers SET estado=?, "
-            "fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'), "
-            "modificadoPor=1 WHERE idLocker=?",
+            "UPDATE lockers SET estado=%s, "
+            "modificadoPor=1 WHERE idLocker=%s",
             (new_state, self.locker_id),
         )
         self._close()
@@ -590,10 +590,10 @@ class LockerDetailOverlay(ctk.CTkFrame):
         from database.connection import db_session
         with db_session() as conn:
             conn.execute(
-                "UPDATE asignacion_locker SET estado='vencido' WHERE idLocker=?",
+                "UPDATE asignacion_locker SET estado='vencido' WHERE idLocker=%s",
                 (self.locker_id,),
             )
-            conn.execute("DELETE FROM lockers WHERE idLocker=?", (self.locker_id,))
+            conn.execute("DELETE FROM lockers WHERE idLocker=%s", (self.locker_id,))
         self._close()
 
     def _close(self) -> None:
@@ -691,7 +691,8 @@ class LockerCreateOverlay(ctk.CTkFrame):
 
     def _load_catalogs(self) -> None:
         self._unidades = fetch_all(
-            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica "
+            'SELECT idUnidadAcademica AS "idUnidadAcademica", '
+            'nombreUnidadAcademica AS "nombreUnidadAcademica" FROM unidad_academica '
             "WHERE estado='activo' ORDER BY nombreUnidadAcademica"
         )
         unit_names = [u["nombreUnidadAcademica"] for u in self._unidades]
@@ -706,8 +707,8 @@ class LockerCreateOverlay(ctk.CTkFrame):
         unit = next((u for u in self._unidades if u["nombreUnidadAcademica"] == unit_name), None)
         if unit:
             self._areas = fetch_all(
-                "SELECT idArea, nombreArea FROM area_lockers "
-                "WHERE idUnidadAcademica=? AND estado='activo' ORDER BY nombreArea",
+                'SELECT idArea AS "idArea", nombreArea AS "nombreArea" FROM area_lockers '
+                "WHERE idUnidadAcademica=%s AND estado='activo' ORDER BY nombreArea",
                 (unit["idUnidadAcademica"],),
             )
         else:
@@ -733,7 +734,7 @@ class LockerCreateOverlay(ctk.CTkFrame):
             next_id = row["next_id"] if row else 1
             execute(
                 "INSERT INTO lockers (idLocker, idUnidadAcademica, idArea, estado, creadoPor) "
-                "VALUES (?, ?, ?, ?, 1)",
+                "VALUES (%s, %s, %s, %s, 1)",
                 (next_id, unit["idUnidadAcademica"], area["idArea"], estado),
             )
         except Exception as exc:

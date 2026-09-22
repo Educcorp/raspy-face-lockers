@@ -6,6 +6,7 @@ Pillow>=10.0.0      # Para procesar imágenes (ImageTk, PIL)
 
 # Database
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9  # Postgres remoto (Railway) — misma base que usa webapp/
 
 # GPIO / Hardware (Raspberry Pi)
 RPi.GPIO>=0.7.0  # Si se necesita GPIO directo

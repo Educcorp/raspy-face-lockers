@@ -13,6 +13,8 @@ import logging
 import os
 from PIL import Image
 from ui.i18n import t, lang_btn_text
+from ui import theme
+from ui.theme import PALETTE
 from core.face_recognition import filter_close_faces
 
 logger = logging.getLogger(__name__)
@@ -28,11 +30,15 @@ class StandbyScreen(ctk.CTkFrame):
     controller : LockerApp – expone show_frame() para navegar
     """
 
-    BG_COLOR    = "#5B8C5A"   # fondo verde solicitado
-    PRIMARY     = "#5B8C5A"   # verde pizarrón suave
-    SECONDARY   = "#E6F4E6"
-    TEXT_COLOR  = "#FFFFFF"
-    MUTED       = "#F2FBF2"
+    # ACCENT es el color de marca dominante del web (botones, marca "SL",
+    # estados activos); SAGE ahí es solo un acento decorativo secundario
+    # (el blob del login), así que la pantalla de espera —pensada para verse
+    # de lejos como una "portada"— usa ACCENT como color principal.
+    BG_COLOR    = PALETTE["ACCENT"]
+    PRIMARY     = PALETTE["ACCENT"]
+    SECONDARY   = PALETTE["ACCENT_SOFT_STRONG"]
+    TEXT_COLOR  = PALETTE["WHITE"]
+    MUTED       = PALETTE["WHITE"]
 
     def __init__(self, parent: ctk.CTk, controller):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
@@ -90,7 +96,7 @@ class StandbyScreen(ctk.CTkFrame):
         lbl_instruction = ctk.CTkLabel(
             self,
             text=t("standby.instruction"),
-            font=ctk.CTkFont(size=22),
+            font=theme.font_display(22),
             text_color=self.MUTED,
             fg_color="transparent",
         )
@@ -114,13 +120,13 @@ class StandbyScreen(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row,
             text=t("standby.start_scan"),
-            font=ctk.CTkFont(size=19, weight="bold"),
+            font=theme.font_body(19, "bold"),
             fg_color="transparent",
             bg_color="transparent",
-            hover_color="#CCCCCC",
-            text_color="#FFFFFF",
+            hover_color=PALETTE["ACCENT_SOFT_STRONG"],
+            text_color=PALETTE["WHITE"],
             border_width=2,
-            border_color="#FFFFFF",
+            border_color=PALETTE["WHITE"],
             width=260, height=56,
             corner_radius=16,
             command=self._go_scanning,
@@ -129,12 +135,12 @@ class StandbyScreen(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row,
             text=lang_btn_text(),
-            font=ctk.CTkFont(size=14),
+            font=theme.font_body(14),
             fg_color="transparent",
-            hover_color="#CCCCCC",
-            text_color="#FFFFFF",
+            hover_color=PALETTE["ACCENT_SOFT_STRONG"],
+            text_color=PALETTE["WHITE"],
             border_width=2,
-            border_color="#FFFFFF",
+            border_color=PALETTE["WHITE"],
             width=124, height=56,
             corner_radius=16,
             command=self.controller.toggle_lang,

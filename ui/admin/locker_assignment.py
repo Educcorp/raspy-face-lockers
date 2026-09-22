@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sqlite3
+import psycopg2
 import threading
 import time
 import tkinter as tk
@@ -230,9 +230,9 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		return f"Locker {row.get('idLocker')} · {full_name}"
 
 	def _friendly_error(self, action: str, exc: Exception) -> str:
-		if isinstance(exc, sqlite3.IntegrityError):
+		if isinstance(exc, psycopg2.IntegrityError):
 			return f"No se pudo {action}: conflicto de asignación. Intenta recargar y repetir."
-		if isinstance(exc, sqlite3.OperationalError):
+		if isinstance(exc, psycopg2.OperationalError):
 			return f"No se pudo {action}: problema de base de datos."
 		return f"No se pudo {action}."
 
@@ -241,10 +241,10 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._students = fetch_all(
 			"""
 			SELECT
-				u.idUsuario,
+				u.idUsuario AS "idUsuario",
 				u.nombre,
-				u.apPaterno,
-				u.apMaterno,
+				u.apPaterno AS "apPaterno",
+				u.apMaterno AS "apMaterno",
 				u.matricula,
 				t.nombreTipoUsuario AS tipo
 			FROM usuarios u
@@ -257,8 +257,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		lockers_available = fetch_all(
 			"""
 			SELECT
-				l.idLocker,
-				a.nombreArea
+				l.idLocker AS "idLocker",
+				a.nombreArea AS "nombreArea"
 			FROM lockers l
 			LEFT JOIN area_lockers a ON a.idArea = l.idArea
 			WHERE l.estado = 'activo'
@@ -288,14 +288,14 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._assignments = fetch_all(
 			"""
 			SELECT
-				al.idLockerAsignado,
-				al.idUsuario,
-				al.idLocker,
+				al.idLockerAsignado AS "idLockerAsignado",
+				al.idUsuario AS "idUsuario",
+				al.idLocker AS "idLocker",
 				u.nombre,
-				u.apPaterno,
-				u.apMaterno,
+				u.apPaterno AS "apPaterno",
+				u.apMaterno AS "apMaterno",
 				u.matricula,
-				al.fechaHoraReg
+				al.fechaHoraReg AS "fechaHoraReg"
 			FROM asignacion_locker al
 			JOIN usuarios u ON u.idUsuario = al.idUsuario
 			WHERE al.estado = 'activo'
@@ -396,7 +396,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			"""
 			DELETE FROM asignacion_locker
 			WHERE estado='vencido'
-			  AND (idUsuario=? OR idLocker=?)
+			  AND (idUsuario=%s OR idLocker=%s)
 			""",
 			(user_id, locker_id),
 		)
@@ -404,9 +404,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			"""
 			UPDATE asignacion_locker
 			SET estado='vencido', disponible='si',
-				fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'),
 				modificadoPor=1
-			WHERE idUsuario=? AND estado='activo'
+			WHERE idUsuario=%s AND estado='activo'
 			""",
 			(user_id,),
 		)
@@ -414,9 +413,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			"""
 			UPDATE asignacion_locker
 			SET estado='vencido', disponible='si',
-				fechaHoraAct=strftime('%Y-%m-%dT%H:%M:%S','now','localtime'),
 				modificadoPor=1
-			WHERE idLocker=? AND estado='activo'
+			WHERE idLocker=%s AND estado='activo'
 			""",
 			(locker_id,),
 		)
@@ -438,7 +436,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		locker_id = locker["idLocker"]
 
 		existing_for_user = fetch_one(
-			"SELECT idLocker FROM asignacion_locker WHERE idUsuario=? AND estado='activo'",
+			'SELECT idLocker AS "idLocker" FROM asignacion_locker WHERE idUsuario=%s AND estado=\'activo\'',
 			(user_id,),
 		)
 		if existing_for_user:
@@ -456,7 +454,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 					"""
 					INSERT INTO asignacion_locker
 						(idUsuario, idLocker, disponible, estado, creadoPor)
-					VALUES (?, ?, 'no', 'activo', 1)
+					VALUES (%s, %s, 'no', 'activo', 1)
 					""",
 					(user_id, locker_id),
 				)
@@ -490,14 +488,14 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		try:
 			with db_session() as conn:
 				before = conn.execute(
-					"SELECT COUNT(*) FROM asignacion_locker WHERE idLocker=? AND estado='activo'",
+					"SELECT COUNT(*) AS n FROM asignacion_locker WHERE idLocker=%s AND estado='activo'",
 					(locker_id,),
-				).fetchone()[0]
+				).fetchone()["n"]
 				self._close_active_assignment(conn, user_id, locker_id)
 				after = conn.execute(
-					"SELECT COUNT(*) FROM asignacion_locker WHERE idLocker=? AND estado='activo'",
+					"SELECT COUNT(*) AS n FROM asignacion_locker WHERE idLocker=%s AND estado='activo'",
 					(locker_id,),
-				).fetchone()[0]
+				).fetchone()["n"]
 				updated = 1 if before > after else 0
 		except Exception as exc:
 			self.lbl_feedback.configure(
@@ -532,7 +530,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._manual_btn_refs.clear()
 
 		lockers = fetch_all(
-			"SELECT idLocker FROM lockers WHERE estado='activo' ORDER BY idLocker"
+			'SELECT idLocker AS "idLocker" FROM lockers WHERE estado=\'activo\' ORDER BY idLocker'
 		)
 
 		active_switch_ids = [int(x) for x in DOOR_SWITCH_CONFIG.get("active_lockers", [])]

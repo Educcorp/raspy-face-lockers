@@ -26,6 +26,8 @@ from config import FACE_RECOGNITION_CONFIG, CAMERA_CONFIG
 from config import GPIO_CONFIG
 from config import DOOR_SWITCH_CONFIG
 from ui.i18n import t
+from ui import theme
+from ui.theme import PALETTE, DARK_PALETTE
 from core.gpio_controller import get_locker_gpio_controller
 from core.face_recognition import filter_close_faces as _filter_close_faces
 from services import user_service, locker_service, access_log_service
@@ -49,13 +51,25 @@ class ScanningScreen(ctk.CTkFrame):
     La cámara ocupa toda la ventana con silueta guía superpuesta.
     """
 
-    BG_COLOR   = "#1A1A2E"   # fondo oscuro para contraste con cámara
-    PRIMARY    = "#5B8C5A"
-    SUCCESS    = "#4CAF50"
-    WARNING    = "#D4A34A"
-    DANGER     = "#C75C5C"
-    TEXT_COLOR = "#FFFFFF"
-    MUTED      = "#B0B0B0"
+    # Superficie de cámara/kiosco: se usa el DARK_PALETTE de ui/theme.py (la
+    # misma marca terracota/crema del web, en su variante oscura) en vez de
+    # los grises/azules sueltos de antes, para que esta pantalla comparta
+    # identidad visual con el resto de la app. Los overlays de estado
+    # (éxito/denegado/advertencia) usan los colores vivos de PALETTE para
+    # que se lean bien a distancia.
+    BG_COLOR   = DARK_PALETTE["BG"]
+    SURFACE    = DARK_PALETTE["CARD"]
+    SURFACE_ALT= DARK_PALETTE["SURFACE_ALT"]
+    BORDER     = DARK_PALETTE["BORDER"]
+    PRIMARY    = DARK_PALETTE["ACCENT"]
+    SUCCESS    = PALETTE["SUCCESS"]
+    WARNING    = DARK_PALETTE["WARN"]
+    DANGER     = PALETTE["DANGER"]
+    TEXT_COLOR = DARK_PALETTE["TEXT"]
+    MUTED      = DARK_PALETTE["MUTED"]
+    # Texto oscuro para el overlay de advertencia de puerta (fondo WARN claro);
+    # no es un token de marca, es solo para mantener buen contraste ahí.
+    _DOOR_WARN_TEXT = "#4A3B00"
 
     # Colores de la silueta
     SILHOUETTE_NO_FACE  = (200, 80, 80, 160)    # rojo semi-transparente
@@ -166,7 +180,7 @@ class ScanningScreen(ctk.CTkFrame):
             self,
             width=self.WIN_W,
             height=self.WIN_H,
-            bg="#1A1A2E",
+            bg=self.BG_COLOR,
             highlightthickness=0,
         )
         self.canvas.place(x=0, y=0, relwidth=1, relheight=1)
@@ -175,9 +189,9 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_status = ctk.CTkLabel(
             self,
             text=t("scan.position_face"),
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=theme.font_body(18, "bold"),
             text_color=self.TEXT_COLOR,
-            fg_color="#1A1A2E",
+            fg_color=self.SURFACE,
             corner_radius=10,
             height=44,
             width=390,
@@ -188,9 +202,9 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_hint = ctk.CTkLabel(
             self,
             text="",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            text_color="#FFD54F",
-            fg_color="#1A1A2E",
+            font=theme.font_body(15, "bold"),
+            text_color=self.WARNING,
+            fg_color=self.SURFACE,
             corner_radius=8,
             height=32,
             width=360,
@@ -201,9 +215,9 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts = ctk.CTkLabel(
             self,
             text="",
-            font=ctk.CTkFont(size=13),
+            font=theme.font_body(13),
             text_color=self.WARNING,
-            fg_color="#1A1A2E",
+            fg_color=self.SURFACE,
             corner_radius=8,
             height=30,
             width=260,
@@ -215,7 +229,7 @@ class ScanningScreen(ctk.CTkFrame):
             self,
             width=340,
             height=8,
-            fg_color="#2A2A3E",
+            fg_color=self.SURFACE_ALT,
             progress_color=self.PRIMARY,
             corner_radius=4,
         )
@@ -241,15 +255,15 @@ class ScanningScreen(ctk.CTkFrame):
             self,
             text="" if self._admin_icon_img else "⚙",
             image=self._admin_icon_img,
-            font=ctk.CTkFont(size=14),
-            fg_color="#2A2A4E",
+            font=theme.font_body(14),
+            fg_color=self.SURFACE,
             bg_color="transparent",
-            hover_color="#3A3A6E",
-            text_color="#FFFFFF",
+            hover_color=self.SURFACE_ALT,
+            text_color=self.TEXT_COLOR,
             border_width=1,
-            border_color="#5B8C5A",
+            border_color=self.PRIMARY,
             width=38, height=38,
-            corner_radius=10,
+            corner_radius=999,
             command=self._go_admin_login,
         )
         self.btn_admin.place(x=452, y=44, anchor="center")
@@ -257,7 +271,7 @@ class ScanningScreen(ctk.CTkFrame):
         # ── Overlay de éxito — fondo verde pantalla completa ─────────────────
         self.overlay_bg = ctk.CTkFrame(
             self,
-            fg_color="#5B8C5A",
+            fg_color=PALETTE["SUCCESS"],
             corner_radius=0,
             width=self.WIN_W, height=self.WIN_H,
             border_width=0,
@@ -297,8 +311,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_name = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(26, "bold"),
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
             wraplength=390,
             justify="center",
@@ -309,8 +323,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_matricula = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=15),
-            text_color="#D4EDDA",
+            font=theme.font_body(15),
+            text_color=PALETTE["SUCCESS_SOFT"],
             fg_color="transparent",
             anchor="center",
         )
@@ -319,8 +333,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_main = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=15),      # sin negrita, igual que matrícula
-            text_color="#FFFFFF",
+            font=theme.font_body(15),      # sin negrita, igual que matrícula
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
             anchor="center",
         )
@@ -329,8 +343,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_locker_label = ctk.CTkLabel(
             self._success_inner,
             text="Locker",
-            font=ctk.CTkFont(size=26, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(26, "bold"),
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
             anchor="center",
         )
@@ -339,8 +353,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_locker_big = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=88, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(88, "bold"),
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
             anchor="center",
         )
@@ -349,8 +363,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_sub = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=26, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(26, "bold"),
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
             wraplength=390,
             justify="center",
@@ -361,8 +375,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_countdown = ctk.CTkLabel(
             self._success_inner,
             text="",
-            font=ctk.CTkFont(size=13),
-            text_color="#D4EDDA",
+            font=theme.font_body(13),
+            text_color=PALETTE["SUCCESS_SOFT"],
             fg_color="transparent",
             anchor="center",
             justify="center",
@@ -374,7 +388,7 @@ class ScanningScreen(ctk.CTkFrame):
         # ── Overlay de acceso denegado (fondo completamente rojo) ─────────────
         self.denied_overlay = ctk.CTkFrame(
             self,
-            fg_color="#C0392B",
+            fg_color=PALETTE["DANGER"],
             corner_radius=0,
             width=self.WIN_W,
             height=self.WIN_H,
@@ -385,16 +399,16 @@ class ScanningScreen(ctk.CTkFrame):
         ctk.CTkLabel(
             _di,
             text="✗",
-            font=ctk.CTkFont(size=90, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(90, "bold"),
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
         ).pack(pady=(0, 16))
 
         ctk.CTkLabel(
             _di,
             text=t("scan.denied_title"),
-            font=ctk.CTkFont(size=36, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(36, "bold"),
+            text_color=PALETTE["WHITE"],
             fg_color="transparent",
             wraplength=390,
             justify="center",
@@ -403,7 +417,7 @@ class ScanningScreen(ctk.CTkFrame):
         # ── Overlay de alerta de puerta abierta (pantalla completa, 5 s) ────
         self.door_warning_overlay = ctk.CTkFrame(
             self,
-            fg_color="#F3C94A",
+            fg_color=PALETTE["WARN"],
             corner_radius=0,
             width=self.WIN_W,
             height=self.WIN_H,
@@ -414,16 +428,16 @@ class ScanningScreen(ctk.CTkFrame):
         ctk.CTkLabel(
             _dw,
             text="⚠",
-            font=ctk.CTkFont(size=64, weight="bold"),
-            text_color="#4A3B00",
+            font=theme.font_display(64, "bold"),
+            text_color=self._DOOR_WARN_TEXT,
             fg_color="transparent",
         ).pack(pady=(0, 4))
 
         self.lbl_door_alert_title = ctk.CTkLabel(
             _dw,
             text=t("door.alert_title"),
-            font=ctk.CTkFont(size=24, weight="bold"),
-            text_color="#4A3B00",
+            font=theme.font_display(24, "bold"),
+            text_color=self._DOOR_WARN_TEXT,
             fg_color="transparent",
             wraplength=390,
             justify="center",
@@ -433,8 +447,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_door_warning_locker = ctk.CTkLabel(
             _dw,
             text="",
-            font=ctk.CTkFont(size=130, weight="bold"),
-            text_color="#4A3B00",
+            font=theme.font_display(130, "bold"),
+            text_color=self._DOOR_WARN_TEXT,
             fg_color="transparent",
         )
         self.lbl_door_warning_locker.pack(pady=(0, 0))
@@ -442,8 +456,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_door_alert_subtitle = ctk.CTkLabel(
             _dw,
             text=t("door.alert_subtitle"),
-            font=ctk.CTkFont(size=15),
-            text_color="#4A3B00",
+            font=theme.font_body(15),
+            text_color=self._DOOR_WARN_TEXT,
             fg_color="transparent",
         )
         self.lbl_door_alert_subtitle.pack(pady=(4, 0))
@@ -765,21 +779,21 @@ class ScanningScreen(ctk.CTkFrame):
             self.WIN_W // 2, 150,
             text=t("scan.camera_error_title"),
             font=("Arial", 24, "bold"),
-            fill="#FF6B6B",
+            fill=self.DANGER,
             justify="center"
         )
         self.canvas.create_text(
             self.WIN_W // 2, 300,
             text=error_msg,
             font=("Arial", 14),
-            fill="#FFFFFF",
+            fill=self.TEXT_COLOR,
             justify="center",
             width=360
         )
-        
+
         self.lbl_status.configure(
             text=t("scan.camera_unavailable"),
-            text_color="#FF6B6B"
+            text_color=self.DANGER
         )
 
 
@@ -803,24 +817,24 @@ class ScanningScreen(ctk.CTkFrame):
                         if pct >= 100:
                             self.lbl_status.configure(
                                 text=t("scan.identifying"),
-                                text_color="#A5D6A7",
+                                text_color=PALETTE["SUCCESS_SOFT"],
                             )
                         else:
                             self.lbl_status.configure(
                                 text=t("scan.scanning_pct", pct=pct),
-                                text_color="#FFD54F",
+                                text_color=self.WARNING,
                             )
                     else:
                         self.scan_progress_bar.set(0)
                         self.lbl_status.configure(
                             text=t("scan.move_face"),
-                            text_color="#FFD54F",
+                            text_color=self.WARNING,
                         )
                 else:
                     self.scan_progress_bar.set(0)
                     self.lbl_status.configure(
                         text=t("scan.position_frame"),
-                        text_color="#FFFFFF",
+                        text_color=self.TEXT_COLOR,
                     )
 
                 # Distance hint (shown regardless of liveness state)
@@ -867,7 +881,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._last_failed_closest = None
         self._found_user = None
         self.lbl_hint.configure(text="")
-        self.lbl_status.configure(text=t("scan.starting_camera"), text_color="#FFFFFF")
+        self.lbl_status.configure(text=t("scan.starting_camera"), text_color=self.TEXT_COLOR)
         self.lbl_attempts.configure(text="")
         self.scan_progress_bar.set(0)
         self.overlay_bg.place_forget()
@@ -902,7 +916,7 @@ class ScanningScreen(ctk.CTkFrame):
             self._camera_thread = threading.Thread(target=self._camera_loop, daemon=True)
             self._camera_thread.start()
             self.after(1000, lambda: self.lbl_status.configure(
-                text=t("scan.position_face"), text_color="#FFFFFF"
+                text=t("scan.position_face"), text_color=self.TEXT_COLOR
             ))
 
     def on_hide(self) -> None:
@@ -961,8 +975,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_success_matricula.pack(pady=(0, 16))
 
         if locker_num:
-            self.overlay_bg.configure(fg_color="#5B8C5A")          # verde: locker desbloqueado
-            self.lbl_status.configure(text=t("scan.access_granted"), text_color="#A5D6A7")
+            self.overlay_bg.configure(fg_color=PALETTE["SUCCESS"])  # verde: locker desbloqueado
+            self.lbl_status.configure(text=t("scan.access_granted"), text_color=PALETTE["SUCCESS_SOFT"])
             self.lbl_success_main.configure(text=t("scan.unlocked"))
             self.lbl_success_main.pack(pady=(0, 4))
             self.lbl_success_locker_label.configure(text=t("scan.locker_label"))
@@ -970,8 +984,8 @@ class ScanningScreen(ctk.CTkFrame):
             self.lbl_success_locker_big.configure(text=str(locker_num))
             self.lbl_success_locker_big.pack(pady=(0, 6))
         else:
-            self.overlay_bg.configure(fg_color="#B8860B")          # amarillo: sin locker
-            self.lbl_status.configure(text=t("scan.identity_verified"), text_color="#FFF8E1")
+            self.overlay_bg.configure(fg_color=PALETTE["WARN"])     # amarillo: sin locker
+            self.lbl_status.configure(text=t("scan.identity_verified"), text_color=PALETTE["WARN_SOFT"])
             self.lbl_success_main.configure(text=t("scan.success_identity"))
             self.lbl_success_main.pack(pady=(0, 8))
             self.lbl_success_sub.configure(text=t("scan.success_no_locker"))
@@ -1016,7 +1030,7 @@ class ScanningScreen(ctk.CTkFrame):
             )
             self.lbl_status.configure(
                 text=t("scan.position_face"),
-                text_color="#FFFFFF",
+                text_color=self.TEXT_COLOR,
             )
 
     def _dismiss_denied_overlay(self) -> None:
@@ -1376,10 +1390,12 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Overlay de autenticación por PIN ──────────────────────────────────────
 
     def _build_pin_overlay(self) -> None:
-        """Overlay de dos pasos: Paso 1 → matrícula, Paso 2 → PIN."""
+        """Overlay de dos pasos: Paso 1 → matrícula, Paso 2 → PIN.
+        Se muestra tras acceso denegado (agotar intentos faciales) como
+        método alterno de acceso."""
         self.pin_overlay = ctk.CTkFrame(
             self,
-            fg_color="#1A1A2E",
+            fg_color=self.BG_COLOR,
             corner_radius=0,
             width=self.WIN_W,
             height=self.WIN_H,
@@ -1388,15 +1404,15 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_pin_step = ctk.CTkLabel(
             self.pin_overlay,
             text=t("pin.step1"),
-            font=ctk.CTkFont(size=11),
-            text_color=self.MUTED,
+            font=theme.font_body(11, "bold"),
+            text_color=self.PRIMARY,
         )
         self.lbl_pin_step.pack(pady=(52, 2))
 
         self.lbl_pin_title = ctk.CTkLabel(
             self.pin_overlay,
             text=t("pin.title_enter_matricula"),
-            font=ctk.CTkFont(size=22, weight="bold"),
+            font=theme.font_display(24, "bold"),
             text_color=self.TEXT_COLOR,
         )
         self.lbl_pin_title.pack(pady=(0, 4))
@@ -1404,7 +1420,7 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_pin_instruction = ctk.CTkLabel(
             self.pin_overlay,
             text=t("pin.instruction_matricula"),
-            font=ctk.CTkFont(size=13),
+            font=theme.font_body(13),
             text_color=self.MUTED,
         )
         self.lbl_pin_instruction.pack(pady=(0, 16))
@@ -1412,8 +1428,10 @@ class ScanningScreen(ctk.CTkFrame):
         # Campo de entrada
         input_frame = ctk.CTkFrame(
             self.pin_overlay,
-            fg_color="#2A2A3E",
-            corner_radius=12,
+            fg_color=self.SURFACE,
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
             width=340,
             height=60,
         )
@@ -1423,20 +1441,21 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_pin_display = ctk.CTkLabel(
             input_frame,
             text="",
-            font=ctk.CTkFont(size=26, weight="bold"),
-            text_color="#FFFFFF",
+            font=theme.font_display(28, "bold"),
+            text_color=self.TEXT_COLOR,
         )
         self.lbl_pin_display.place(relx=0.5, rely=0.5, anchor="center")
 
         self.lbl_pin_error = ctk.CTkLabel(
             self.pin_overlay,
             text="",
-            font=ctk.CTkFont(size=13),
+            font=theme.font_body(13, "bold"),
             text_color=self.DANGER,
         )
         self.lbl_pin_error.pack(pady=(4, 8))
 
-        # Teclado numérico 3×4
+        # Teclado numérico 3×4 — botones circulares, mismo lenguaje visual
+        # que los botones "pill" del resto de la app (ui/components.py).
         numpad_frame = ctk.CTkFrame(self.pin_overlay, fg_color="transparent")
         numpad_frame.pack()
 
@@ -1451,43 +1470,45 @@ class ScanningScreen(ctk.CTkFrame):
             for col_idx, label in enumerate(row):
                 if label == "⌫":
                     cmd = self._pin_backspace
-                    fg = "#3A3A5E"
-                    hover = "#4A4A7E"
+                    fg = self.SURFACE_ALT
+                    hover = self.DANGER
+                    txt = self.TEXT_COLOR
                 elif label == "✓":
                     cmd = self._pin_confirm
                     fg = self.PRIMARY
-                    hover = "#6A9F69"
+                    hover = DARK_PALETTE["ACCENT_HOVER"]
+                    txt = PALETTE["WHITE"]
                 else:
                     digit = label
                     cmd = lambda d=digit: self._pin_digit(d)
-                    fg = "#2A2A4E"
-                    hover = "#3A3A6E"
+                    fg = self.SURFACE
+                    hover = self.SURFACE_ALT
+                    txt = self.TEXT_COLOR
 
                 ctk.CTkButton(
                     numpad_frame,
                     text=label,
-                    font=ctk.CTkFont(size=28, weight="bold"),
+                    font=theme.font_display(26, "bold"),
                     fg_color=fg,
                     hover_color=hover,
-                    text_color="#FFFFFF",
-                    width=96,
-                    height=72,
-                    corner_radius=12,
+                    text_color=txt,
+                    width=92, height=72,
+                    corner_radius=999,
                     command=cmd,
                 ).grid(row=row_idx, column=col_idx, padx=8, pady=8)
 
         ctk.CTkButton(
             self.pin_overlay,
             text=t("pin.cancel"),
-            font=ctk.CTkFont(size=14),
+            font=theme.font_body(14, "bold"),
             fg_color="transparent",
-            hover_color="#333355",
+            hover_color=self.SURFACE_ALT,
             text_color=self.MUTED,
             border_width=1,
-            border_color=self.MUTED,
+            border_color=self.BORDER,
             width=200,
             height=44,
-            corner_radius=10,
+            corner_radius=999,
             command=self._cancel_pin,
         ).pack(pady=(16, 0))
 
@@ -1655,7 +1676,7 @@ class ScanningScreen(ctk.CTkFrame):
         """Pantalla de bloqueo mostrada tras agotar intentos de PIN."""
         self.lock_overlay = ctk.CTkFrame(
             self,
-            fg_color="#0D0D1A",
+            fg_color=self.BG_COLOR,
             corner_radius=0,
             width=self.WIN_W,
             height=self.WIN_H,
@@ -1664,21 +1685,21 @@ class ScanningScreen(ctk.CTkFrame):
         ctk.CTkLabel(
             self.lock_overlay,
             text=t("lock.blocked"),
-            font=ctk.CTkFont(size=48, weight="bold"),
+            font=theme.font_display(44, "bold"),
             text_color=self.DANGER,
         ).pack(pady=(220, 8))
 
         ctk.CTkLabel(
             self.lock_overlay,
             text=t("lock.too_many_fails"),
-            font=ctk.CTkFont(size=16),
+            font=theme.font_body(16),
             text_color=self.MUTED,
         ).pack(pady=(0, 36))
 
         self.lbl_lock_countdown = ctk.CTkLabel(
             self.lock_overlay,
             text="",
-            font=ctk.CTkFont(size=18),
+            font=theme.font_body(18, "bold"),
             text_color=self.TEXT_COLOR,
         )
         self.lbl_lock_countdown.pack()
@@ -1686,7 +1707,7 @@ class ScanningScreen(ctk.CTkFrame):
         ctk.CTkLabel(
             self.lock_overlay,
             text=t("lock.auto_unlock"),
-            font=ctk.CTkFont(size=12),
+            font=theme.font_body(12),
             text_color=self.MUTED,
         ).pack(pady=(12, 0))
 

@@ -18,7 +18,7 @@ import threading
 import tkinter as tk
 from typing import Optional
 import logging
-import sqlite3
+import psycopg2
 import hashlib
 
 import customtkinter as ctk
@@ -369,11 +369,14 @@ class _Step2TypeUnit(ctk.CTkFrame):
 
     def on_enter(self, data: dict) -> None:
         self._tipos = fetch_all(
-            "SELECT idTipoUsuario, nombreTipoUsuario FROM tipo_usuarios WHERE estado='activo' ORDER BY nombreTipoUsuario"
+            'SELECT idTipoUsuario AS "idTipoUsuario", nombreTipoUsuario AS "nombreTipoUsuario" '
+            "FROM tipo_usuarios WHERE estado='activo' ORDER BY nombreTipoUsuario"
         )
         self._tipos = filter_assignable_user_types(self._tipos)
         self._unidades = fetch_all(
-            "SELECT idUnidadAcademica, nombreUnidadAcademica FROM unidad_academica WHERE estado='activo' ORDER BY nombreUnidadAcademica"
+            'SELECT idUnidadAcademica AS "idUnidadAcademica", '
+            'nombreUnidadAcademica AS "nombreUnidadAcademica" '
+            "FROM unidad_academica WHERE estado='activo' ORDER BY nombreUnidadAcademica"
         )
         tipo_names   = [t["nombreTipoUsuario"]    for t in self._tipos]
         unidad_names = [u["nombreUnidadAcademica"] for u in self._unidades]
@@ -1054,7 +1057,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
             # Modo normal: crear usuario nuevo con encodings
             try:
                 user_id = user_service.create_user_with_encodings(d, poses)
-            except sqlite3.IntegrityError as exc:
+            except psycopg2.IntegrityError as exc:
                 logger.error("IntegrityError al guardar usuario: %s", exc)
                 self.btn_save.configure(state="normal")
                 self.lbl_status.configure(

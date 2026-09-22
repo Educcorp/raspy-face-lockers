@@ -9,18 +9,40 @@ from utils.validators import (
     validate_name, validate_tel,
 )
 from webapp.auth import (
-    can_assign_privileged_user_types, can_edit_catalogs,
-    filter_assignable_user_types, is_superadmin, login_required,
+    ROLE_USER, can_assign_privileged_user_types, can_edit_catalogs,
+    filter_assignable_user_types, is_superadmin, login_required, normalize_role,
 )
 from webapp.services import catalog_service, user_service
 
 bp = Blueprint("users", __name__, url_prefix="/usuarios")
 
 
+def _is_privileged(row: dict) -> bool:
+    """True si el usuario es Admin o Superadmin (no un usuario 'universal')."""
+    return normalize_role(row.get("tipo")) != ROLE_USER
+
+
+def _can_manage(row: dict) -> bool:
+    """Puede ver/editar `row` si es superadmin, si es su propio perfil
+    (botón "Mi perfil" — cualquier admin puede editarse a sí mismo, cambiar
+    su PIN o su rostro), o si el objetivo no es un usuario privilegiado."""
+    if is_superadmin():
+        return True
+    own_id = (g.user or {}).get("idusuario")
+    if own_id is not None and row.get("idusuario") == own_id:
+        return True
+    return not _is_privileged(row)
+
+
 @bp.route("/")
 @login_required
 def list_users():
-    return render_template("users/list.html", users=user_service.get_all_users())
+    users = user_service.get_all_users()
+    if not is_superadmin():
+        # Un admin solo da de alta y ve usuarios universales — nunca a otros
+        # admins ni al superadmin, que es quien controla esas cuentas.
+        users = [u for u in users if not _is_privileged(u)]
+    return render_template("users/list.html", users=users)
 
 
 def _form_context(row: dict | None = None):
@@ -52,6 +74,10 @@ def edit_user(user_id: int):
     row = user_service.get_user_by_id(user_id)
     if not row:
         flash("Usuario no encontrado.", "warning")
+        return redirect(url_for("users.list_users"))
+
+    if not _can_manage(row):
+        flash("No tienes permiso para ver ni editar este usuario.", "danger")
         return redirect(url_for("users.list_users"))
 
     if request.method == "POST":
@@ -91,15 +117,25 @@ def _validate_and_save(user_id: int | None) -> str | None:
         if err:
             return err
 
+    assignable = filter_assignable_user_types(catalog_service.get_all_tipos_usuario())
+    assignable_ids = {t["idtipousuario"] for t in assignable}
+
+    if not tipo_id and not is_superadmin():
+        # El campo "Tipo de usuario" está oculto para admin (solo tiene sentido para superadmin).
+        if user_id is not None:
+            # Editando: se conserva el tipo actual del usuario, un admin no puede cambiarlo.
+            current = user_service.get_user_by_id(user_id)
+            tipo_id = current["idtipousuario"] if current else None
+        elif len(assignable) == 1:
+            # Alta nueva: único tipo permitido para admin, se asigna automático.
+            tipo_id = assignable[0]["idtipousuario"]
+
     if not tipo_id or not unidad_id:
         return "Selecciona un tipo de usuario y una unidad académica."
     
     if permiso_activacion not in ("recurso_compartido", "locker", "ambos"):
         return "Selecciona permisos de activación válidos."
 
-    assignable_ids = {t["idtipousuario"] for t in filter_assignable_user_types(
-        catalog_service.get_all_tipos_usuario()
-    )}
     if user_id is None and tipo_id not in assignable_ids and not can_assign_privileged_user_types():
         return "No tienes permiso para asignar ese tipo de usuario."
 
@@ -142,6 +178,10 @@ def set_status(user_id: int):
     if not can_edit_catalogs():
         flash("No tienes permiso para esta acción.", "danger")
         return redirect(url_for("users.list_users"))
+    target = user_service.get_user_by_id(user_id)
+    if target and not _can_manage(target):
+        flash("No tienes permiso para esta acción.", "danger")
+        return redirect(url_for("users.list_users"))
     estado = request.form.get("estado", "activo")
     actor_id = g.user["idusuario"] or 1
     user_service.set_user_status(user_id, estado, actor_id)
@@ -153,6 +193,10 @@ def set_status(user_id: int):
 @login_required
 def reset_pin(user_id: int):
     if not can_edit_catalogs():
+        flash("No tienes permiso para esta acción.", "danger")
+        return redirect(url_for("users.list_users"))
+    target = user_service.get_user_by_id(user_id)
+    if target and not _can_manage(target):
         flash("No tienes permiso para esta acción.", "danger")
         return redirect(url_for("users.list_users"))
     new_pin = secrets.choice(range(1000, 9999))

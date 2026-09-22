@@ -254,6 +254,9 @@ tbody tr:hover { background: var(--surface-alt); }
 .badge.suspendido, .badge.vencido { background: var(--danger-soft); color: var(--danger); }
 .badge.mantenimiento { background: var(--warn-soft); color: var(--warn); }
 .badge.pendiente { background: var(--warn-soft); color: var(--warn); }
+.badge.perm-locker { background: var(--accent-soft); color: var(--accent-hover); }
+.badge.perm-recurso { background: var(--sage-soft); color: var(--sage); }
+.badge.perm-ambos { background: var(--warn-soft); color: var(--warn); }
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 .btn {
@@ -530,6 +533,61 @@ tbody tr:hover { background: var(--surface-alt); }
 }
 .inline-select:hover { border-color: var(--accent); }
 .inline-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ── Confirm modal (reemplaza confirm() nativo del navegador) ────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(44, 36, 29, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modal-fade-in 0.15s ease;
+}
+.modal-overlay[hidden] { display: none; }
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 30px 28px 24px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  animation: modal-pop-in 0.18s ease;
+}
+
+@keyframes modal-pop-in {
+  from { transform: scale(0.94) translateY(6px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.modal-icon {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  background: var(--danger-soft);
+  color: var(--danger);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px;
+}
+
+.modal-card p {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 22px;
+  line-height: 1.5;
+}
+
+.modal-actions { display: flex; gap: 10px; }
+.modal-actions .btn { flex: 1; justify-content: center; }
 
 /* ── Inline row-edit panel (tables) ───────────────────────────────────── */
 .row-edit summary {

@@ -43,7 +43,7 @@
             </button>
           </form>
           <form method="post" action="{{ url_for('catalogs.delete_area', area_id=a.idarea) }}"
-                style="display:inline" onsubmit="return confirm('¿Eliminar esta área permanentemente?');">
+                style="display:inline" data-confirm="¿Eliminar esta área permanentemente?">
             <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
           </form>
         </td>

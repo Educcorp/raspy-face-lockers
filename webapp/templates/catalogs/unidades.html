@@ -38,7 +38,7 @@
             </button>
           </form>
           <form method="post" action="{{ url_for('catalogs.delete_unidad', unidad_id=u.idunidadacademica) }}"
-                style="display:inline" onsubmit="return confirm('¿Eliminar esta unidad permanentemente?');">
+                style="display:inline" data-confirm="¿Eliminar esta unidad permanentemente?">
             <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
           </form>
         </td>

@@ -72,7 +72,7 @@
               </form>
               {% if g.user.role == 'superadmin' %}
               <form method="post" action="{{ url_for('lockers.delete_locker', locker_id=l.idlocker) }}"
-                    onsubmit="return confirm('¿Eliminar este locker permanentemente?');" style="margin-top:10px;">
+                    data-confirm="¿Eliminar este locker permanentemente?" style="margin-top:10px;">
                 <button class="btn btn-sm btn-danger" type="submit" style="width:100%;"
                         {% if loop.index0 < 4 %}disabled title="Los 4 lockers físicos originales no se pueden eliminar."{% endif %}>
                   Eliminar locker

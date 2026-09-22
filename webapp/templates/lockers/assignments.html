@@ -41,7 +41,7 @@
         <td>{{ a.matricula }}</td>
         <td>{{ a.fechahorareg }}</td>
         <td>
-          <form method="post" onsubmit="return confirm('¿Liberar este locker?');">
+          <form method="post" data-confirm="¿Liberar este locker?">
             <input type="hidden" name="action" value="release">
             <input type="hidden" name="idLockerAsignado" value="{{ a.idlockerasignado }}">
             <button class="btn btn-sm btn-danger" type="submit">Liberar</button>

@@ -38,6 +38,7 @@
         <label>Teléfono (opcional)</label>
         <input type="text" name="tel" value="{{ row.tel if row else '' }}">
       </div>
+      {% if g.user.role == 'superadmin' %}
       <div class="form-row">
         <label>Tipo de usuario</label>
         <select name="idTipoUsuario" required>
@@ -48,6 +49,7 @@
           {% endfor %}
         </select>
       </div>
+      {% endif %}
       <div class="form-row">
         <label>Unidad académica</label>
         <select name="idUnidadAcademica" required>
@@ -99,7 +101,7 @@
     </form>
     {% if g.user.role == 'superadmin' %}
     <form method="post" action="{{ url_for('users.delete_user', user_id=row.idusuario) }}"
-          onsubmit="return confirm('¿Eliminar este usuario permanentemente? Esta acción no se puede deshacer.');">
+          data-confirm="¿Eliminar este usuario permanentemente? Esta acción no se puede deshacer.">
       <button class="btn btn-danger" type="submit">Eliminar permanentemente</button>
     </form>
     {% endif %}

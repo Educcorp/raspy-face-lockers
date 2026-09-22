@@ -46,15 +46,59 @@ def filter_close_faces(faces: list, frame) -> list:
     return [f for f in faces if (f.get("box") or (0, 0, 0, 0))[2] >= min_w]
 
 
+# Rutas de site-packages del sistema. En Raspberry Pi, dlib, onnxruntime y
+# picamera2 se instalan con apt (PEP 668 impide hacerlo con pip), así que viven
+# SOLO en el Python del sistema. Si la app se lanza desde un venv creado sin
+# --system-site-packages, esos módulos no se ven.
+def _system_site_paths() -> list[str]:
+    """Rutas donde viven los paquetes fuera del venv.
+
+    Incluye el site-packages de USUARIO (~/.local/...), no solo los
+    dist-packages del sistema: dlib está instalado ahí con `pip --user`, y un
+    venv lo excluye igual que a los del sistema.
+    """
+    ver = f"python3.{sys.version_info.minor}"
+    paths = [
+        f"/usr/lib/python3/dist-packages",
+        f"/usr/local/lib/{ver}/dist-packages",
+        f"/usr/lib/{ver}/dist-packages",
+    ]
+    try:
+        # En un venv, getusersitepackages() sigue devolviendo la ruta real
+        # del usuario aunque el venv la tenga deshabilitada.
+        paths.insert(0, site.getusersitepackages())
+    except Exception:
+        paths.insert(0, str(Path.home() / ".local" / "lib" / ver / "site-packages"))
+    return paths
+
+
+def _add_system_site_packages() -> None:
+    """Añade esas rutas a sys.path (idempotente)."""
+    for path in _system_site_paths():
+        if path and path not in sys.path and Path(path).is_dir():
+            sys.path.append(path)
+
+
 _DLIB_IMPORT_ERROR: str | None = None
 try:
     import dlib
     _DLIB_AVAILABLE = True
-except ImportError as e:
-    dlib = None  # type: ignore
-    _DLIB_AVAILABLE = False
-    _DLIB_IMPORT_ERROR = str(e)
-    logger.error(f"✗ dlib no se pudo importar: {e}")
+except ImportError:
+    # Segundo intento desde el sistema. Sin esto, arrancar desde el venv dejaba
+    # el reconocimiento en modo fallback 'grayscale 16x8' silenciosamente: los
+    # rostros guardados son 'dlib_resnet_v1', así que NINGUNO podía coincidir y
+    # todo acceso se denegaba. El log decía "Embeddings dlib: OK" porque
+    # is_ready también es True en modo fallback.
+    _add_system_site_packages()
+    try:
+        import dlib
+        _DLIB_AVAILABLE = True
+        logger.info("✓ dlib importado desde site-packages del sistema")
+    except ImportError as e:
+        dlib = None  # type: ignore
+        _DLIB_AVAILABLE = False
+        _DLIB_IMPORT_ERROR = str(e)
+        logger.error(f"✗ dlib no se pudo importar: {e}")
 
 
 # ── Helper: Corrección de iluminación mejorada ──────────────────────────────
@@ -138,6 +182,25 @@ def _import_picamera2_from_system():
 
 # ── Face Detection ─────────────────────────────────────────────────────────
 
+# Ancho al que se reduce el frame antes de detectar. La cámara entrega
+# 1296x972, pero los detectores no ganan nada con esa resolución y sí pagan
+# mucho: se trabaja a 400px de ancho y las cajas se reescalan después.
+_DETECTION_WIDTH = 400
+
+
+def _downscale_for_detection(frame: np.ndarray) -> Tuple[np.ndarray, float]:
+    """Reduce el frame a _DETECTION_WIDTH de ancho.
+
+    Devuelve (imagen_reducida, escala), donde `escala` es el factor aplicado:
+    una coordenada de la imagen reducida se lleva al frame original
+    dividiéndola entre `escala`.
+    """
+    h, w = frame.shape[:2]
+    if w <= _DETECTION_WIDTH:
+        return frame, 1.0
+    scale = _DETECTION_WIDTH / float(w)
+    return cv2.resize(frame, (int(w * scale), int(h * scale))), scale
+
 class FaceDetector:
     """
     Detección de rostros usando dlib HOG (primario) + Haar cascade (fallback).
@@ -164,29 +227,43 @@ class FaceDetector:
 
     def detect(self, frame: np.ndarray) -> List[Dict]:
         """Detecta rostros en un frame BGR. Retorna lista de dicts con 'box'."""
-        faces = self._detect_hog(frame)
+        # La reducción y el CLAHE se hacen UNA vez y se comparten con ambos
+        # detectores: antes, cuando HOG no encontraba nada, Haar repetía todo
+        # el preprocesado desde el frame original.
+        try:
+            small_bgr, scale = _downscale_for_detection(frame)
+            prepared = (enhance_illumination(small_bgr), scale)
+        except Exception as exc:
+            logger.debug("Preprocesado de detección falló: %s", exc)
+            prepared = None
+
+        faces = self._detect_hog(frame, prepared)
         if not faces and self._haar_cascade is not None:
-            faces = self._detect_haar(frame)
+            faces = self._detect_haar(frame, prepared)
         return faces
 
-    def _detect_hog(self, frame: np.ndarray) -> List[Dict]:
-        """Detector HOG de dlib – rápido y preciso para caras frontales."""
+    def _detect_hog(self, frame: np.ndarray, prepared=None) -> List[Dict]:
+        """Detector HOG de dlib – rápido y preciso para caras frontales.
+
+        `prepared` es la tupla (imagen_bgr_reducida_y_ecualizada, escala) que
+        ya calculó detect(); si viene None se calcula aquí.
+        """
         if self._hog_detector is None:
             return []
         try:
-            # OPTIMIZADO: Mejorar iluminación antes de detección
-            enhanced = enhance_illumination(frame)
+            # Se reduce PRIMERO y se ecualiza después. Al revés, el CLAHE
+            # corría sobre el frame completo (1296x972 = ~39 ms) para luego
+            # tirar el 90% de esos píxeles al escalar a 400px. Sobre la imagen
+            # ya reducida cuesta una fracción y la detección no cambia, porque
+            # es exactamente la imagen que ve el detector.
+            if prepared is None:
+                small_bgr, scale = _downscale_for_detection(frame)
+                enhanced = enhance_illumination(small_bgr)
+            else:
+                enhanced, scale = prepared
 
             # dlib necesita RGB
-            rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
-            # Reducir resolución para velocidad en Pi
-            h, w = rgb.shape[:2]
-            scale = 1.0
-            if w > 400:
-                scale = 400.0 / w
-                small = cv2.resize(rgb, (int(w * scale), int(h * scale)))
-            else:
-                small = rgb
+            small = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
 
             dets = self._hog_detector(small, 0)  # 0 = no upsampling
 
@@ -205,16 +282,26 @@ class FaceDetector:
             logger.debug(f"HOG detection error: {e}")
             return []
 
-    def _detect_haar(self, frame: np.ndarray) -> List[Dict]:
-        """Fallback Haar cascade."""
+    def _detect_haar(self, frame: np.ndarray, prepared=None) -> List[Dict]:
+        """Fallback Haar cascade. `prepared`: ver _detect_hog."""
         try:
-            # OPTIMIZADO: Mejorar iluminación antes de detección
-            enhanced = enhance_illumination(frame)
+            # Mismo criterio que _detect_hog: detectMultiScale sobre el frame
+            # completo costaba ~151 ms por cuadro. Se trabaja sobre la imagen
+            # reducida y las cajas se reescalan a coordenadas del frame real.
+            if prepared is None:
+                small_bgr, scale = _downscale_for_detection(frame)
+                enhanced = enhance_illumination(small_bgr)
+            else:
+                enhanced, scale = prepared
             gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+            # minSize acompaña la escala: 60px en el frame original son
+            # 60*scale px en la imagen reducida.
+            min_side = max(20, int(60 * scale))
             rects = self._haar_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60)
+                gray, scaleFactor=1.1, minNeighbors=4, minSize=(min_side, min_side)
             )
-            return [{"box": (x, y, w, h), "confidence": 0.8}
+            return [{"box": (int(x / scale), int(y / scale),
+                             int(w / scale), int(h / scale)), "confidence": 0.8}
                     for (x, y, w, h) in rects] if len(rects) > 0 else []
         except Exception as e:
             logger.debug(f"Haar detection error: {e}")
@@ -467,7 +554,13 @@ class FaceEmbeddingExtractor:
             roi = frame_rgb[ry1:ry2, rx1:rx2]
             if roi.size:
                 try:
-                    dets = self._hog_detector(roi, 1)  # 1 = upsample, más preciso
+                    # El upsample duplica la imagen antes de buscar, lo que
+                    # cuadruplica el costo (se midió 343 ms en un ROI de
+                    # 720x720 contra 82 ms sin él). Solo hace falta cuando la
+                    # cara es pequeña: HOG necesita ~80px de lado para
+                    # detectarla, así que por encima de ese margen se omite.
+                    upsample = 1 if max(w, h) < 150 else 0
+                    dets = self._hog_detector(roi, upsample)
                     if dets:
                         d = max(dets, key=lambda r: r.width() * r.height())
                         return dlib.rectangle(
@@ -525,10 +618,17 @@ class FaceEmbeddingExtractor:
 try:
     import onnxruntime as ort
     _ORT_AVAILABLE = True
-except ImportError as e:
-    ort = None  # type: ignore
-    _ORT_AVAILABLE = False
-    logger.warning(f"⚠ onnxruntime no disponible ({e}); anti-spoofing deshabilitado")
+except ImportError:
+    # Igual que dlib: en la Pi se instala con apt y solo existe en el Python
+    # del sistema.
+    _add_system_site_packages()
+    try:
+        import onnxruntime as ort
+        _ORT_AVAILABLE = True
+    except ImportError as e:
+        ort = None  # type: ignore
+        _ORT_AVAILABLE = False
+        logger.warning(f"⚠ onnxruntime no disponible ({e}); anti-spoofing deshabilitado")
 
 
 # ── Anti-Spoofing (Silent-Face-Anti-Spoofing / MiniFASNet) ──────────────────
@@ -895,7 +995,17 @@ class FaceRecognitionManager:
         if self.manager.initialize():
             self.initialized = True
             logger.info("✓ FaceRecognitionManager inicializado")
-            logger.info(f"  Embeddings dlib: {'OK' if self.embedding_extractor.is_ready else 'NO DISPONIBLE'}")
+            if self.embedding_extractor.uses_dlib:
+                logger.info("  Embeddings: dlib resnet v1 (OK)")
+            elif self.embedding_extractor.is_ready:
+                # is_ready también es True en fallback, así que antes esto se
+                # reportaba como "OK" y ocultaba que ningún rostro guardado
+                # podría coincidir.
+                logger.error("  Embeddings: MODO FALLBACK (grayscale 16x8) — "
+                             "los rostros registrados usan dlib y NO podrán reconocerse. "
+                             "Causa habitual: la app se lanzó desde un venv sin dlib.")
+            else:
+                logger.error("  Embeddings: NO DISPONIBLE")
             if not ANTI_SPOOF_CONFIG.get("enabled"):
                 logger.warning("  Anti-spoofing: DESHABILITADO por configuración "
                                "(modelos .onnx mal convertidos — ver nota en config.py)")

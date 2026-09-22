@@ -4,13 +4,67 @@ Registro y consulta del historial de accesos al locker.
 
 from __future__ import annotations
 
+import atexit
 import logging
+import queue
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
 from database.connection import execute, fetch_all
 
 logger = logging.getLogger(__name__)
+
+# ── Escritura en segundo plano ─────────────────────────────────────────────
+# register_access() se llama desde el hilo del bucle de cámara y desde la UI.
+# Escribir en la Postgres remota cuesta un viaje de red completo, y hacerlo en
+# línea congelaba la vista previa en cada intento de reconocimiento. Como es un
+# registro de auditoría cuyo resultado nadie consulta, se encola y lo escribe
+# un único hilo trabajador.
+#
+# Un solo trabajador (no un hilo por llamada) mantiene el orden de los
+# registros y evita agotar el pool de conexiones en una ráfaga de intentos.
+_write_queue: "queue.Queue[tuple | None]" = queue.Queue(maxsize=200)
+_worker: threading.Thread | None = None
+_worker_lock = threading.Lock()
+
+
+def _write_worker() -> None:
+    while True:
+        item = _write_queue.get()
+        try:
+            if item is None:  # señal de apagado
+                return
+            _insert_access(*item)
+        except Exception as exc:  # pragma: no cover - el worker nunca debe morir
+            logger.warning("Fallo escribiendo historial de acceso: %s", exc)
+        finally:
+            _write_queue.task_done()
+
+
+def _ensure_worker() -> None:
+    global _worker
+    if _worker is not None and _worker.is_alive():
+        return
+    with _worker_lock:
+        if _worker is None or not _worker.is_alive():
+            _worker = threading.Thread(
+                target=_write_worker, name="access-log-writer", daemon=True
+            )
+            _worker.start()
+
+
+def flush_access_log(timeout: float = 5.0) -> None:
+    """Espera a que se escriban los registros pendientes (al apagar la app)."""
+    if _worker is None or not _worker.is_alive():
+        return
+    try:
+        _write_queue.join()
+    except Exception:
+        pass
+
+
+atexit.register(flush_access_log)
 
 
 def register_access(
@@ -29,6 +83,20 @@ def register_access(
             'puerta_cerrada' | 'puerta_no_cerrada'
     user_id: idUsuario directo (usado cuando no hay idLockerAsignado disponible).
     """
+    _ensure_worker()
+    try:
+        _write_queue.put_nowait((locker_assignment_id, permitted, motivo, user_id))
+    except queue.Full:
+        logger.warning("Cola de historial llena; se descarta un registro de acceso")
+
+
+def _insert_access(
+    locker_assignment_id: Optional[int],
+    permitted: bool,
+    motivo: str,
+    user_id: Optional[int],
+) -> None:
+    """Escritura real del registro. Corre en el hilo trabajador."""
     try:
         now = datetime.now()
         expires_at = now + (timedelta(minutes=5) if permitted else timedelta(minutes=1))

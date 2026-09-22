@@ -993,7 +993,9 @@ class _Step4FaceCapture(ctk.CTkFrame):
         # Si alguna pose coincide con un usuario existente se bloquea el registro.
         model_prefix = "dlib_resnet_v1" if self._embedding_mode == "dlib" else "fallback_gray_16x8"
         try:
-            candidates = user_service.get_active_face_encodings()
+            # force_refresh: leer del caché aquí podría no ver un alta reciente
+            # y dejar pasar un rostro duplicado.
+            candidates = user_service.get_active_face_encodings(force_refresh=True)
         except Exception as exc:
             logger.warning("No se pudieron cargar encodings para verificar: %s", exc)
             candidates = []

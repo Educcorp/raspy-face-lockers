@@ -13,6 +13,8 @@ La navegación a catálogos (antes una grid de tarjetas en esta pantalla) vive
 ahora en el NavDrawer (ui/components.py), igual que en la topbar del web.
 """
 
+import logging
+
 import customtkinter as ctk
 
 from database.connection import fetch_one
@@ -22,31 +24,43 @@ from ui.components import Card, PillButton, TopHeader
 from ui.i18n import t
 from auth.session import get_current_full_name
 
+logger = logging.getLogger(__name__)
+
+
+_STATS_KEYS = ("usuarios", "pendientes", "lockers", "asignaciones", "accesos_hoy")
+
+# Las cinco cifras se piden en UNA sola consulta con subconsultas escalares.
+# Antes eran cinco fetch_one sueltos y, contra la Postgres remota, cada uno
+# pagaba su propio viaje de red: la pantalla tardaba segundos en aparecer.
+_STATS_SQL = """
+    SELECT
+      (SELECT COUNT(*) FROM usuarios WHERE estado='activo')            AS usuarios,
+      (SELECT COUNT(*) FROM usuarios u
+         WHERE u.estado='activo' AND NOT EXISTS (
+           SELECT 1 FROM encoding e
+            WHERE e.idUsuario = u.idUsuario AND e.estado='activo'
+         ))                                                            AS pendientes,
+      (SELECT COUNT(*) FROM lockers WHERE estado='activo')             AS lockers,
+      (SELECT COUNT(*) FROM asignacion_locker WHERE estado='activo')   AS asignaciones,
+      (SELECT COUNT(*) FROM historial_accesos
+         WHERE fechaHoraAcceso::date = now()::date)                    AS accesos_hoy
+"""
+
+
+def _empty_stats() -> dict:
+    """Cifras en cero: se usan para dibujar la pantalla antes de consultar."""
+    return {k: 0 for k in _STATS_KEYS}
+
 
 def _get_stats() -> dict:
-    def _count(sql: str) -> int:
-        try:
-            row = fetch_one(sql)
-            return row["n"] if row else 0
-        except Exception:
-            return 0
-
-    return {
-        "usuarios": _count("SELECT COUNT(*) AS n FROM usuarios WHERE estado='activo'"),
-        "pendientes": _count(
-            """
-            SELECT COUNT(*) AS n FROM usuarios u
-            WHERE u.estado='activo' AND NOT EXISTS (
-                SELECT 1 FROM encoding e WHERE e.idUsuario=u.idUsuario AND e.estado='activo'
-            )
-            """
-        ),
-        "lockers": _count("SELECT COUNT(*) AS n FROM lockers WHERE estado='activo'"),
-        "asignaciones": _count("SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'"),
-        "accesos_hoy": _count(
-            "SELECT COUNT(*) AS n FROM historial_accesos WHERE fechaHoraAcceso::date = now()::date"
-        ),
-    }
+    try:
+        row = fetch_one(_STATS_SQL)
+    except Exception:
+        logger.warning("No se pudieron cargar las estadísticas del dashboard", exc_info=True)
+        return _empty_stats()
+    if not row:
+        return _empty_stats()
+    return {k: int(row.get(k) or 0) for k in _STATS_KEYS}
 
 
 class _StatCard(Card):
@@ -116,7 +130,11 @@ class DashboardScreen(ctk.CTkFrame):
         self._notice_container = ctk.CTkFrame(body, fg_color="transparent")
         self._notice_container.pack(fill="x", pady=(8, 0))
 
-        self._render_stats(_get_stats())
+        # Se dibuja con ceros: la consulta la hace on_show(). Antes esta línea
+        # consultaba la BD durante la construcción y on_show la repetía, así que
+        # el dashboard pagaba el doble de viajes de red — y como admin_app.py
+        # construye las 8 pantallas al arrancar, se pagaban aunque nunca se abriera.
+        self._render_stats(_empty_stats())
 
     def _render_stats(self, stats: dict) -> None:
         for card in self._cards_container.winfo_children():

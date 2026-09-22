@@ -10,8 +10,9 @@
   <table>
     <thead>
       <tr>
-        <th>Nombre</th><th>Matrícula</th><th>Tipo</th><th>Unidad</th>
-        <th>Estado</th><th>Rostro</th><th></th>
+        <th>Nombre</th><th>Matrícula</th>
+        {% if g.user.role == 'superadmin' %}<th>Tipo</th>{% endif %}
+        <th>Unidad</th><th>Estado</th><th>Permisos</th><th>Rostro</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -19,9 +20,20 @@
       <tr>
         <td>{{ u.nombre }} {{ u.appaterno }} {{ u.apmaterno or '' }}</td>
         <td>{{ u.matricula }}</td>
-        <td>{{ u.tipo or '—' }}</td>
+        {% if g.user.role == 'superadmin' %}<td>{{ u.tipo or '—' }}</td>{% endif %}
         <td>{{ u.unidad or '—' }}</td>
         <td><span class="badge {{ u.estado }}">{{ u.estado }}</span></td>
+        <td>
+          {% if u.permisoactivacion == 'locker' %}
+            <span class="badge perm-locker">Locker</span>
+          {% elif u.permisoactivacion == 'recurso_compartido' %}
+            <span class="badge perm-recurso">Recurso compartido</span>
+          {% elif u.permisoactivacion == 'ambos' %}
+            <span class="badge perm-ambos">Ambos</span>
+          {% else %}
+            <span class="badge inactivo">—</span>
+          {% endif %}
+        </td>
         <td>
           {% if u.n_encodings and u.n_encodings > 0 %}
             <span class="badge activo">Registrado</span>
@@ -33,7 +45,7 @@
         <td><a class="btn btn-sm" href="{{ url_for('users.edit_user', user_id=u.idusuario) }}">Editar</a></td>
       </tr>
       {% else %}
-      <tr><td colspan="7">No hay usuarios registrados.</td></tr>
+      <tr><td colspan="{{ 8 if g.user.role == 'superadmin' else 7 }}">No hay usuarios registrados.</td></tr>
       {% endfor %}
     </tbody>
   </table>

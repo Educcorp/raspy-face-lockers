@@ -112,12 +112,68 @@
 
     {% block content %}{% endblock %}
   </main>
+
+  <div id="confirm-modal" class="modal-overlay" hidden>
+    <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-message">
+      <span class="modal-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      </span>
+      <p id="confirm-modal-message"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-modal-cancel" class="btn btn-muted">Cancelar</button>
+        <button type="button" id="confirm-modal-ok" class="btn btn-danger">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.addEventListener('click', (e) => {
       document.querySelectorAll('.nav-dropdown[open], .row-edit[open]').forEach((el) => {
         if (!el.contains(e.target)) el.removeAttribute('open');
       });
     });
+
+    (() => {
+      const overlay = document.getElementById('confirm-modal');
+      const msgEl = document.getElementById('confirm-modal-message');
+      const btnOk = document.getElementById('confirm-modal-ok');
+      const btnCancel = document.getElementById('confirm-modal-cancel');
+      let pendingForm = null;
+
+      const closeModal = () => {
+        overlay.hidden = true;
+        pendingForm = null;
+      };
+
+      document.querySelectorAll('form[data-confirm]').forEach((form) => {
+        form.addEventListener('submit', (e) => {
+          if (form.dataset.confirmed === 'true') return;
+          e.preventDefault();
+          pendingForm = form;
+          msgEl.textContent = form.dataset.confirm;
+          overlay.hidden = false;
+          btnOk.focus();
+        });
+      });
+
+      btnCancel.addEventListener('click', closeModal);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !overlay.hidden) closeModal();
+      });
+      btnOk.addEventListener('click', () => {
+        const form = pendingForm;
+        overlay.hidden = true;
+        pendingForm = null;
+        if (form) {
+          form.dataset.confirmed = 'true';
+          if (form.requestSubmit) form.requestSubmit();
+          else form.submit();
+        }
+      });
+    })();
 
     (() => {
       const topbarWrap = document.querySelector('.topbar-wrap');

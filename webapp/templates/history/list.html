@@ -11,7 +11,7 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{ r.fechahoraacceso }}</td>
+        <td>{{ r.fechahoraacceso | local_dt }}</td>
         <td>{{ r.nombrecompleto }}</td>
         <td>{{ r.matricula or '—' }}</td>
         <td>{{ r.idlocker or '—' }}</td>

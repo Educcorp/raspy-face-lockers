@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from zoneinfo import ZoneInfo
 
 import click
 from flask import Flask, g, redirect, url_for
@@ -8,12 +9,27 @@ from flask import Flask, g, redirect, url_for
 from webapp import config, db
 from webapp.auth import load_logged_in_user
 
+LOCAL_TZ = ZoneInfo("America/Mexico_City")
+
+
+def format_local_dt(value, fmt: str = "%d/%m/%Y %H:%M") -> str:
+    """Convierte un datetime con timezone (guardado en UTC en la BD) a la
+    hora local antes de mostrarlo — sin esto, todas las fechas se ven
+    corridas varias horas hacia adelante."""
+    if not value:
+        return "—"
+    if value.tzinfo is not None:
+        value = value.astimezone(LOCAL_TZ)
+    return value.strftime(fmt)
+
 
 def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(__name__)
     app.config.from_object(config)
     if test_config:
         app.config.update(test_config)
+
+    app.jinja_env.filters["local_dt"] = format_local_dt
 
     db.init_app(app)
 

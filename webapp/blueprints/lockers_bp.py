@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from webapp.auth import can_edit_catalogs, is_superadmin, login_required
-from webapp.services import catalog_service, locker_service, user_service
+from webapp.services import catalog_service, locker_service
 
 bp = Blueprint("lockers", __name__, url_prefix="/lockers")
 
@@ -110,5 +110,5 @@ def assignments():
         "lockers/assignments.html",
         assignments=locker_service.get_active_assignments(),
         available_lockers=locker_service.get_available_lockers(),
-        users=user_service.get_all_users(),
+        users=locker_service.get_users_without_locker(),
     )

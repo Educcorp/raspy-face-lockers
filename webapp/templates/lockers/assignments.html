@@ -39,7 +39,7 @@
         <td>{{ a.idlocker }} ({{ a.area }})</td>
         <td>{{ a.nombre }} {{ a.appaterno }} {{ a.apmaterno or '' }}</td>
         <td>{{ a.matricula }}</td>
-        <td>{{ a.fechahorareg }}</td>
+        <td>{{ a.fechahorareg | local_dt }}</td>
         <td>
           <form method="post" data-confirm="¿Liberar este locker?">
             <input type="hidden" name="action" value="release">

@@ -5,3 +5,4 @@ gunicorn>=21.2.0
 numpy>=1.24.0
 opencv-python-headless>=4.8.0,<5  # 5.0 eliminó cv2.CascadeClassifier y el importador Caffe (usados como fallback)
 dlib>=19.24.0
+tzdata>=2024.1  # zoneinfo necesita esto en Windows y en algunas imágenes Docker slim

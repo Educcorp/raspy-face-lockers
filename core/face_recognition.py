@@ -46,15 +46,59 @@ def filter_close_faces(faces: list, frame) -> list:
     return [f for f in faces if (f.get("box") or (0, 0, 0, 0))[2] >= min_w]
 
 
+# Rutas de site-packages del sistema. En Raspberry Pi, dlib, onnxruntime y
+# picamera2 se instalan con apt (PEP 668 impide hacerlo con pip), así que viven
+# SOLO en el Python del sistema. Si la app se lanza desde un venv creado sin
+# --system-site-packages, esos módulos no se ven.
+def _system_site_paths() -> list[str]:
+    """Rutas donde viven los paquetes fuera del venv.
+
+    Incluye el site-packages de USUARIO (~/.local/...), no solo los
+    dist-packages del sistema: dlib está instalado ahí con `pip --user`, y un
+    venv lo excluye igual que a los del sistema.
+    """
+    ver = f"python3.{sys.version_info.minor}"
+    paths = [
+        f"/usr/lib/python3/dist-packages",
+        f"/usr/local/lib/{ver}/dist-packages",
+        f"/usr/lib/{ver}/dist-packages",
+    ]
+    try:
+        # En un venv, getusersitepackages() sigue devolviendo la ruta real
+        # del usuario aunque el venv la tenga deshabilitada.
+        paths.insert(0, site.getusersitepackages())
+    except Exception:
+        paths.insert(0, str(Path.home() / ".local" / "lib" / ver / "site-packages"))
+    return paths
+
+
+def _add_system_site_packages() -> None:
+    """Añade esas rutas a sys.path (idempotente)."""
+    for path in _system_site_paths():
+        if path and path not in sys.path and Path(path).is_dir():
+            sys.path.append(path)
+
+
 _DLIB_IMPORT_ERROR: str | None = None
 try:
     import dlib
     _DLIB_AVAILABLE = True
-except ImportError as e:
-    dlib = None  # type: ignore
-    _DLIB_AVAILABLE = False
-    _DLIB_IMPORT_ERROR = str(e)
-    logger.error(f"✗ dlib no se pudo importar: {e}")
+except ImportError:
+    # Segundo intento desde el sistema. Sin esto, arrancar desde el venv dejaba
+    # el reconocimiento en modo fallback 'grayscale 16x8' silenciosamente: los
+    # rostros guardados son 'dlib_resnet_v1', así que NINGUNO podía coincidir y
+    # todo acceso se denegaba. El log decía "Embeddings dlib: OK" porque
+    # is_ready también es True en modo fallback.
+    _add_system_site_packages()
+    try:
+        import dlib
+        _DLIB_AVAILABLE = True
+        logger.info("✓ dlib importado desde site-packages del sistema")
+    except ImportError as e:
+        dlib = None  # type: ignore
+        _DLIB_AVAILABLE = False
+        _DLIB_IMPORT_ERROR = str(e)
+        logger.error(f"✗ dlib no se pudo importar: {e}")
 
 
 # ── Helper: Corrección de iluminación mejorada ──────────────────────────────
@@ -574,10 +618,17 @@ class FaceEmbeddingExtractor:
 try:
     import onnxruntime as ort
     _ORT_AVAILABLE = True
-except ImportError as e:
-    ort = None  # type: ignore
-    _ORT_AVAILABLE = False
-    logger.warning(f"⚠ onnxruntime no disponible ({e}); anti-spoofing deshabilitado")
+except ImportError:
+    # Igual que dlib: en la Pi se instala con apt y solo existe en el Python
+    # del sistema.
+    _add_system_site_packages()
+    try:
+        import onnxruntime as ort
+        _ORT_AVAILABLE = True
+    except ImportError as e:
+        ort = None  # type: ignore
+        _ORT_AVAILABLE = False
+        logger.warning(f"⚠ onnxruntime no disponible ({e}); anti-spoofing deshabilitado")
 
 
 # ── Anti-Spoofing (Silent-Face-Anti-Spoofing / MiniFASNet) ──────────────────
@@ -944,7 +995,17 @@ class FaceRecognitionManager:
         if self.manager.initialize():
             self.initialized = True
             logger.info("✓ FaceRecognitionManager inicializado")
-            logger.info(f"  Embeddings dlib: {'OK' if self.embedding_extractor.is_ready else 'NO DISPONIBLE'}")
+            if self.embedding_extractor.uses_dlib:
+                logger.info("  Embeddings: dlib resnet v1 (OK)")
+            elif self.embedding_extractor.is_ready:
+                # is_ready también es True en fallback, así que antes esto se
+                # reportaba como "OK" y ocultaba que ningún rostro guardado
+                # podría coincidir.
+                logger.error("  Embeddings: MODO FALLBACK (grayscale 16x8) — "
+                             "los rostros registrados usan dlib y NO podrán reconocerse. "
+                             "Causa habitual: la app se lanzó desde un venv sin dlib.")
+            else:
+                logger.error("  Embeddings: NO DISPONIBLE")
             if not ANTI_SPOOF_CONFIG.get("enabled"):
                 logger.warning("  Anti-spoofing: DESHABILITADO por configuración "
                                "(modelos .onnx mal convertidos — ver nota en config.py)")

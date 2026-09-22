@@ -56,7 +56,16 @@ FACE_RECOGNITION_CONFIG = {
 
 # ── Anti-spoofing (Silent-Face-Anti-Spoofing, minivision-ai, Apache-2.0) ────
 ANTI_SPOOF_CONFIG = {
-    "enabled": True,
+    # DESHABILITADO TEMPORALMENTE — los .onnx de assets/models están mal
+    # convertidos: son funciones prácticamente constantes. Verificado con 12
+    # entradas radicalmente distintas (gris plano, negro, ruido, tablero de
+    # ajedrez, 8 parches de fotos reales): los logits se mueven <0.6 y la
+    # clase 2 ("falso") gana 12/12 veces, dando siempre score≈0.95. Con
+    # required=True eso negaba TODO acceso sin llegar nunca a comparar
+    # rostros. Para reactivar: re-convertir los .pth originales con
+    # tools/antispoof/convert_to_onnx.py y comprobar que la salida SÍ
+    # reacciona a la entrada antes de volver a poner enabled=True.
+    "enabled": False,
     "required": True,  # si True y los modelos no cargan, se BLOQUEA el acceso (fail-closed)
     "models": [
         {"path": str(MODELS_DIR / "2.7_80x80_MiniFASNetV2.onnx"), "scale": 2.7, "size": 80},

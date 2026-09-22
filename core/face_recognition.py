@@ -240,6 +240,9 @@ class FaceEmbeddingExtractor:
         self.face_rec_model = None
         self._loaded = False
         self._using_fallback = False
+        # Detector propio, usado solo para refinar la caja a resolución
+        # completa antes de extraer landmarks (ver _refine_rect).
+        self._hog_detector = dlib.get_frontal_face_detector() if _DLIB_AVAILABLE else None
         self._load_models()
 
     def _load_models(self) -> None:
@@ -402,24 +405,18 @@ class FaceEmbeddingExtractor:
             return None
 
         try:
-            # OPTIMIZADO: Mejorar iluminación antes de extraer embedding
-            enhanced = enhance_illumination(frame_bgr)
+            # NO se aplica enhance_illumination aquí: CLAHE es adaptativo por
+            # frame, así que el mismo rostro con encuadre ligeramente distinto
+            # recibe una normalización distinta y el embedding se vuelve
+            # inestable. El descriptor de dlib se entrenó con imágenes
+            # naturales, así que se le pasa el frame sin ecualizar.
+            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
-            x, y, w, h = [int(v) for v in face_box[:4]]
-            img_h, img_w = enhanced.shape[:2]
-
-            # Expandir un poco el box para dar contexto al shape_predictor
-            pad = int(max(w, h) * 0.15)
-            x1 = max(0, x - pad)
-            y1 = max(0, y - pad)
-            x2 = min(img_w, x + w + pad)
-            y2 = min(img_h, y + h + pad)
-
-            # dlib necesita RGB
-            frame_rgb = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
-
-            # Construir dlib rectangle
-            rect = dlib.rectangle(x1, y1, x2, y2)
+            # El shape_predictor de dlib espera exactamente la caja que produce
+            # su propio detector: agrandarla desalinea los 68 landmarks y
+            # degrada el descriptor. Se refina a resolución completa en vez de
+            # reutilizar la caja escalada desde la detección a 400px.
+            rect = self._refine_rect(frame_rgb, face_box)
 
             # Extraer landmarks (68 puntos)
             shape = self.shape_predictor(frame_rgb, rect)
@@ -440,6 +437,48 @@ class FaceEmbeddingExtractor:
         except Exception as e:
             logger.warning(f"Error extrayendo embedding: {e}")
             return None
+
+    def _refine_rect(self, frame_rgb: np.ndarray, face_box: tuple) -> "dlib.rectangle":
+        """
+        Devuelve la caja del rostro tal como la produciría el detector de dlib
+        a resolución completa.
+
+        La detección del bucle de video corre sobre una imagen reducida a
+        400px por velocidad, así que su caja trae un error de cuantización que
+        se amplifica al reescalarla (~3px por cada píxel a 400px). Ese temblor
+        se propaga a los landmarks y hace que el mismo rostro produzca
+        embeddings distintos entre frames. Aquí se re-detecta sobre un ROI
+        pequeño a resolución nativa, que es rápido y da una caja estable.
+        """
+        x, y, w, h = [int(v) for v in face_box[:4]]
+        img_h, img_w = frame_rgb.shape[:2]
+
+        if self._hog_detector is not None:
+            margin = int(max(w, h) * 0.4)
+            # Los límites del ROI se cuantizan a una rejilla de 16px para que
+            # un temblor pequeño en la caja de entrada caiga en el mismo ROI y
+            # la re-detección devuelva exactamente la misma caja. Sin esto, el
+            # refinado hereda parte del temblor que intenta corregir.
+            grid = 16
+            rx1 = max(0, ((x - margin) // grid) * grid)
+            ry1 = max(0, ((y - margin) // grid) * grid)
+            rx2 = min(img_w, -(-(x + w + margin) // grid) * grid)
+            ry2 = min(img_h, -(-(y + h + margin) // grid) * grid)
+            roi = frame_rgb[ry1:ry2, rx1:rx2]
+            if roi.size:
+                try:
+                    dets = self._hog_detector(roi, 1)  # 1 = upsample, más preciso
+                    if dets:
+                        d = max(dets, key=lambda r: r.width() * r.height())
+                        return dlib.rectangle(
+                            rx1 + d.left(), ry1 + d.top(),
+                            rx1 + d.right(), ry1 + d.bottom(),
+                        )
+                except Exception as err:
+                    logger.debug("Refinado de caja falló, usando la original: %s", err)
+
+        # Sin refinamiento posible: la caja del detector, sin padding.
+        return dlib.rectangle(x, y, x + w, y + h)
 
     def get_landmarks(self, frame_bgr: np.ndarray,
                       face_box: tuple) -> Optional[List[Tuple[int, int]]]:
@@ -857,7 +896,11 @@ class FaceRecognitionManager:
             self.initialized = True
             logger.info("✓ FaceRecognitionManager inicializado")
             logger.info(f"  Embeddings dlib: {'OK' if self.embedding_extractor.is_ready else 'NO DISPONIBLE'}")
-            logger.info(f"  Anti-spoofing: {'OK' if self.anti_spoof.is_ready else 'NO DISPONIBLE'}")
+            if not ANTI_SPOOF_CONFIG.get("enabled"):
+                logger.warning("  Anti-spoofing: DESHABILITADO por configuración "
+                               "(modelos .onnx mal convertidos — ver nota en config.py)")
+            else:
+                logger.info(f"  Anti-spoofing: {'OK' if self.anti_spoof.is_ready else 'NO DISPONIBLE'}")
             return True
         return False
 

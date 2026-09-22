@@ -165,6 +165,10 @@ class RegisterUserScreen(ctk.CTkFrame):
         # Detener cámara si estaba activa
         face_step: _Step4FaceCapture = self._step_frames[3]  # type: ignore
         face_step.stop_camera()
+        # Si se sale del flujo a medias, el modo re-registro no debe sobrevivir:
+        # ese usuario puede haberse eliminado mientras tanto y el id quedaría
+        # apuntando a una fila inexistente (violación de FK al guardar).
+        self._reregister_user_id = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1041,6 +1045,13 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
         if reregister_id is not None:
             # Modo re-registro: reemplazar encodings del usuario existente
+            if user_service.get_user_by_id(reregister_id) is None:
+                self.btn_save.configure(state="normal")
+                self.lbl_status.configure(
+                    text="Ese usuario ya no existe. Vuelve al catálogo.",
+                    text_color=PALETTE["DANGER"],
+                )
+                return
             try:
                 user_service.update_face_encodings(reregister_id, poses)
             except Exception as exc:

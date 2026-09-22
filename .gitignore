@@ -19,7 +19,14 @@ logs/
 database/migrations/raspi-face-lockers.db
 
 # Virtual environment
+\.venv/
 venv/
 webapp/.venv/
+\.env
 webapp/.env
 node_modules/
+
+# Python tooling and local caches
+*.py[cod]
+\.pytest_cache/
+\.coverage

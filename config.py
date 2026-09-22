@@ -17,7 +17,10 @@ DATABASE_URL = "sqlite:///locker_system.db"
 # ── Cámara / Visión ───────────────────────────────────────────────────────
 # En Raspberry Pi 5, usa libcamera para acceso a cámaras
 CAMERA_CONFIG = {
-    "backend": "picamera2",  # libcamera | opencv | picamera2
+    # "opencv" usa DevCameraManager (webcam vía cv2.VideoCapture) para
+    # desarrollar/probar en laptop sin Raspberry Pi. Override rápido sin
+    # tocar este archivo: CAMERA_BACKEND=opencv python ...
+    "backend": os.getenv("CAMERA_BACKEND", "picamera2"),  # opencv | picamera2
     "camera_index": 0,
     "width": 1296,
     "height": 972,
@@ -44,6 +47,18 @@ FACE_RECOGNITION_CONFIG = {
     # dlib models
     "shape_predictor": str(MODELS_DIR / "shape_predictor_68_face_landmarks.dat"),
     "face_rec_model": str(MODELS_DIR / "dlib_face_recognition_resnet_model_v1.dat"),
+}
+
+# ── Anti-spoofing (Silent-Face-Anti-Spoofing, minivision-ai, Apache-2.0) ────
+ANTI_SPOOF_CONFIG = {
+    "enabled": True,
+    "required": True,  # si True y los modelos no cargan, se BLOQUEA el acceso (fail-closed)
+    "models": [
+        {"path": str(MODELS_DIR / "2.7_80x80_MiniFASNetV2.onnx"), "scale": 2.7, "size": 80},
+        {"path": str(MODELS_DIR / "4_0_0_80x80_MiniFASNetV1SE.onnx"), "scale": 4.0, "size": 80},
+    ],
+    "real_label": 1,
+    "score_threshold": 0.75,
 }
 
 # ── GPIO / Hardware ────────────────────────────────────────────────────────

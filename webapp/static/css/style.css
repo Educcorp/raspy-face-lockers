@@ -363,6 +363,14 @@ tbody tr:hover { background: var(--surface-alt); }
 }
 .stat-grid .stat-value { font-family: "Fraunces", serif; font-size: 2.1rem; font-weight: 600; letter-spacing: -0.01em; position: relative; z-index: 1; }
 .stat-grid .stat-label { font-size: 0.82rem; color: var(--muted); font-weight: 600; position: relative; z-index: 1; }
+.locker-card .stat-label { color: var(--text); font-size: 1rem; }
+.locker-status, .locker-user { position: relative; z-index: 1; }
+.locker-status { font-family: "Fraunces", serif; font-size: 1.45rem; font-weight: 600; }
+.locker-user { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
+.locker-available .stat-icon, .locker-available .locker-status { color: var(--success); }
+.locker-available .stat-icon { background: var(--success-soft); }
+.locker-occupied .stat-icon, .locker-occupied .locker-status { color: var(--danger); }
+.locker-occupied .stat-icon { background: var(--danger-soft); }
 
 .notice-card { display: flex; gap: 16px; align-items: flex-start; border-left: 3px solid var(--warn); }
 .notice-card .stat-icon { background: var(--warn-soft); color: var(--warn); }

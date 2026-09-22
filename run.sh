@@ -23,15 +23,23 @@ if [ "$1" == "--system" ]; then
     shift
 fi
 
-# Check if venv exists
-if [ -d "venv" ] && [ "$USE_SYSTEM_PYTHON" != "true" ]; then
+# Check if venv exists. Support both the conventional name and this project's
+# existing hidden environment directory.
+VENV_DIR=""
+if [ -d ".venv" ]; then
+    VENV_DIR=".venv"
+elif [ -d "venv" ]; then
+    VENV_DIR="venv"
+fi
+
+if [ -n "$VENV_DIR" ] && [ "$USE_SYSTEM_PYTHON" != "true" ]; then
     echo -e "${BLUE}Usando virtual environment...${NC}"
-    source venv/bin/activate
-elif [ -d "venv" ] && python3 -c "import picamera2" 2>/dev/null; then
+    source "$VENV_DIR/bin/activate"
+elif [ -n "$VENV_DIR" ] && python3 -c "import picamera2" 2>/dev/null; then
     echo -e "${BLUE}Sistema Python detectado con picamera2${NC}"
     USE_SYSTEM_PYTHON=false
 else
-    if [ -d "venv" ]; then
+    if [ -n "$VENV_DIR" ]; then
         echo -e "${YELLOW}Advertencia: usando Python del sistema (venv no tiene picamera2)${NC}"
     fi
     USE_SYSTEM_PYTHON=true

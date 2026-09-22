@@ -643,11 +643,15 @@ class ScanningScreen(ctk.CTkFrame):
             if faces and do_recognize and enough_stability and cooldown_ok and self._liveness_passed and scan_time_ok:
                 self._last_recognition_ts = now
                 try:
-                    user_data = self._recognize_current_face(frame, faces)
-                    if user_data:
-                        self.after(0, self.on_face_match, user_data)
-                    else:
+                    if self.face_manager and not self._pass_anti_spoof(frame, face_box):
+                        self._reset_liveness_state()
                         self.after(0, self.on_face_no_match)
+                    else:
+                        user_data = self._recognize_current_face(frame, faces)
+                        if user_data:
+                            self.after(0, self.on_face_match, user_data)
+                        else:
+                            self.after(0, self.on_face_no_match)
                 except Exception as err:
                     logger.error("Error en reconocimiento: %s", err)
                     self.after(0, self.on_face_no_match)
@@ -1225,6 +1229,22 @@ class ScanningScreen(ctk.CTkFrame):
             return gray
         except Exception:
             return None
+
+    def _pass_anti_spoof(self, frame: np.ndarray, face_box: tuple) -> bool:
+        """
+        Gate pesado (CNN MiniFASNet) contra fotos/pantallas — se corre UNA
+        VEZ por intento de reconocimiento, no por frame, porque cuesta
+        ~decenas de ms por modelo (x2 modelos) a diferencia del chequeo
+        pasivo de _update_liveness (que sí corre cada frame y es casi gratis).
+        """
+        try:
+            is_real, score = self.face_manager.check_liveness(frame, face_box)
+        except Exception as err:
+            logger.error("Error en anti-spoof: %s", err)
+            return False
+        if not is_real:
+            logger.warning("Anti-spoof rechazó el intento (score=%.2f)", score)
+        return is_real
 
     def _update_liveness(self, frame: np.ndarray, face_box: tuple) -> None:
         gray = self._extract_face_gray(frame, face_box)

@@ -24,11 +24,11 @@
       </div>
       <div class="form-row">
         <label>Apellido materno</label>
-        <input type="text" name="apMaterno" value="{{ row.apmaterno if row else '' }}">
+        <input type="text" name="apMaterno" value="{{ row.apmaterno or '' }}">
       </div>
       <div class="form-row">
         <label>Matrícula</label>
-        <input type="text" name="matricula" required value="{{ row.matricula if row else '' }}">
+        <input type="text" name="matricula" required maxlength="8" inputmode="numeric" pattern="[0-9]*" value="{{ row.matricula if row else '' }}">
       </div>
       <div class="form-row">
         <label>Correo institucional</label>
@@ -36,7 +36,7 @@
       </div>
       <div class="form-row">
         <label>Teléfono (opcional)</label>
-        <input type="text" name="tel" value="{{ row.tel if row else '' }}">
+        <input type="text" name="tel" value="{{ row.tel or '' }}">
       </div>
       {% if g.user.role == 'superadmin' %}
       <div class="form-row">

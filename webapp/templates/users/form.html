@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Editar' if row else 'Nuevo' }} usuario · Smart Locker{% endblock %}
+{% block title %}{{ 'Editar Usuario' if row else 'Registro de Nuevo Usuario' }} · Escuelas Seguras{% endblock %}
 {% block content %}
-<h2>{{ 'Editar usuario' if row else 'Nuevo usuario' }}</h2>
+<h2>{{ 'Editar Usuario' if row else 'Registro de Nuevo Usuario' }}</h2>
 
 {% if row and pending %}
 <div class="flash warning">

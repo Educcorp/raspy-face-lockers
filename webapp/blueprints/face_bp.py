@@ -136,7 +136,7 @@ def save(user_id: int):
     user_service.save_face_encodings(user_id, poses)
     session.pop(SESSION_KEY, None)
     flash("Rostro registrado correctamente.", "success")
-    return redirect(url_for("users.edit_user", user_id=user_id))
+    return redirect(url_for("users.list_users"))
 
 
 @bp.route("/cancelar", methods=["POST"])

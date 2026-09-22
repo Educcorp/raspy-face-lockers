@@ -64,6 +64,22 @@ def get_available_lockers() -> list[dict]:
     return fetch_all("SELECT * FROM v_lockers_disponibles")
 
 
+def get_users_without_locker() -> list[dict]:
+    """Usuarios activos sin un locker asignado actualmente (equivalente a
+    v_lockers_disponibles, pero del lado del usuario en vez del locker)."""
+    return fetch_all(
+        """
+        SELECT u.idUsuario, u.nombre, u.apPaterno, u.matricula
+        FROM usuarios u
+        WHERE u.estado = 'activo'
+          AND u.idUsuario NOT IN (
+              SELECT idUsuario FROM asignacion_locker WHERE estado = 'activo'
+          )
+        ORDER BY u.nombre, u.apPaterno
+        """
+    )
+
+
 def get_active_assignments() -> list[dict]:
     return fetch_all(
         """

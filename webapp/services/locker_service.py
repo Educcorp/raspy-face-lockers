@@ -1,8 +1,9 @@
 """
 Gestión de inventario de lockers y asignaciones (panel web).
 
-La apertura física (relevador GPIO) NO vive aquí — eso sigue siendo
-responsabilidad exclusiva del software embebido en la Raspberry Pi.
+La apertura física (relevador GPIO) NO se ejecuta aquí: la web solo encola un
+comando en `comandos_locker` (ver "Apertura remota" al final) y la Raspberry Pi
+lo ejecuta.
 """
 
 from __future__ import annotations
@@ -56,8 +57,28 @@ def get_protected_locker_ids() -> set[int]:
     return {r["idlocker"] for r in rows}
 
 
+def has_active_assignment(locker_id: int) -> bool:
+    row = fetch_one(
+        "SELECT 1 AS x FROM asignacion_locker WHERE idLocker=%s AND estado='activo' LIMIT 1",
+        (locker_id,),
+    )
+    return row is not None
+
+
 def delete_locker(locker_id: int) -> None:
-    execute("DELETE FROM lockers WHERE idLocker=%s", (locker_id,))
+    """Elimina el locker junto con TODO su historial (asignaciones y accesos).
+
+    asignacion_locker.idLocker es ON DELETE RESTRICT, así que el historial debe
+    borrarse antes que el locker; todo en una sola transacción.
+    """
+    with cursor() as cur:
+        cur.execute(
+            "DELETE FROM historial_accesos WHERE idLockerAsignado IN "
+            "(SELECT idLockerAsignado FROM asignacion_locker WHERE idLocker=%s)",
+            (locker_id,),
+        )
+        cur.execute("DELETE FROM asignacion_locker WHERE idLocker=%s", (locker_id,))
+        cur.execute("DELETE FROM lockers WHERE idLocker=%s", (locker_id,))
 
 
 def get_available_lockers() -> list[dict]:
@@ -141,3 +162,77 @@ def release_assignment(assignment_id: int) -> bool:
     with cursor() as cur:
         _close_active_assignment(cur, row["idusuario"], row["idlocker"])
     return True
+
+
+# ── Apertura remota (web → Pi) ───────────────────────────────────────────────
+# La web solo encola el comando; la Raspberry lo ejecuta (services/remote_command_service.py
+# en la Pi) y publica el estado de las puertas en `estado_puerta`.
+
+PI_ONLINE_SECONDS = 30      # sin latido en este tiempo → Pi desconectada
+COMMAND_RECENT_SECONDS = 60  # ventana en que un comando cuenta como "reciente"
+
+
+def get_remote_status() -> dict:
+    """Estado para los botones de apertura: latido de la Pi, puerta y último comando por locker."""
+    hb = fetch_one(
+        "SELECT EXTRACT(EPOCH FROM (now() - MAX(fechaHoraAct))) AS age FROM estado_puerta"
+    )
+    age = hb["age"] if hb else None
+    rows = fetch_all(
+        """
+        SELECT l.idLocker, ep.cerrada,
+               c.idComando AS comando_id, c.estado AS comando, c.detalle AS detalle
+        FROM lockers l
+        LEFT JOIN estado_puerta ep ON ep.idLocker = l.idLocker
+        LEFT JOIN LATERAL (
+            SELECT idComando, estado, detalle FROM comandos_locker
+            WHERE idLocker = l.idLocker
+              AND fechaHoraSolicitud > now() - make_interval(secs => %s)
+            ORDER BY idComando DESC LIMIT 1
+        ) c ON TRUE
+        WHERE l.estado = 'activo'
+        ORDER BY l.idLocker
+        """,
+        (COMMAND_RECENT_SECONDS,),
+    )
+    return {
+        "online": age is not None and float(age) <= PI_ONLINE_SECONDS,
+        "lockers": [
+            {
+                "id": r["idlocker"],
+                "cerrada": r["cerrada"],
+                "comando_id": r["comando_id"],
+                "comando": r["comando"],
+                "detalle": r["detalle"],
+            }
+            for r in rows
+        ],
+    }
+
+
+def request_open_locker(locker_id: int, solicitado_por: int) -> tuple[bool, str]:
+    """Encola la apertura de un locker. Devuelve (ok, mensaje)."""
+    locker = fetch_one("SELECT estado FROM lockers WHERE idLocker=%s", (locker_id,))
+    if not locker or (locker["estado"] or "").lower() != "activo":
+        return False, "El locker no existe o está deshabilitado."
+
+    if not get_remote_status()["online"]:
+        return False, "La Raspberry Pi está desconectada; no se puede abrir el locker ahora."
+
+    busy = fetch_one(
+        """
+        SELECT 1 AS x FROM comandos_locker
+        WHERE idLocker=%s AND estado IN ('pendiente', 'ejecutando')
+          AND fechaHoraSolicitud > now() - make_interval(secs => %s)
+        LIMIT 1
+        """,
+        (locker_id, COMMAND_RECENT_SECONDS),
+    )
+    if busy:
+        return False, "Ese locker ya se está abriendo."
+
+    execute(
+        "INSERT INTO comandos_locker (idLocker, accion, solicitadoPor) VALUES (%s, 'abrir', %s)",
+        (locker_id, solicitado_por),
+    )
+    return True, "Abriendo…"

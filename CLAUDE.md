@@ -159,11 +159,36 @@ amplificaba ~3px por cada píxel a 400px y degradaba los 68 landmarks. El
   sesiones.
 - **`ui/admin/locker_assignment.py`** tiene la sección "Abrir locker
   manualmente": cada botón muestra el estado de la puerta según el sensor
-  (`Abriendo…` / `Abierto` gris-deshabilitado / `Cerrado`), sin widgets
+  (botones solo con el número; gris = puerta abierta o abriéndose), sin widgets
   nuevos. Un intento anterior (2026-09-23) de restaurar un mensaje de estado
   ahí "rompió los sensores" y se descartó; la causa probable era el punto
   de arriba (RPi.GPIO en Pi 5), no el mensaje. Sigue sin verificarse con
   puerta física — probar con hardware real antes de darlo por bueno.
+
+### 9. Apertura remota de lockers desde la web (web → BD → Pi)
+Railway no puede tocar los GPIO, así que la web **solo encola**: `POST
+/lockers/<id>/abrir` inserta en `comandos_locker`; el hilo
+`services/remote_command_service.py` (arrancado desde `main.py` en ambos
+modos) los reclama con `FOR UPDATE SKIP LOCKED`, llama a
+`locker_service.open_locker(id, MANUAL_OPEN_SECONDS)` y marca el resultado.
+Ese mismo hilo publica los sensores en `estado_puerta` (al cambiar + latido
+cada 10s); la web usa ese latido para saber si la Pi está conectada
+(>30s sin latido → botones deshabilitados y la API rechaza el comando).
+- **Seguridad**: un comando `pendiente` con más de 30s de antigüedad NUNCA se
+  ejecuta (pasa a `expirado`) — una Pi que estuvo apagada no debe abrir
+  lockers horas después por clics viejos. Un comando `ejecutando` sin
+  confirmación en 60s pasa a `error`.
+- Solo Admin/Superadmin (`can_edit_catalogs()`); un locker con comando
+  pendiente/ejecutando rechaza el segundo clic (409).
+- Tablas en `webapp/schema.sql` + `webapp/migrations/add_comandos_locker.sql`
+  (ya aplicada a la BD compartida el 2026-09-23). **La web en Railway hay
+  que desplegarla** para que aparezcan los botones; sin `estado_puerta`
+  actualizado (Pi apagada) se ven deshabilitados.
+- UI: botones **solo con el número** en el panel de la Pi y en la web
+  (`templates/lockers/assignments.html`); gris = puerta abierta o abriéndose.
+- Eliminar locker (web y Pi) borra también su historial; lockers 1-4 nunca.
+- Probado con relé simulado (mock) + Flask test client contra la BD real;
+  **no** con una puerta física ni desde Railway.
 
 ## Convenciones del repo
 

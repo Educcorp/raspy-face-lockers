@@ -55,6 +55,9 @@ def get_active_assignments() -> list[dict]:
 
 # ── Control de hardware ────────────────────────────────────────────────────────
 
+# Segundos que el relé queda activo en aperturas manuales (panel admin y web).
+MANUAL_OPEN_SECONDS = 3.0
+
 def open_locker(locker_id: int, seconds: float | None = None) -> bool:
     """
     Abre el locker físico activando el relay GPIO correspondiente.

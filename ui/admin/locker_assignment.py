@@ -194,6 +194,14 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			self.manual_open_frame = ctk.CTkFrame(body, fg_color="transparent")
 			self.manual_open_frame.pack(fill="x", padx=4, pady=(0, 8))
 
+			ctk.CTkLabel(
+				body,
+				text=t("assignment.door_legend"),
+				font=ctk.CTkFont(size=12),
+				text_color=PALETTE["MUTED"],
+				fg_color="transparent",
+			).pack(anchor="w", padx=6, pady=(0, 6))
+
 			self.lbl_manual_feedback = None
 		else:
 			self.manual_open_frame = None
@@ -523,27 +531,19 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		self._load_assignments()
 
 	def _set_manual_btn(self, lid: int, btn: ctk.CTkButton, mode: str) -> None:
-		"""Refleja en el botón el estado de la puerta: opening / open / closed / idle.
+		"""Refleja el estado de la puerta en el COLOR del botón (que solo muestra el número).
 
-		`idle` = locker sin sensor (o sensor no disponible): botón normal sin estado.
-		Solo reconfigura si el modo cambió, para no parpadear en cada sondeo.
+		opening / open → gris y deshabilitado; closed / idle → color normal.
+		`idle` = locker sin sensor legible. Solo reconfigura si el modo cambió,
+		para no parpadear en cada sondeo.
 		"""
 		if self._manual_btn_mode.get(lid) == mode or not btn.winfo_exists():
 			return
 		self._manual_btn_mode[lid] = mode
-		label = f"Locker {lid}"
-		if mode == "opening":
-			btn.configure(text=f"{label}\n{t('assignment.door_opening')}", state="disabled",
-				fg_color=PALETTE["BORDER"], hover_color=PALETTE["BORDER"])
-		elif mode == "open":
-			btn.configure(text=f"{label}\n{t('assignment.door_open')}", state="disabled",
-				fg_color=PALETTE["BORDER"], hover_color=PALETTE["BORDER"])
-		elif mode == "closed":
-			btn.configure(text=f"{label}\n{t('assignment.door_closed')}", state="normal",
-				fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"])
+		if mode in ("opening", "open"):
+			btn.configure(state="disabled", fg_color=PALETTE["BORDER"], hover_color=PALETTE["BORDER"])
 		else:
-			btn.configure(text=label, state="normal",
-				fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"])
+			btn.configure(state="normal", fg_color=PALETTE["ACCENT"], hover_color=PALETTE["ACCENT_HOVER"])
 
 	def _build_manual_open_buttons(self) -> None:
 		"""Construye botones de apertura manual, uno por locker activo."""
@@ -566,8 +566,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 
 			btn = ctk.CTkButton(
 				self.manual_open_frame,
-				text=f"Locker {lid}",
-				font=ctk.CTkFont(size=13, weight="bold"),
+				text=str(lid),
+				font=ctk.CTkFont(size=22, weight="bold"),
 				fg_color=PALETTE["ACCENT"],
 				hover_color=PALETTE["ACCENT_HOVER"],
 				text_color=PALETTE["WHITE"],
@@ -589,7 +589,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 				self._sensor_cooldown_until[l] = time.time() + 3.0
 
 				def _task(l=l, b=b):
-					ok = locker_service.open_locker(l, seconds=3.0)
+					ok = locker_service.open_locker(l, seconds=locker_service.MANUAL_OPEN_SECONDS)
 
 					def _done(ok=ok):
 						if not ok and self.winfo_exists() and b.winfo_exists():

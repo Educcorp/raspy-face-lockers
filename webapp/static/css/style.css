@@ -1577,3 +1577,33 @@ tbody tr:hover { background: var(--surface-alt); }
 @media (min-width: 640px) {
   .user-meta { display: flex; }
 }
+
+/* ── Apertura manual de lockers (solo números) ────────────────────────────── */
+.locker-open-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 10px;
+  max-width: 520px;
+}
+.locker-open-btn {
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: 700 1.4rem/1 "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s, transform 0.1s;
+}
+.locker-open-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.locker-open-btn:active:not(:disabled) { transform: translateY(1px); }
+.locker-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.locker-open-btn:disabled { cursor: not-allowed; }
+.locker-open-btn.is-open,
+.locker-open-btn.is-busy,
+.locker-open-btn:disabled { background: var(--border); color: var(--muted); box-shadow: none; }
+.locker-open-btn.is-busy { animation: locker-pulse 1s ease-in-out infinite; }
+@keyframes locker-pulse { 50% { opacity: 0.55; } }
+.locker-open-hint { margin: 12px 0 0; font-size: 0.85rem; color: var(--muted); }
+.locker-open-hint.is-error { color: var(--danger); }

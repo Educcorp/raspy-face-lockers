@@ -30,7 +30,7 @@ from ui.admin_app import PALETTE
 from ui.i18n import t as _t
 from auth.session import can_create_users, filter_assignable_user_types
 from core import head_pose
-from core.face_recognition import filter_close_faces
+from core.face_recognition import classify_faces_by_distance, filter_close_faces
 from utils.validators import (
     validate_name, validate_matricula, validate_email, validate_tel,
     limit_var, MAX_NOMBRE, MAX_APELLIDO, MAX_EMAIL, MAX_TEL,
@@ -576,6 +576,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._baseline_pose = None              # pose de frente (referencia de las demás)
         self._current_pose = None               # última pose medida
         self._pose_ok: bool = True              # la pose actual corresponde a la pedida
+        self._distance_hint: str = ""           # "closer" | "farther" | "" (zona de ~1 m)
 
         self._build()
 
@@ -808,7 +809,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
                 self._current_frame = frame
                 all_faces = self._face_mgr.face_detector.detect(frame)
-                faces = _filter_close_faces(all_faces, frame)
+                faces, self._distance_hint = classify_faces_by_distance(all_faces, frame)
                 self._detected_faces = faces
 
                 if faces:
@@ -1023,7 +1024,15 @@ class _Step4FaceCapture(ctk.CTkFrame):
                         self._show_pose_instruction()
                 else:
                     self.pose_progress.set(0)
-                    self._show_pose_instruction()
+                    if self._distance_hint:
+                        # Hay una cara pero fuera de la zona de ~1 m: decir qué hacer
+                        self.lbl_progress.configure(
+                            text="Acércate a la cámara  ↔" if self._distance_hint == "closer"
+                            else "Aléjate un poco de la cámara  ↔",
+                            text_color="#FFD54F",
+                        )
+                    else:
+                        self._show_pose_instruction()
             elif all_done:
                 self.pose_progress.set(1.0)
 

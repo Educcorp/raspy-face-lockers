@@ -31,6 +31,7 @@ from ui import theme
 from ui.theme import PALETTE, DARK_PALETTE
 from core.gpio_controller import get_locker_gpio_controller
 from core.face_recognition import filter_close_faces as _filter_close_faces
+from core.face_recognition import classify_faces_by_distance
 from services import user_service, locker_service, access_log_service
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,8 @@ class ScanningScreen(ctk.CTkFrame):
     LIVENESS_MIN_BOX_SHIFT = 0.015    # desplazamiento mínimo visible del rostro
     MIN_SCAN_SECONDS = 2.0            # tiempo mínimo de escaneo antes de intentar identificar
     AUTO_RETURN_SECONDS = 25.0        # segundos sin cara cercana → volver a standby
+    CHALLENGE_FACE_LOST_GRACE_S = 2.5   # segundos sin rostro antes de reiniciar el reto
+    LIVENESS_VALID_S = 20.0             # el reto superado sigue valiendo tras un reconocimiento fallido
     LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
     CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
     CHALLENGE_SCALE_IN_THRESHOLD = 0.18  # No usado en modo pasivo
@@ -135,6 +138,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_timeouts = 0
         self._challenge_failed = False          # el detector lo convierte en intento fallido
         self._challenge_notice_until = 0.0      # mantiene visible el aviso de 'tiempo agotado'
+        self._challenge_done_at = 0.0           # cuándo se superó el reto (0 = no superado)
         self._challenge_msg: tuple[str, str] | None = None   # (texto, pista) para la UI
         self._auto_return_started_ts: float | None = None
         self._door_wait_job = None
@@ -571,9 +575,11 @@ class ScanningScreen(ctk.CTkFrame):
                 logger.debug("Detection error: %s", err)
                 all_faces = []
 
-            close_faces = _filter_close_faces(all_faces, frame)
+            # Solo cuenta el rostro de enfrente dentro de la zona de ~1 m: lo del fondo o
+            # alguien pegado a la cámara se ignora (y se avisa "acércate"/"aléjate").
+            close_faces, dist_hint = classify_faces_by_distance(all_faces, frame)
 
-            # Reject faces whose bounding box touches or overflows the frame edges
+            # Una cara que toca el borde del cuadro está cortada = demasiado cerca
             faces = list(close_faces)
             if faces:
                 fh, fw = frame.shape[:2]
@@ -585,23 +591,9 @@ class ScanningScreen(ctk.CTkFrame):
                         and bx + bw <= fw - edge and by + bh <= fh - edge
                     )(*f.get("box", (0, 0, 0, 0)))
                 ]
-
-            # Distance hint — evaluated after both filters so we cover all "too close" paths:
-            #   1. Any raw detection is very wide (≥40% frame) → partially detected, too close.
-            #   2. Face passed distance filter but overflows the edge bounds → too close.
-            #   3. Faces detected but all too small for 1 m range → too far.
-            frame_w = frame.shape[1] if frame is not None else 480
-            any_large_raw = any(
-                (f.get("box") or (0, 0, 0, 0))[2] >= int(frame_w * 0.40) for f in all_faces
-            )
-            if any_large_raw or (close_faces and not faces):
-                self._distance_hint = "farther"
-            elif all_faces and not close_faces:
-                self._distance_hint = "closer"
-            elif faces:
-                self._distance_hint = ""
-            else:
-                self._distance_hint = ""
+                if not faces:
+                    dist_hint = "farther"
+            self._distance_hint = dist_hint
 
             self._detected_faces = faces
             self._face_detected  = len(faces) > 0
@@ -631,7 +623,7 @@ class ScanningScreen(ctk.CTkFrame):
                     self._stable_face_frames = 0
                     self._face_first_seen_ts = 0.0
                     self._scan_progress_pct  = 0
-                    self._reset_liveness_state()
+                    self._reset_liveness_state("cambió el rostro")
 
                 if self._stable_face_frames == 0:
                     self._face_first_seen_ts = now
@@ -651,7 +643,11 @@ class ScanningScreen(ctk.CTkFrame):
                 self._last_seen_face_box = None
                 self._face_first_seen_ts = 0.0
                 self._scan_progress_pct  = 0
-                self._reset_liveness_state()
+                # Al girar la cabeza el detector frontal pierde el rostro unos cuadros.
+                # Reiniciar el reto en cada uno provocaba un bucle infinito de
+                # validaciones: solo se reinicia si el rostro falta más de la gracia.
+                if now - self._last_close_face_ts >= self.CHALLENGE_FACE_LOST_GRACE_S:
+                    self._reset_liveness_state("rostro perdido")
 
                 if now - self._last_close_face_ts >= self.AUTO_RETURN_SECONDS:
                     logger.info("Sin cara %.0f s → standby", self.AUTO_RETURN_SECONDS)
@@ -828,7 +824,23 @@ class ScanningScreen(ctk.CTkFrame):
             self.btn_admin.lift()
 
             if not self._success_shown:
-                if self._face_detected:
+                dist = self._distance_hint
+                # Con el reto en curso, perder el rostro un instante al girar no debe
+                # mostrar "acércate": se sigue mostrando la instrucción de la pose.
+                in_challenge = (
+                    self._challenge_msg is not None
+                    and self._challenge_state in ("step", "announce", "return")
+                )
+                face_ok = self._face_detected or in_challenge
+                if dist and not face_ok:
+                    # Fuera de la zona de ~1 m: decirlo en grande (antes solo salía en la
+                    # línea pequeña de abajo y se perdía entre los demás mensajes)
+                    self.scan_progress_bar.set(0)
+                    self.lbl_status.configure(
+                        text=t("scan.distance_closer" if dist == "closer" else "scan.distance_farther"),
+                        text_color=self.WARNING,
+                    )
+                elif face_ok:
                     if self._liveness_passed:
                         pct = self._scan_progress_pct
                         self.scan_progress_bar.set(pct / 100)
@@ -858,7 +870,9 @@ class ScanningScreen(ctk.CTkFrame):
 
                 # Distance hint (shown regardless of liveness state)
                 hint = self._distance_hint
-                if hint == "closer":
+                if in_challenge:
+                    self.lbl_hint.configure(text=self._challenge_msg[1])
+                elif hint == "closer":
                     self.lbl_hint.configure(text="↔  " + t("scan.hint_closer"))
                 elif hint == "farther":
                     self.lbl_hint.configure(text="↔  " + t("scan.hint_farther"))
@@ -1027,7 +1041,19 @@ class ScanningScreen(ctk.CTkFrame):
         if self._success_shown:
             return
 
+        # Si el reto acaba de superarse, el siguiente intento de reconocimiento NO debe
+        # repetirlo (era el bucle infinito de validaciones): la misma persona sigue ahí.
+        keep_done = (
+            self._challenge_state == "done"
+            and time.time() - self._challenge_done_at < self.LIVENESS_VALID_S
+        )
+        kept_steps, kept_done_at = list(self._challenge_steps), self._challenge_done_at
         self._reset_liveness_state()
+        if keep_done:
+            self._challenge_steps = kept_steps
+            self._challenge_state = "done"
+            self._challenge_done_at = kept_done_at
+            self._active_liveness_ok = True
         self._attempts += 1
         self.scan_progress_bar.set(0)
 
@@ -1221,7 +1247,9 @@ class ScanningScreen(ctk.CTkFrame):
             self.controller.ensure_admin_frames()
         self.controller.show_frame(LoginScreen)
 
-    def _reset_liveness_state(self) -> None:
+    def _reset_liveness_state(self, reason: str | None = None) -> None:
+        if reason and self._challenge_state not in ("neutral",):
+            logger.info("Reto de vivacidad reiniciado (%s) en estado '%s'", reason, self._challenge_state)
         self._liveness_passed = False
         self._passive_liveness_ok = False
         self._active_liveness_ok = False
@@ -1239,6 +1267,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_hold = 0
         self._challenge_announce_until = 0.0
         self._challenge_timeouts = 0
+        self._challenge_done_at = 0.0
         self._challenge_msg = None
         self._challenge_steps = self._build_liveness_challenge()
 
@@ -1360,12 +1389,23 @@ class ScanningScreen(ctk.CTkFrame):
 
         cfg = LIVENESS_CHALLENGE_CONFIG
         now = time.time()
+        state = self._challenge_state
+
+        # Los tiempos límite corren aunque este cuadro no haya landmarks (girado, borroso)
+        if state == "return" and now - self._challenge_started_at > float(cfg["return_timeout_s"]):
+            # Volver al frente es solo cortesía para reconocer mejor; si no llega a
+            # tiempo se da el reto por superado (la vivacidad ya quedó comprobada).
+            self._finish_challenge(now, "sin volver al frente a tiempo")
+            return
+        if state == "step" and now - self._challenge_started_at > float(cfg["step_timeout_s"]):
+            self._challenge_timed_out()
+            return
+
         pose = self._measure_head_pose(frame, face_box)
         if pose is None:
             return      # sin landmarks fiables este cuadro: no avanza ni retrocede
 
         n_steps = len(self._challenge_steps)
-        state = self._challenge_state
 
         if state == "neutral":
             if now >= self._challenge_notice_until:
@@ -1387,11 +1427,6 @@ class ScanningScreen(ctk.CTkFrame):
             self._challenge_msg = (t("scan.challenge_ok"), t("scan.challenge_next"))
             if now >= self._challenge_announce_until:
                 self._begin_challenge_step(self._challenge_index, now)
-            return
-
-        # state == "step" | "return": ambos tienen tiempo límite
-        if now - self._challenge_started_at > float(cfg["step_timeout_s"]):
-            self._challenge_timed_out()
             return
 
         delta = pose.minus(self._challenge_baseline)
@@ -1417,12 +1452,17 @@ class ScanningScreen(ctk.CTkFrame):
                     self._challenge_msg = (t("scan.challenge_ok"), t("scan.challenge_next"))
         else:   # "return": volver a mirar al frente antes de comparar el rostro
             self._challenge_msg = (t("scan.challenge_return"), t("scan.challenge_return_hint"))
-            self._challenge_hold = self._challenge_hold + 1 if head_pose.is_frontal(pose, self._challenge_baseline) else 0
+            frontal = head_pose.is_frontal(pose, self._challenge_baseline, float(cfg["return_tolerance"]))
+            self._challenge_hold = self._challenge_hold + 1 if frontal else 0
             if self._challenge_hold >= int(cfg["hold_frames"]):
-                self._challenge_state = "done"
-                self._active_liveness_ok = True
-                self._challenge_msg = None
-                logger.info("Reto de vivacidad superado (%s)", ", ".join(self._challenge_steps))
+                self._finish_challenge(now, "de frente")
+
+    def _finish_challenge(self, now: float, how: str) -> None:
+        self._challenge_state = "done"
+        self._active_liveness_ok = True
+        self._challenge_done_at = now
+        self._challenge_msg = None
+        logger.info("Reto de vivacidad superado (%s) — %s", ", ".join(self._challenge_steps), how)
 
     def _begin_challenge_step(self, index: int, now: float) -> None:
         self._challenge_state = "step"

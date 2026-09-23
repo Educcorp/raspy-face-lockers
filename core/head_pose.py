@@ -70,12 +70,16 @@ def estimate_head_pose(
     return HeadPose(yaw=yaw, pitch=pitch)
 
 
-def is_frontal(pose: HeadPose, baseline: Optional[HeadPose] = None) -> bool:
-    """¿Mira de frente? Sin baseline solo se exige yaw≈0 (el pitch depende de cada rostro)."""
-    if abs(pose.yaw) > HEAD_POSE_CONFIG["frontal_max_yaw"]:
+def is_frontal(pose: HeadPose, baseline: Optional[HeadPose] = None, tolerance: float = 1.0) -> bool:
+    """¿Mira de frente? Sin baseline solo se exige yaw≈0 (el pitch depende de cada rostro).
+
+    `tolerance` > 1 relaja los límites (p. ej. "vuelve al frente" tras un reto, donde
+    no hace falta una pose perfecta: el reconocimiento tolera un frente aproximado).
+    """
+    if abs(pose.yaw) > HEAD_POSE_CONFIG["frontal_max_yaw"] * tolerance:
         return False
     if baseline is not None:
-        return abs(pose.pitch - baseline.pitch) <= HEAD_POSE_CONFIG["frontal_max_pitch"]
+        return abs(pose.pitch - baseline.pitch) <= HEAD_POSE_CONFIG["frontal_max_pitch"] * tolerance
     return True
 
 

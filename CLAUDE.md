@@ -131,6 +131,20 @@ para que la distancia de interacción sea consistente en toda la experiencia:
 **No cambiar este ratio en un solo sitio** sin pensar en los otros dos — es
 intencional que compartan valor.
 
+**Zona de interacción (banda), no solo un mínimo**: `MAX_FACE_SIZE_RATIO = 0.26`
+(~0.5 m) fija el límite de "demasiado cerca". `classify_faces_by_distance()` →
+`(caras_en_zona, pista)` es lo que usan standby, kiosco y registro: solo cuenta el
+rostro de enfrente dentro de ~0.5–1 m; fondo y caras pegadas a la cámara se
+ignoran y se avisa "ACÉRCATE A LA CÁMARA" / "ALÉJATE UN POCO" (`scan.distance_*`).
+
+**Por qué a "1 metro" antes no detectaba nada**: el HOG frontal de dlib no ve
+rostros menores de ~80 px *en la imagen que recibe*. Con `_DETECTION_WIDTH = 400`
+eso era 0.20 del ancho del frame (≈0.6 m), así que el umbral 0.12 nunca se
+alcanzaba y el standby no se activaba solo a 1 m. Ahora `_DETECTION_WIDTH = 640`
+(mínimo 0.125 ≈ 0.9–1 m; HOG 19→50 ms/cuadro). Haar sigue a 400 px
+(`_HAAR_WIDTH`). Si hay que ver aún más lejos, subir el ancho cuesta ~+30 ms por
+cada +160 px. La distancia REAL sigue sin medirse con esta cámara.
+
 ### 7. `_refine_rect` en la extracción de embeddings
 `FaceEmbeddingExtractor.get_embedding()` no aplica CLAHE (la ecualización
 adaptativa desestabilizaba el embedding entre frames con encuadres
@@ -211,6 +225,13 @@ frente del propio usuario, no contra un valor absoluto.
   y pide volver al frente. 8s por pose; 2 vencimientos = intento fallido (tras
   3 intentos, PIN). Máquina de estados: neutral → step → announce → return →
   done | failed. Se desactiva con `"enabled": False`.
+  **Anti-bucle** (bug reportado: tras validar las 2 poses el reto se reiniciaba sin
+  fin): (1) perder el rostro unos cuadros al girar YA NO reinicia el reto — solo si
+  falta más de `CHALLENGE_FACE_LOST_GRACE_S` (2.5 s); (2) "vuelve al frente" no es
+  bloqueante (tolerancia ×1.6 y `return_timeout_s`=4 s, luego se sigue igual);
+  (3) si el reconocimiento falla justo después de superar el reto, este se conserva
+  `LIVENESS_VALID_S` (20 s) en vez de repetirse. Los reinicios se loguean con su
+  causa ("Reto de vivacidad reiniciado (…)").
 - `FaceEmbeddingExtractor.get_landmarks_fast()`: recorta el rostro antes de
   procesar (7 ms vs 23 ms del `get_landmarks` de frame completo); es el que se
   usa por cuadro.
@@ -306,6 +327,8 @@ Orden cronológico, resumido — el detalle completo vive en los commits.
 - Revisar el orden de color RGB/BGR entre lo que entrega `picamera2` y lo
   que espera `get_embedding()` — quedó señalado como sospechoso pendiente,
   nunca descartado con una prueba en vivo.
+- Medir con la cámara real a qué distancia se activa el standby (¿~1 m?) y ajustar
+  `MIN/MAX_FACE_SIZE_RATIO` / `_DETECTION_WIDTH` si hace falta.
 - Verificar con cámara real el sentido de derecha/izquierda y los umbrales del reto de
   poses (`tools/head_pose_debug.py`), y probar con una foto en pantalla que el kiosco
   pida las poses y falle.

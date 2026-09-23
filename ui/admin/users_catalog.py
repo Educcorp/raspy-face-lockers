@@ -248,8 +248,13 @@ class UsersCatalogScreen(ctk.CTkFrame):
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
-    def on_show(self, **_kwargs) -> None:
+    def on_show(self, open_user_id: int | None = None, **_kwargs) -> None:
         self._load()
+        # "Mi perfil" (menú lateral) llega con el id del usuario en sesión: abrir
+        # directo su detalle. Antes este argumento se ignoraba y el botón solo
+        # mostraba el catálogo completo.
+        if open_user_id is not None:
+            self.after(50, lambda: self._open_detail(int(open_user_id)))
 
     def on_hide(self) -> None:
         self._search_var.set("")
@@ -783,7 +788,7 @@ class UserDetailOverlay(ctk.CTkFrame):
             self,
             message=(
                 f"¿Actualizar el rostro de {nombre_str or 'este usuario'}?\n\n"
-                "Se capturarán 3 nuevas poses y los perfiles\n"
+                "Se capturarán 4 nuevas poses y los perfiles\n"
                 "faciales anteriores serán reemplazados."
             ),
             on_confirm=self._do_reregister_face,

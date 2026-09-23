@@ -110,6 +110,9 @@ en ella — esa comprobación es la que faltó la primera vez.
 ⚠️ Con el anti-spoof apagado, una foto impresa o una pantalla podría abrir un
 locker. Aceptado temporalmente para poder seguir depurando el reconocimiento
 real; no es el estado deseado para producción.
+**Mitigación parcial:** el reto de poses de cabeza (punto 10) exige un movimiento
+real antes de comparar el rostro, lo que frena fotos/pantallas estáticas — pero
+no un video reproducido ni una máscara 3D.
 
 ### 6. Umbral de distancia facial — un solo número, compartido a propósito
 `core/face_recognition.py::MIN_FACE_SIZE_RATIO = 0.12` (~1 metro, calculado
@@ -190,6 +193,32 @@ cada 10s); la web usa ese latido para saber si la Pi está conectada
 - Probado con relé simulado (mock) + Flask test client contra la BD real;
   **no** con una puerta física ni desde Railway.
 
+### 10. Poses de cabeza: registro de 4 poses + reto de vivacidad
+`core/head_pose.py` estima giro (yaw) e inclinación (pitch) con los 68
+landmarks de dlib (nariz vs. ojos/barbilla, normalizado por la distancia
+interocular; no depende de la distancia a la cámara). Convención desde el punto
+de vista del usuario: yaw>0 = gira a SU derecha, pitch>0 = barbilla arriba.
+Umbrales en `config.py` → `HEAD_POSE_CONFIG`; se comparan contra la pose de
+frente del propio usuario, no contra un valor absoluto.
+- **Registro en la Pi** (`ui/admin/register_user.py::_Step4FaceCapture`): ahora 4
+  poses (frontal, derecha, izquierda, **arriba**, igual que la web). Antes
+  capturaba a los 15 cuadros estables aunque no giraras — por eso "registrar
+  varias poses no servía". Ahora solo cuenta la estabilidad cuando la cabeza
+  está en la pose pedida (sin dlib, modo fallback, se captura como antes).
+- **Kiosco** (`scanning_screen.py`, `LIVENESS_CHALLENGE_CONFIG`): antes de
+  comparar el rostro pide 2 poses al azar de {derecha, izquierda, arriba},
+  anuncia cada una ("✓ ¡POSE VALIDADA!" → "Ahora mueve tu rostro a otra pose")
+  y pide volver al frente. 8s por pose; 2 vencimientos = intento fallido (tras
+  3 intentos, PIN). Máquina de estados: neutral → step → announce → return →
+  done | failed. Se desactiva con `"enabled": False`.
+- `FaceEmbeddingExtractor.get_landmarks_fast()`: recorta el rostro antes de
+  procesar (7 ms vs 23 ms del `get_landmarks` de frame completo); es el que se
+  usa por cuadro.
+- **Calibración**: `python tools/head_pose_selftest.py` (modelo 3D sintético:
+  una foto plana girada da ~30× menos señal que una cabeza real). Los SIGNOS con
+  la cámara real están SIN verificar: correr `tools/head_pose_debug.py` (cerrar
+  antes el kiosco) y, si derecha/izquierda salen invertidas, `yaw_sign = -1.0`.
+
 ## Convenciones del repo
 
 - **Case-fold de Postgres** (punto 1) — la regla más fácil de romper sin
@@ -255,6 +284,18 @@ Orden cronológico, resumido — el detalle completo vive en los commits.
   fallaba). Los lockers 1-4 (`_DEFAULT_LOCKER_IDS`, con relé físico) nunca se
   pueden eliminar; uno con asignación activa tampoco (liberar primero).
 
+- **Fechas**: la BD guarda todo en UTC (`TIMESTAMPTZ`). En la Pi, formatear con
+  `.astimezone()` (ver `access_history._split_datetime`); en la web, el filtro
+  `local_dt`. Los contadores "hoy" usan `AT TIME ZONE 'America/Mexico_City'` (con
+  `::date` a secas el día cambiaba a las 18:00 locales). `fechaExpiracion` se
+  calcula con `now() + make_interval(...)` en SQL — nunca mandar `datetime.now()`
+  naive: Postgres lo leía como UTC (6 h antes del acceso; filas viejas quedan así).
+- **Mi perfil**: Pi → `NavDrawer._open_profile` llama `show_frame(..., open_user_id=)`;
+  `UsersCatalogScreen.on_show` lo consume y `LockerApp.show_frame` reenvía
+  `**kwargs` (antes lanzaba TypeError en modo locker). Web → `users.edit_user`
+  con el propio id; el rol de un superadmin nunca se cambia desde ese formulario
+  (antes se degradaba a Admin al guardar).
+
 ## Pendiente / próximos pasos conocidos
 
 - Re-convertir y validar los modelos de anti-spoofing (punto 5) antes de
@@ -265,6 +306,9 @@ Orden cronológico, resumido — el detalle completo vive en los commits.
 - Revisar el orden de color RGB/BGR entre lo que entrega `picamera2` y lo
   que espera `get_embedding()` — quedó señalado como sospechoso pendiente,
   nunca descartado con una prueba en vivo.
+- Verificar con cámara real el sentido de derecha/izquierda y los umbrales del reto de
+  poses (`tools/head_pose_debug.py`), y probar con una foto en pantalla que el kiosco
+  pida las poses y falle.
 - Probar con puerta física el estado Abriendo/Abierto/Cerrado del panel de
   asignaciones y el fallback `pinctrl` de los sensores (solo se probó con
   sensores simulados + lectura real de pines sin mover ninguna puerta).

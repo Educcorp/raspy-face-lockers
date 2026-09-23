@@ -37,7 +37,8 @@ def index():
             "SELECT COUNT(*) AS n FROM asignacion_locker WHERE estado='activo'"
         )["n"],
         "accesos_hoy": fetch_one(
-            "SELECT COUNT(*) AS n FROM historial_accesos WHERE fechaHoraAcceso::date = now()::date"
+            "SELECT COUNT(*) AS n FROM historial_accesos WHERE "
+            "(fechaHoraAcceso AT TIME ZONE 'America/Mexico_City')::date = (now() AT TIME ZONE 'America/Mexico_City')::date"
         )["n"],
         "lockers_fisicos": physical_lockers,
     }

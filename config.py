@@ -75,6 +75,35 @@ ANTI_SPOOF_CONFIG = {
     "score_threshold": 0.75,
 }
 
+# ── Pose de cabeza (giro/inclinación) — core/head_pose.py ───────────────────
+# Las señales se miden en unidades relativas al tamaño de la cara (no grados) y se
+# calibraron con un modelo 3D sintético (ver tools/head_pose_selftest.py):
+# ~0.14 de yaw por cada 10° de giro. Una foto plana "girada" da ~30 veces menos.
+HEAD_POSE_CONFIG = {
+    # Cambia a -1.0 si "derecha" e "izquierda" salen invertidas con esta cámara
+    # (verificar con tools/head_pose_debug.py).
+    "yaw_sign": 1.0,
+    "yaw_threshold": 0.18,        # giro lateral mínimo respecto al frente (~13°)
+    "pitch_up_threshold": 0.09,   # barbilla arriba mínima respecto al frente (~10°)
+    "frontal_max_yaw": 0.10,      # |yaw| máximo para considerar "mirando de frente"
+    "frontal_max_pitch": 0.06,    # |Δpitch| máximo para "de vuelta al frente"
+}
+
+# ── Reto de vivacidad del kiosco: pedir poses reales de la cabeza ──────────
+# Una foto/pantalla estática no puede girar la cabeza, así que antes de comparar
+# el rostro se piden `steps` movimientos distintos elegidos al azar. NO detecta un
+# video reproducido ni una máscara 3D. Poner "enabled": False lo desactiva.
+LIVENESS_CHALLENGE_CONFIG = {
+    "enabled": True,
+    "steps": 2,                              # poses distintas que se piden
+    "pool": ["derecha", "izquierda", "arriba"],
+    "step_timeout_s": 8.0,                   # tiempo para cumplir cada pose
+    "max_timeouts": 2,                       # retos vencidos → intento fallido
+    "hold_frames": 3,                        # cuadros seguidos cumpliendo la pose
+    "neutral_frames": 4,                     # cuadros de frente para fijar la referencia
+    "announce_seconds": 1.0,                 # cuánto dura "✓ Pose validada"
+}
+
 # ── GPIO / Hardware ────────────────────────────────────────────────────────
 GPIO_CONFIG = {
     "mode": "BCM",

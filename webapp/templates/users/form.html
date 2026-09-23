@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Editar Usuario' if row else 'Registro de Nuevo Usuario' }} · Smart Lockers{% endblock %}
+{% block title %}{{ 'Mi perfil' if is_own else ('Editar Usuario' if row else 'Registro de Nuevo Usuario') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>{{ 'Editar Usuario' if row else 'Registro de Nuevo Usuario' }}</h2>
+<h2>{{ 'Mi perfil' if is_own else ('Editar Usuario' if row else 'Registro de Nuevo Usuario') }}</h2>
 
 {% if row and pending %}
 <div class="flash warning">
@@ -38,7 +38,12 @@
         <label>Teléfono (opcional)</label>
         <input type="text" name="tel" value="{{ row.tel or '' }}">
       </div>
-      {% if g.user.role == 'superadmin' %}
+      {% if target_is_superadmin %}
+      <div class="form-row">
+        <label>Tipo de usuario</label>
+        <input type="text" value="Superadmin" disabled>
+      </div>
+      {% elif g.user.role == 'superadmin' %}
       <div class="form-row">
         <label>Tipo de usuario</label>
         <select name="idTipoUsuario" required>

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import customtkinter as ctk
 
 from services import access_log_service
@@ -22,6 +24,24 @@ _MOTIVO_LABELS: dict[str, str] = {
     "puerta_cerrada":        "Puerta cerrada",
     "puerta_no_cerrada":     "Puerta no cerrada",
 }
+
+def _split_datetime(value) -> tuple[str, str]:
+    """(fecha, hora) en hora local para mostrar en pantalla.
+
+    Postgres devuelve `fechaHoraAcceso` como datetime con zona (UTC). Antes esta
+    pantalla solo sabía formatear str, así que mostraba "—" en todos los registros.
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone()      # zona horaria local de la Pi
+        return value.strftime("%d/%m/%Y"), value.strftime("%H:%M:%S")
+    if isinstance(value, str) and value.strip():
+        parts = value.replace("T", " ").split()
+        if len(parts) >= 2:
+            return parts[0], parts[1].split(".")[0]
+        return parts[0], "—"
+    return "—", "—"
+
 
 _ALL      = "Todos"
 _GRANTED  = "Concedidos"
@@ -232,7 +252,7 @@ class AccessHistoryScreen(ctk.CTkFrame):
                     str(row.get("idLocker") or ""),
                     str(row.get("nombreCompleto") or ""),
                     str(row.get("motivo") or ""),
-                    str(row.get("fechaHoraAcceso") or ""),
+                    " ".join(_split_datetime(row.get("fechaHoraAcceso"))),
                 ]).lower()
                 if query not in haystack:
                     continue
@@ -260,16 +280,8 @@ class AccessHistoryScreen(ctk.CTkFrame):
         for row in rows:
             locker_num  = row.get("idLocker") or "—"
             owner       = row.get("nombreCompleto") or t("hist.unknown_user")
-            access_time = row.get("fechaHoraAcceso") or "—"
             motivo_raw  = row.get("motivo") or ""
-
-            date_part, time_part = "—", "—"
-            if isinstance(access_time, str):
-                parts = access_time.replace("T", " ").split()
-                if len(parts) >= 2:
-                    date_part, time_part = parts[0], parts[1]
-                elif parts:
-                    date_part = parts[0]
+            date_part, time_part = _split_datetime(row.get("fechaHoraAcceso"))
 
             concedido    = self._is_concedido(row)
             badge_text   = t("hist.granted") if concedido else t("hist.denied")

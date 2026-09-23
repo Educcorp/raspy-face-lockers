@@ -147,6 +147,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Move a bit farther from the camera",
     },
 
+    # ── Locker: reto de vivacidad (pedir poses de cabeza) ────────────────────
+    "scan.challenge_neutral":      {"es": "MIRA DE FRENTE",                   "en": "LOOK STRAIGHT AHEAD"},
+    "scan.challenge_neutral_hint": {"es": "Quédate quieto un momento",        "en": "Hold still for a moment"},
+    "scan.pose_derecha":           {"es": "Gira a tu DERECHA  →",             "en": "Turn to your RIGHT  →"},
+    "scan.pose_izquierda":         {"es": "←  Gira a tu IZQUIERDA",           "en": "←  Turn to your LEFT"},
+    "scan.pose_arriba":            {"es": "Mira hacia ARRIBA  ↑",             "en": "Look UP  ↑"},
+    "scan.challenge_progress":     {"es": "Paso {n} de {m}",                  "en": "Step {n} of {m}"},
+    "scan.challenge_ok":           {"es": "✓ ¡POSE VALIDADA!",                "en": "✓ POSE VERIFIED!"},
+    "scan.challenge_next":         {"es": "Ahora mueve tu rostro a otra pose", "en": "Now move your face to another pose"},
+    "scan.challenge_return":       {"es": "✓ ¡LISTO! MIRA AL FRENTE",         "en": "✓ DONE! LOOK AHEAD"},
+    "scan.challenge_return_hint":  {"es": "Casi terminamos",                  "en": "Almost done"},
+    "scan.challenge_timeout":      {"es": "TIEMPO AGOTADO",                   "en": "TIME'S UP"},
+    "scan.challenge_timeout_hint": {"es": "Vamos de nuevo",                   "en": "Let's try again"},
+
     # ── Locker: ScanningScreen – overlay PIN ─────────────────────────────────
     "pin.step1": {
         "es": "PASO 1 DE 2  ·  IDENTIFÍCATE",

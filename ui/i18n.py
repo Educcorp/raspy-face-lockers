@@ -261,12 +261,12 @@ STRINGS: dict[str, dict[str, str]] = {
 
     # ── Admin: LoginScreen ───────────────────────────────────────────────────
     "login.admin_access": {
-        "es": "Acceso administrativo",
-        "en": "Administrative access",
+        "es": "Acceso de Administrador",
+        "en": "Administrator Access",
     },
     "login.subtitle": {
-        "es": "Inicia sesión como Administrador o Superadmin para gestionar el sistema.",
-        "en": "Sign in as Administrator or Superadmin to manage the system.",
+        "es": "Acceso administrativo para gestionar usuarios, casilleros y asignaciones.",
+        "en": "Administrative access to manage users, lockers and assignments.",
     },
     "login.greeting": {
         "es": "Hola!!",
@@ -331,8 +331,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Session:",
     },
     "dash.summary_heading": {
-        "es": "Resumen",
-        "en": "Summary",
+        "es": "Centro de Control",
+        "en": "Control Center",
     },
     "dash.stat.usuarios": {
         "es": "Usuarios activos",
@@ -386,8 +386,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
     # ── Admin: UsersCatalogScreen ────────────────────────────────────────────
     "users.title": {
-        "es": "Usuarios",
-        "en": "Users",
+        "es": "Gestión de Usuarios",
+        "en": "User Management",
     },
     "users.search_placeholder": {
         "es": "Buscar por nombre o matrícula…",
@@ -396,8 +396,8 @@ STRINGS: dict[str, dict[str, str]] = {
 
     # ── Admin: LockersCatalogScreen ──────────────────────────────────────────
     "lockers.title": {
-        "es": "Lockers",
-        "en": "Lockers",
+        "es": "Gestión de Casilleros",
+        "en": "Locker Management",
     },
     "lockers.search_placeholder": {
         "es": "Buscar por área o ID…",
@@ -560,14 +560,14 @@ STRINGS: dict[str, dict[str, str]] = {
 
     # ── Nav / shell compartido (TopHeader + NavDrawer) ───────────────────────
     "nav.inicio": {"es": "Inicio", "en": "Home"},
-    "nav.usuarios": {"es": "Usuarios", "en": "Users"},
-    "nav.lockers": {"es": "Lockers", "en": "Lockers"},
-    "nav.asignaciones": {"es": "Asignaciones", "en": "Assignments"},
-    "nav.historial": {"es": "Historial", "en": "History"},
-    "nav.catalogos": {"es": "Catálogos", "en": "Catalogs"},
-    "nav.unidades": {"es": "Unidades académicas", "en": "Academic units"},
-    "nav.areas": {"es": "Áreas", "en": "Areas"},
-    "nav.tipos_usuario": {"es": "Tipos de usuario", "en": "User types"},
+    "nav.usuarios": {"es": "Gestión de Usuarios", "en": "User Management"},
+    "nav.lockers": {"es": "Gestión de Casilleros", "en": "Locker Management"},
+    "nav.asignaciones": {"es": "Asignaciones de Casilleros", "en": "Locker Assignments"},
+    "nav.historial": {"es": "Registro de Accesos", "en": "Access Logs"},
+    "nav.catalogos": {"es": "Configuración", "en": "Configuration"},
+    "nav.unidades": {"es": "Unidades Académicas", "en": "Academic Units"},
+    "nav.areas": {"es": "Gestión de Áreas", "en": "Area Management"},
+    "nav.tipos_usuario": {"es": "Gestión de Roles", "en": "Role Management"},
     "nav.mi_perfil": {"es": "Mi perfil", "en": "My profile"},
     "nav.cerrar_sesion": {"es": "Cerrar sesión", "en": "Log out"},
 }

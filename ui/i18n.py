@@ -148,6 +148,8 @@ STRINGS: dict[str, dict[str, str]] = {
     },
 
     # ── Locker: reto de vivacidad (pedir poses de cabeza) ────────────────────
+    "scan.distance_closer":        {"es": "ACÉRCATE A LA CÁMARA",            "en": "MOVE CLOSER"},
+    "scan.distance_farther":       {"es": "ALÉJATE UN POCO",                  "en": "STEP BACK A BIT"},
     "scan.challenge_neutral":      {"es": "MIRA DE FRENTE",                   "en": "LOOK STRAIGHT AHEAD"},
     "scan.challenge_neutral_hint": {"es": "Quédate quieto un momento",        "en": "Hold still for a moment"},
     "scan.pose_derecha":           {"es": "Gira a tu DERECHA  →",             "en": "Turn to your RIGHT  →"},

@@ -102,6 +102,11 @@ LIVENESS_CHALLENGE_CONFIG = {
     "hold_frames": 3,                        # cuadros seguidos cumpliendo la pose
     "neutral_frames": 4,                     # cuadros de frente para fijar la referencia
     "announce_seconds": 1.0,                 # cuánto dura "✓ Pose validada"
+    # Tras la última pose se pide volver al frente, pero NO es un requisito de
+    # seguridad (la vivacidad ya se comprobó): se acepta un frente aproximado y, si
+    # no llega en `return_timeout_s`, se sigue igual con el reconocimiento.
+    "return_tolerance": 1.6,
+    "return_timeout_s": 4.0,
 }
 
 # ── GPIO / Hardware ────────────────────────────────────────────────────────

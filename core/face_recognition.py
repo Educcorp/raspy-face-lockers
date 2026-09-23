@@ -48,17 +48,43 @@ logger = logging.getLogger(__name__)
 MIN_FACE_SIZE_RATIO: float = 0.12
 
 
-def filter_close_faces(faces: list, frame) -> list:
-    """Retiene solo las caras dentro del rango de ~1 metro.
+# Límite superior de la banda: cara más grande que esto = demasiado cerca (~0.5 m).
+# Junto con MIN_FACE_SIZE_RATIO define la "zona de interacción" (~0.5–1 m); todo lo
+# que quede fuera (fondo lejano o alguien pegado a la cámara) se ignora.
+MAX_FACE_SIZE_RATIO: float = 0.26
 
-    Filtra por bounding box: la cara debe tener un ancho >= MIN_FACE_SIZE_RATIO
-    del ancho del frame. Esto evita detectar rostros o movimientos lejanos.
+
+def classify_faces_by_distance(faces: list, frame) -> tuple[list, str]:
+    """Separa las caras en la zona de interacción (~1 m) de las que hay que ignorar.
+
+    Devuelve (caras_en_zona, pista) donde pista es:
+      "closer"  → solo hay caras más pequeñas/lejanas que la zona: "acércate"
+      "farther" → hay una cara más grande que la zona (demasiado cerca): "aléjate"
+      ""        → hay alguna cara válida, o no se ve ninguna
+    Las caras de fondo o pegadas a la cámara nunca se devuelven como válidas.
     """
     if not faces:
-        return faces
+        return [], ""
     frame_w = frame.shape[1] if frame is not None else 480
     min_w = max(60, int(frame_w * MIN_FACE_SIZE_RATIO))
-    return [f for f in faces if (f.get("box") or (0, 0, 0, 0))[2] >= min_w]
+    max_w = int(frame_w * MAX_FACE_SIZE_RATIO)
+    widths = [(f.get("box") or (0, 0, 0, 0))[2] for f in faces]
+    valid = [f for f, w in zip(faces, widths) if min_w <= w <= max_w]
+    if valid:
+        return valid, ""
+    if any(w > max_w for w in widths):
+        return [], "farther"
+    return [], "closer"
+
+
+def filter_close_faces(faces: list, frame) -> list:
+    """Retiene solo las caras dentro de la zona de interacción (~0.5–1 m).
+
+    Filtra por el ancho de la caja respecto al ancho del frame: entre
+    MIN_FACE_SIZE_RATIO (no más lejos de ~1 m) y MAX_FACE_SIZE_RATIO (no pegada
+    a la cámara). Evita reaccionar a rostros del fondo o a alguien encima.
+    """
+    return classify_faces_by_distance(faces, frame)[0]
 
 
 # Rutas de site-packages del sistema. En Raspberry Pi, dlib, onnxruntime y
@@ -198,9 +224,17 @@ def _import_picamera2_from_system():
 # ── Face Detection ─────────────────────────────────────────────────────────
 
 # Ancho al que se reduce el frame antes de detectar. La cámara entrega
-# 1296x972, pero los detectores no ganan nada con esa resolución y sí pagan
-# mucho: se trabaja a 400px de ancho y las cajas se reescalan después.
-_DETECTION_WIDTH = 400
+# 1296x972 y detectar a esa resolución cuesta demasiado, así que se reduce y las
+# cajas se reescalan después.
+#
+# OJO: el detector HOG frontal de dlib no ve rostros menores de ~80 px en la imagen
+# que recibe. A 400 px de ancho eso es 0.20 del frame (≈0.6 m): a 1 m NO detectaba
+# la cara y el standby nunca se activaba solo. A 640 px el mínimo baja a 0.125
+# (≈0.9-1 m), que es lo que MIN_FACE_SIZE_RATIO promete. Medido en esta Pi:
+# HOG 19 ms @400 px → 50 ms @640 px por cuadro.
+_DETECTION_WIDTH = 640
+# Ancho al que trabaja el fallback Haar (más barato; ver _detect_haar).
+_HAAR_WIDTH = 400
 
 
 def _downscale_for_detection(frame: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -309,6 +343,13 @@ class FaceDetector:
             else:
                 enhanced, scale = prepared
             gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+            # Haar no necesita la resolución de HOG (que sube a 640 px para ver a ~1 m):
+            # a 640 px costaba ~2.5x más y solo sirve de pista "acércate", así que sigue
+            # trabajando a _HAAR_WIDTH.
+            if gray.shape[1] > _HAAR_WIDTH:
+                k = _HAAR_WIDTH / float(gray.shape[1])
+                gray = cv2.resize(gray, (int(gray.shape[1] * k), int(gray.shape[0] * k)))
+                scale = scale * k
             # minSize acompaña la escala: 60px en el frame original son
             # 60*scale px en la imagen reducida.
             min_side = max(20, int(60 * scale))

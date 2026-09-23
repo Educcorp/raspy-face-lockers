@@ -1,53 +1,382 @@
 {% extends "base.html" %}
+
 {% block title %}Gestión de Usuarios · Smart Lockers{% endblock %}
+
 {% block content %}
-<div class="actions-bar">
-  <h2>Gestión de Usuarios</h2>
-  <a class="btn" href="{{ url_for('users.new_user') }}">+ Nuevo usuario</a>
+
+<div class="access-header">
+  <div>
+    <h2>Gestión de Usuarios</h2>
+    <p class="muted">
+      Consulta, busca y administra los usuarios registrados.
+    </p>
+  </div>
+
+  <a class="btn btn-primary" href="{{ url_for('users.new_user') }}">
+    + Nuevo usuario
+  </a>
 </div>
 
-<div class="card">
-  <table>
-    <thead>
-      <tr>
-        <th>Nombre</th><th>Matrícula</th>
-        {% if g.user.role == 'superadmin' %}<th>Tipo</th>{% endif %}
-        <th>Unidad</th><th>Estado</th><th>Permisos</th><th>Rostro</th><th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for u in users %}
-      <tr>
-        <td>{{ u.nombre }} {{ u.appaterno }} {{ u.apmaterno or '' }}</td>
-        <td>{{ u.matricula }}</td>
-        {% if g.user.role == 'superadmin' %}<td>{{ u.tipo or '—' }}</td>{% endif %}
-        <td>{{ u.unidad or '—' }}</td>
-        <td><span class="badge {{ u.estado }}">{{ u.estado }}</span></td>
-        <td>
-          {% if u.permisoactivacion == 'locker' %}
-            <span class="badge perm-locker">Locker</span>
-          {% elif u.permisoactivacion == 'recurso_compartido' %}
-            <span class="badge perm-recurso">Recurso compartido</span>
-          {% elif u.permisoactivacion == 'ambos' %}
-            <span class="badge perm-ambos">Ambos</span>
-          {% else %}
-            <span class="badge inactivo">—</span>
-          {% endif %}
-        </td>
-        <td>
-          {% if u.n_encodings and u.n_encodings > 0 %}
-            <span class="badge activo">Registrado</span>
-          {% else %}
-            <a class="badge pendiente" style="text-decoration:none;"
-               href="{{ url_for('face.capture_page', user_id=u.idusuario) }}">Pendiente</a>
-          {% endif %}
-        </td>
-        <td><a class="btn btn-sm" href="{{ url_for('users.edit_user', user_id=u.idusuario) }}">Editar</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="{{ 8 if g.user.role == 'superadmin' else 7 }}">No hay usuarios registrados.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+
+<!-- FILTROS -->
+<div class="card access-filters">
+
+  <form
+    method="get"
+    action="{{ url_for('users.list_users') }}"
+    class="access-filter-form"
+  >
+
+    <!-- Campo de búsqueda -->
+    <div class="access-search">
+      <label for="buscar">Buscar</label>
+
+      <div class="search-input-wrap">
+        <span class="search-icon">⌕</span>
+
+        <input
+          type="text"
+          id="buscar"
+          name="buscar"
+          value="{{ buscar }}"
+          placeholder="Escribe para buscar..."
+        >
+      </div>
+    </div>
+
+
+    <!-- Campo donde buscar -->
+    <div class="access-filter">
+      <label for="campo">Buscar por</label>
+
+      <select id="campo" name="campo">
+        <option
+          value="todos"
+          {% if campo == 'todos' %}selected{% endif %}
+        >
+          Todos
+        </option>
+
+        <option
+          value="nombre"
+          {% if campo == 'nombre' %}selected{% endif %}
+        >
+          Nombre
+        </option>
+
+        <option
+          value="matricula"
+          {% if campo == 'matricula' %}selected{% endif %}
+        >
+          Matrícula
+        </option>
+
+        <option
+          value="unidad"
+          {% if campo == 'unidad' %}selected{% endif %}
+        >
+          Unidad
+        </option>
+      </select>
+    </div>
+
+
+    <!-- Botones -->
+    <div class="access-filter-actions">
+
+      <button type="submit" class="btn btn-primary">
+        Buscar
+      </button>
+
+      {% if buscar or campo != 'todos' %}
+        <a
+          href="{{ url_for('users.list_users') }}"
+          class="btn"
+        >
+          Limpiar
+        </a>
+      {% endif %}
+
+    </div>
+
+  </form>
+
 </div>
+
+
+<!-- INFORMACIÓN DE RESULTADOS -->
+<div class="access-results-info">
+
+  <span>
+    {% if total > 0 %}
+      Mostrando <strong>{{ inicio }}–{{ fin }}</strong>
+      de <strong>{{ total }}</strong> usuarios
+    {% else %}
+      No se encontraron usuarios
+    {% endif %}
+  </span>
+
+  {% if buscar %}
+    <span>
+      Búsqueda:
+      <strong>"{{ buscar }}"</strong>
+    </span>
+  {% endif %}
+
+</div>
+
+
+<!-- TABLA -->
+<div class="card access-table-card">
+
+  <div class="access-table-wrap">
+
+    <table>
+
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Matrícula</th>
+
+          {% if g.user.role == 'superadmin' %}
+            <th>Tipo</th>
+          {% endif %}
+
+          <th>Unidad</th>
+          <th>Estado</th>
+          <th>Permisos</th>
+          <th>Rostro</th>
+          <th></th>
+        </tr>
+      </thead>
+
+
+      <tbody>
+
+        {% for u in users %}
+
+        <tr>
+
+          <!-- Nombre -->
+          <td>
+            <strong>
+              {{ u.nombre }}
+              {{ u.appaterno }}
+              {{ u.apmaterno or '' }}
+            </strong>
+          </td>
+
+
+          <!-- Matrícula -->
+          <td>
+            {{ u.matricula }}
+          </td>
+
+
+          <!-- Tipo -->
+          {% if g.user.role == 'superadmin' %}
+            <td>
+              {{ u.tipo or '—' }}
+            </td>
+          {% endif %}
+
+
+          <!-- Unidad -->
+          <td>
+            {{ u.unidad or '—' }}
+          </td>
+
+
+          <!-- Estado -->
+          <td>
+            <span class="badge {{ u.estado }}">
+              {{ u.estado }}
+            </span>
+          </td>
+
+
+          <!-- Permisos -->
+          <td>
+
+            {% if u.permisoactivacion == 'locker' %}
+
+              <span class="badge perm-locker">
+                Locker
+              </span>
+
+            {% elif u.permisoactivacion == 'recurso_compartido' %}
+
+              <span class="badge perm-recurso">
+                Recurso compartido
+              </span>
+
+            {% elif u.permisoactivacion == 'ambos' %}
+
+              <span class="badge perm-ambos">
+                Ambos
+              </span>
+
+            {% else %}
+
+              <span class="badge inactivo">
+                —
+              </span>
+
+            {% endif %}
+
+          </td>
+
+
+          <!-- Rostro -->
+          <td>
+
+            {% if u.n_encodings and u.n_encodings > 0 %}
+
+              <span class="badge activo">
+                Registrado
+              </span>
+
+            {% else %}
+
+              <a
+                class="badge pendiente"
+                style="text-decoration:none;"
+                href="{{ url_for('face.capture_page', user_id=u.idusuario) }}"
+              >
+                Pendiente
+              </a>
+
+            {% endif %}
+
+          </td>
+
+
+          <!-- Editar -->
+          <td>
+            <a
+              class="btn btn-sm"
+              href="{{ url_for('users.edit_user', user_id=u.idusuario) }}"
+            >
+              Editar
+            </a>
+          </td>
+
+        </tr>
+
+
+        {% else %}
+
+        <tr>
+          <td
+            colspan="{{ 8 if g.user.role == 'superadmin' else 7 }}"
+            class="empty-access"
+          >
+            {% if buscar %}
+              No se encontraron usuarios para
+              <strong>"{{ buscar }}"</strong>.
+            {% else %}
+              No hay usuarios registrados.
+            {% endif %}
+          </td>
+        </tr>
+
+        {% endfor %}
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+</div>
+
+
+<!-- PAGINACIÓN -->
+{% if total_paginas > 1 %}
+
+<nav class="access-pagination" aria-label="Paginación de usuarios">
+
+  <!-- Anterior -->
+  {% if pagina > 1 %}
+
+    <a
+      class="pagination-btn"
+      href="{{ url_for(
+        'users.list_users',
+        pagina=pagina - 1,
+        buscar=buscar,
+        campo=campo
+      ) }}"
+    >
+      ← Anterior
+    </a>
+
+  {% else %}
+
+    <span class="pagination-btn disabled">
+      ← Anterior
+    </span>
+
+  {% endif %}
+
+
+  <!-- Números -->
+  <div class="pagination-pages">
+
+    {% for p in range(1, total_paginas + 1) %}
+
+      {% if p == pagina %}
+
+        <span class="pagination-number active">
+          {{ p }}
+        </span>
+
+      {% else %}
+
+        <a
+          class="pagination-number"
+          href="{{ url_for(
+            'users.list_users',
+            pagina=p,
+            buscar=buscar,
+            campo=campo
+          ) }}"
+        >
+          {{ p }}
+        </a>
+
+      {% endif %}
+
+    {% endfor %}
+
+  </div>
+
+
+  <!-- Siguiente -->
+  {% if pagina < total_paginas %}
+
+    <a
+      class="pagination-btn"
+      href="{{ url_for(
+        'users.list_users',
+        pagina=pagina + 1,
+        buscar=buscar,
+        campo=campo
+      ) }}"
+    >
+      Siguiente →
+    </a>
+
+  {% else %}
+
+    <span class="pagination-btn disabled">
+      Siguiente →
+    </span>
+
+  {% endif %}
+
+</nav>
+
+{% endif %}
+
 {% endblock %}

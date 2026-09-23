@@ -13,23 +13,149 @@ from webapp.db import cursor, execute, execute_returning, fetch_all, fetch_one
 logger = logging.getLogger(__name__)
 
 
+def _users_base_query() -> str:
+    return """
+        FROM usuarios u
+        LEFT JOIN tipo_usuarios t
+            ON t.idtipousuario = u.idtipousuario
+        LEFT JOIN unidad_academica ua
+            ON ua.idunidadacademica = u.idunidadacademica
+    """
+
+
+def _users_select_query() -> str:
+    return """
+        SELECT
+            u.idusuario,
+            u.nombre,
+            u.appaterno,
+            u.apmaterno,
+            u.matricula,
+            u.emailinst,
+            u.tel,
+            u.estado,
+            u.permisoactivacion,
+            t.nombretipousuario AS tipo,
+            ua.nombreunidadacademica AS unidad,
+            (
+                SELECT COUNT(*)
+                FROM encoding e
+                WHERE e.idusuario = u.idusuario
+                  AND e.estado = 'activo'
+            ) AS n_encodings
+    """
+
+
 def get_all_users() -> list[dict]:
     return fetch_all(
-        """
-        SELECT u.idusuario, u.nombre, u.appaterno, u.apmaterno,
-               u.matricula, u.emailinst, u.tel, u.estado,
-               u.permisoactivacion,
-               t.nombretipousuario AS tipo,
-               ua.nombreunidadacademica AS unidad,
-               (SELECT COUNT(*) FROM encoding e
-                 WHERE e.idusuario = u.idusuario AND e.estado = 'activo') AS n_encodings
-        FROM usuarios u
-        LEFT JOIN tipo_usuarios t ON t.idtipousuario = u.idtipousuario
-        LEFT JOIN unidad_academica ua ON ua.idunidadacademica = u.idunidadacademica
+        _users_select_query()
+        + _users_base_query()
+        + """
         ORDER BY u.nombre, u.appaterno
         """
     )
 
+
+def get_users_paginated(
+    page: int = 1,
+    per_page: int = 15,
+    search: str = "",
+    search_field: str = "todos",
+) -> tuple[list[dict], int]:
+    """
+    Obtiene usuarios paginados y permite buscar por
+    nombre, matrícula, unidad o todos los campos.
+    """
+
+    conditions: list[str] = []
+    params: list = []
+
+    search = search.strip()
+    search_field = search_field.strip().lower()
+
+    if search:
+        pattern = f"%{search}%"
+
+        if search_field == "nombre":
+            conditions.append(
+                """
+                CONCAT(
+                    u.nombre,
+                    ' ',
+                    u.appaterno,
+                    ' ',
+                    COALESCE(u.apmaterno, '')
+                ) ILIKE %s
+                """
+            )
+            params.append(pattern)
+
+        elif search_field == "matricula":
+            conditions.append(
+                "CAST(u.matricula AS TEXT) ILIKE %s"
+            )
+            params.append(pattern)
+
+        elif search_field == "unidad":
+            conditions.append(
+                "COALESCE(ua.nombreunidadacademica, '') ILIKE %s"
+            )
+            params.append(pattern)
+
+        else:
+            conditions.append(
+                """
+                (
+                    CONCAT(
+                        u.nombre,
+                        ' ',
+                        u.appaterno,
+                        ' ',
+                        COALESCE(u.apmaterno, '')
+                    ) ILIKE %s
+                    OR CAST(u.matricula AS TEXT) ILIKE %s
+                    OR COALESCE(ua.nombreunidadacademica, '') ILIKE %s
+                    OR COALESCE(t.nombretipousuario, '') ILIKE %s
+                )
+                """
+            )
+            params.extend([pattern, pattern, pattern, pattern])
+
+    where_sql = ""
+
+    if conditions:
+        where_sql = " WHERE " + " AND ".join(conditions)
+
+    # Total de registros
+    count_row = fetch_one(
+        """
+        SELECT COUNT(*) AS total
+        """
+        + _users_base_query()
+        + where_sql,
+        tuple(params),
+    )
+
+    total = int(count_row["total"]) if count_row else 0
+
+    # Seguridad para evitar páginas inválidas
+    if page < 1:
+        page = 1
+
+    offset = (page - 1) * per_page
+
+    rows = fetch_all(
+        _users_select_query()
+        + _users_base_query()
+        + where_sql
+        + """
+        ORDER BY u.nombre, u.appaterno
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params + [per_page, offset]),
+    )
+
+    return rows, total
 
 def get_user_by_id(user_id: int) -> dict | None:
     return fetch_one(

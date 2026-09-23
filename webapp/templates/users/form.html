@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}{{ tr('form.edit_title') if row else tr('form.new_title') }} · Smart Lockers{% endblock %}
+{% block title %}{{ tr('nav.mi_perfil') if is_own else (tr('form.edit_title') if row else tr('form.new_title')) }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>{{ tr('form.edit_title') if row else tr('form.new_title') }}</h2>
+<h2>{{ tr('nav.mi_perfil') if is_own else (tr('form.edit_title') if row else tr('form.new_title')) }}</h2>
 
 {% if row and pending %}
 <div class="flash warning">
@@ -38,7 +38,12 @@
         <label>{{ tr('form.phone') }}</label>
         <input type="text" name="tel" value="{{ row.tel or '' }}">
       </div>
-      {% if g.user.role == 'superadmin' %}
+      {% if target_is_superadmin %}
+      <div class="form-row">
+        <label>{{ tr('form.user_type') }}</label>
+        <input type="text" value="Superadmin" disabled>
+      </div>
+      {% elif g.user.role == 'superadmin' %}
       <div class="form-row">
         <label>{{ tr('form.user_type') }}</label>
         <select name="idTipoUsuario" id="tipo-usuario" required>
@@ -64,7 +69,7 @@
       </div>
       {# Admin/Superadmin siempre tienen "ambos": el campo se oculta (ver script abajo). #}
       {% set sel_tipo = row.idtipousuario if row else (tipos[0].idtipousuario if tipos else none) %}
-      {% set perm_hidden = (sel_tipo in privileged_tipo_ids) if g.user.role == 'superadmin' else row_privileged %}
+      {% set perm_hidden = target_is_superadmin or ((sel_tipo in privileged_tipo_ids) if g.user.role == 'superadmin' else row_privileged) %}
       <div class="form-row" id="perm-row" {% if perm_hidden %}hidden{% endif %}>
         <label>{{ tr('form.perms') }}</label>
         <select name="permisoactivacion" id="perm-select" {% if not perm_hidden %}required{% endif %}>

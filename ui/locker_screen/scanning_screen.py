@@ -24,7 +24,8 @@ import random
 
 from config import FACE_RECOGNITION_CONFIG, CAMERA_CONFIG
 from config import GPIO_CONFIG
-from config import DOOR_SWITCH_CONFIG
+from config import DOOR_SWITCH_CONFIG, LIVENESS_CHALLENGE_CONFIG
+from core import head_pose
 from ui.i18n import t
 from ui import theme
 from ui.theme import PALETTE, DARK_PALETTE
@@ -125,6 +126,16 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_started_at = 0.0
         self._challenge_ref_box = None
         self._blink_closed_seen = False
+        # Reto de poses de cabeza (ver _update_active_liveness)
+        self._challenge_state = "neutral"       # neutral | step | announce | return | done | failed
+        self._challenge_baseline = None         # HeadPose de frente del usuario
+        self._challenge_neutral_poses: list = []
+        self._challenge_hold = 0
+        self._challenge_announce_until = 0.0
+        self._challenge_timeouts = 0
+        self._challenge_failed = False          # el detector lo convierte en intento fallido
+        self._challenge_notice_until = 0.0      # mantiene visible el aviso de 'tiempo agotado'
+        self._challenge_msg: tuple[str, str] | None = None   # (texto, pista) para la UI
         self._auto_return_started_ts: float | None = None
         self._door_wait_job = None
         self._door_wait_active = False
@@ -628,6 +639,13 @@ class ScanningScreen(ctk.CTkFrame):
                 self._last_seen_face_box = face_box
                 if face_box:
                     self._update_liveness(frame, face_box)
+                    if self._challenge_failed:
+                        # No pudo (o no quiso) hacer las poses pedidas: cuenta como
+                        # intento fallido → tras 3, se ofrece el PIN.
+                        self._challenge_failed = False
+                        self._reset_liveness_state()
+                        self.after(0, self.on_face_no_match)
+                        continue
             else:
                 self._stable_face_frames = 0
                 self._last_seen_face_box = None
@@ -826,8 +844,9 @@ class ScanningScreen(ctk.CTkFrame):
                             )
                     else:
                         self.scan_progress_bar.set(0)
+                        msg = self._challenge_msg
                         self.lbl_status.configure(
-                            text=t("scan.move_face"),
+                            text=msg[0] if msg else t("scan.move_face"),
                             text_color=self.WARNING,
                         )
                 else:
@@ -843,6 +862,8 @@ class ScanningScreen(ctk.CTkFrame):
                     self.lbl_hint.configure(text="↔  " + t("scan.hint_closer"))
                 elif hint == "farther":
                     self.lbl_hint.configure(text="↔  " + t("scan.hint_farther"))
+                elif self._face_detected and not self._liveness_passed and self._challenge_msg:
+                    self.lbl_hint.configure(text=self._challenge_msg[1])
                 else:
                     self.lbl_hint.configure(text="")
             else:
@@ -1212,16 +1233,37 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_index = 0
         self._challenge_started_at = 0.0
         self._blink_closed_seen = False
+        self._challenge_state = "neutral"
+        self._challenge_baseline = None
+        self._challenge_neutral_poses = []
+        self._challenge_hold = 0
+        self._challenge_announce_until = 0.0
+        self._challenge_timeouts = 0
+        self._challenge_msg = None
         self._challenge_steps = self._build_liveness_challenge()
 
     def _build_liveness_challenge(self) -> list[str]:
-        # OPTIMIZADO: Sin challenges activos - solo detección pasiva de micromovimientos
-        # Esto hace el desbloqueo tan rápido como iPhone Face ID
-        return []
+        """Poses de cabeza (al azar y sin repetir) que hay que hacer antes de reconocer.
+
+        Una foto o pantalla estática no puede girar la cabeza. Lista vacía = reto
+        desactivado (LIVENESS_CHALLENGE_CONFIG["enabled"] = False).
+        """
+        cfg = LIVENESS_CHALLENGE_CONFIG
+        if not cfg.get("enabled", False):
+            return []
+        pool = [d for d in cfg["pool"] if d in head_pose.DIRECTIONS]
+        return random.sample(pool, min(int(cfg["steps"]), len(pool)))
 
     def _challenge_prompt(self) -> str:
-        # OPTIMIZADO: Mensaje simple sin instrucciones mareantes
-        return "Prueba de vida: detectando..."
+        return t("scan.challenge_neutral")
+
+    def _measure_head_pose(self, frame: np.ndarray, face_box: tuple):
+        """Pose actual de la cabeza (o None si no hay landmarks fiables)."""
+        if not self.face_manager:
+            return None
+        if not getattr(self.face_manager.embedding_extractor, "uses_dlib", False):
+            return None
+        return head_pose.estimate_head_pose(self.face_manager.get_landmarks_fast(frame, face_box))
 
     def _extract_face_gray(self, frame: np.ndarray, face_box: tuple) -> Optional[np.ndarray]:
         try:
@@ -1302,59 +1344,106 @@ class ScanningScreen(ctk.CTkFrame):
         self._liveness_passed = self._passive_liveness_ok and self._active_liveness_ok
 
     def _update_active_liveness(self, frame: np.ndarray, face_box: tuple) -> None:
+        """Reto de vivacidad: pedir poses reales de cabeza y decir cuándo se valida cada una.
+
+        neutral → (paso → "✓ validada" → paso …) → return (volver al frente) → done.
+        Corre en el hilo de detección; la UI solo lee `_challenge_msg`.
+        """
         if not self._challenge_steps:
             self._active_liveness_ok = True
             return
-
-        now = datetime.now().timestamp()
-        if self._challenge_started_at == 0.0:
-            self._challenge_started_at = now
-            self._challenge_ref_box = face_box
-            return
-
-        if now - self._challenge_started_at > self.LIVENESS_CHALLENGE_TIMEOUT:
-            self._challenge_steps = self._build_liveness_challenge()
-            self._challenge_index = 0
-            self._challenge_started_at = now
-            self._challenge_ref_box = face_box
-            self._blink_closed_seen = False
-            return
-
-        if self._challenge_ref_box is None:
-            self._challenge_ref_box = face_box
-            return
-
-        if self._challenge_index >= len(self._challenge_steps):
+        if self._challenge_state == "done":
             self._active_liveness_ok = True
             return
+        if self._challenge_state == "failed":
+            return      # esperando a que el bucle de detección registre el intento fallido
 
-        ref_x, ref_y, ref_w, ref_h = [float(v) for v in self._challenge_ref_box[:4]]
-        x, y, w, h = [float(v) for v in face_box[:4]]
-        ref_cx = ref_x + (ref_w * 0.5)
-        ref_cy = ref_y + (ref_h * 0.5)
-        cx = x + (w * 0.5)
-        cy = y + (h * 0.5)
-        dx_norm = (cx - ref_cx) / max(1.0, ref_w)
-        area_ratio = ((w * h) / max(1.0, ref_w * ref_h)) - 1.0
+        cfg = LIVENESS_CHALLENGE_CONFIG
+        now = time.time()
+        pose = self._measure_head_pose(frame, face_box)
+        if pose is None:
+            return      # sin landmarks fiables este cuadro: no avanza ni retrocede
 
-        target = self._challenge_steps[self._challenge_index]
-        passed = False
-        if target == "left":
-            passed = dx_norm <= -self.CHALLENGE_SHIFT_THRESHOLD
-        elif target == "right":
-            passed = dx_norm >= self.CHALLENGE_SHIFT_THRESHOLD
-        elif target == "closer":
-            passed = area_ratio >= self.CHALLENGE_SCALE_IN_THRESHOLD
-        elif target == "away":
-            passed = area_ratio <= self.CHALLENGE_SCALE_OUT_THRESHOLD
-        elif target == "blink":
-            passed = self._detect_blink(frame, face_box)
+        n_steps = len(self._challenge_steps)
+        state = self._challenge_state
 
-        if passed:
-            self._challenge_index += 1
-            self._challenge_ref_box = face_box
-            if self._challenge_index >= len(self._challenge_steps):
+        if state == "neutral":
+            if now >= self._challenge_notice_until:
+                self._challenge_msg = (t("scan.challenge_neutral"), t("scan.challenge_neutral_hint"))
+            if head_pose.is_frontal(pose):
+                self._challenge_neutral_poses.append(pose)
+                if len(self._challenge_neutral_poses) >= int(cfg["neutral_frames"]):
+                    poses = self._challenge_neutral_poses
+                    self._challenge_baseline = head_pose.HeadPose(
+                        yaw=float(np.median([p.yaw for p in poses])),
+                        pitch=float(np.median([p.pitch for p in poses])),
+                    )
+                    self._begin_challenge_step(0, now)
+            else:
+                self._challenge_neutral_poses.clear()
+            return
+
+        if state == "announce":
+            self._challenge_msg = (t("scan.challenge_ok"), t("scan.challenge_next"))
+            if now >= self._challenge_announce_until:
+                self._begin_challenge_step(self._challenge_index, now)
+            return
+
+        # state == "step" | "return": ambos tienen tiempo límite
+        if now - self._challenge_started_at > float(cfg["step_timeout_s"]):
+            self._challenge_timed_out()
+            return
+
+        delta = pose.minus(self._challenge_baseline)
+        if state == "step":
+            target = self._challenge_steps[self._challenge_index]
+            self._challenge_msg = (
+                t(f"scan.pose_{target}"),
+                t("scan.challenge_progress", n=self._challenge_index + 1, m=n_steps),
+            )
+            self._challenge_hold = self._challenge_hold + 1 if head_pose.matches_direction(delta, target) else 0
+            if self._challenge_hold >= int(cfg["hold_frames"]):
+                self._challenge_index += 1
+                self._challenge_hold = 0
+                logger.info("Reto de vivacidad: pose '%s' validada (%d/%d)",
+                            target, self._challenge_index, n_steps)
+                if self._challenge_index >= n_steps:
+                    self._challenge_state = "return"
+                    self._challenge_started_at = now
+                    self._challenge_msg = (t("scan.challenge_return"), t("scan.challenge_return_hint"))
+                else:
+                    self._challenge_state = "announce"
+                    self._challenge_announce_until = now + float(cfg["announce_seconds"])
+                    self._challenge_msg = (t("scan.challenge_ok"), t("scan.challenge_next"))
+        else:   # "return": volver a mirar al frente antes de comparar el rostro
+            self._challenge_msg = (t("scan.challenge_return"), t("scan.challenge_return_hint"))
+            self._challenge_hold = self._challenge_hold + 1 if head_pose.is_frontal(pose, self._challenge_baseline) else 0
+            if self._challenge_hold >= int(cfg["hold_frames"]):
+                self._challenge_state = "done"
                 self._active_liveness_ok = True
+                self._challenge_msg = None
+                logger.info("Reto de vivacidad superado (%s)", ", ".join(self._challenge_steps))
+
+    def _begin_challenge_step(self, index: int, now: float) -> None:
+        self._challenge_state = "step"
+        self._challenge_index = index
+        self._challenge_started_at = now
+        self._challenge_hold = 0
+
+    def _challenge_timed_out(self) -> None:
+        """Se agotó el tiempo de una pose: reintenta con otro reto; tras varios, cuenta como intento fallido."""
+        self._challenge_timeouts += 1
+        logger.warning("Reto de vivacidad: tiempo agotado (%d/%d)",
+                       self._challenge_timeouts, int(LIVENESS_CHALLENGE_CONFIG["max_timeouts"]))
+        if self._challenge_timeouts >= int(LIVENESS_CHALLENGE_CONFIG["max_timeouts"]):
+            self._challenge_state = "failed"
+            self._challenge_failed = True
+            return
+        timeouts = self._challenge_timeouts
+        self._reset_liveness_state()
+        self._challenge_timeouts = timeouts
+        self._challenge_msg = (t("scan.challenge_timeout"), t("scan.challenge_timeout_hint"))
+        self._challenge_notice_until = time.time() + 1.5
 
     def _detect_blink(self, frame: np.ndarray, face_box: tuple) -> bool:
         if not self.face_manager:

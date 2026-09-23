@@ -29,6 +29,7 @@ from services import user_service
 from ui.admin_app import PALETTE
 from ui.i18n import t as _t
 from auth.session import can_create_users, filter_assignable_user_types
+from core import head_pose
 from core.face_recognition import filter_close_faces
 from utils.validators import (
     validate_name, validate_matricula, validate_email, validate_tel,
@@ -524,14 +525,18 @@ class _Step3PIN(ctk.CTkFrame):
 
 class _Step4FaceCapture(ctk.CTkFrame):
     """
-    Paso de captura facial guiada con 3 poses: frontal, derecha, izquierda.
+    Paso de captura facial guiada con 4 poses (las mismas que el panel web):
+    frontal, derecha, izquierda y arriba.
 
     Flujo:
       1. Instrucción de pose + silueta guía en pantalla
-      2. Al detectar rostro estable → captura automática del embedding
+      2. Solo cuando la cabeza REALMENTE está en la pose pedida (core/head_pose.py)
+         y el rostro se mantiene estable → captura automática del embedding
       3. Avanza automáticamente a la siguiente pose
-      4. Tras capturar las 3 poses → habilita "Registrar"
-      5. Guarda 3 encodings por usuario (mejora reconocimiento multi-ángulo)
+      4. Tras capturar las 4 poses → habilita "Registrar"
+      5. Guarda 4 encodings por usuario (mejora reconocimiento multi-ángulo)
+
+    Sin dlib (modo fallback) no hay landmarks para medir la pose y se captura como antes.
     """
 
     STABLE_FRAMES_NEEDED = 15
@@ -543,6 +548,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
         {"tipoParte": "frontal",   "instruccion": "Mira directo a la cámara",           "icono": "●"},
         {"tipoParte": "derecha",   "instruccion": "Gira tu cabeza hacia tu DERECHA  →",  "icono": "→"},
         {"tipoParte": "izquierda", "instruccion": "Gira tu cabeza hacia tu IZQUIERDA  ←", "icono": "←"},
+        {"tipoParte": "arriba",    "instruccion": "Levanta un poco la barbilla, mira ARRIBA  ↑", "icono": "↑"},
     ]
 
     def __init__(self, parent, wizard: RegisterUserScreen):
@@ -566,6 +572,11 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._advance_pending: bool = False     # esperando auto-avance a siguiente pose
         self._last_capture_time: float = 0.0
 
+        # Verificación de la pose real de la cabeza
+        self._baseline_pose = None              # pose de frente (referencia de las demás)
+        self._current_pose = None               # última pose medida
+        self._pose_ok: bool = True              # la pose actual corresponde a la pedida
+
         self._build()
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -585,10 +596,10 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
         self._pose_dot_labels: list[ctk.CTkLabel] = []
         self._pose_name_labels: list[ctk.CTkLabel] = []
-        pose_names = ["Frente", "Derecha", "Izquierda"]
+        pose_names = ["Frente", "Derecha", "Izquierda", "Arriba"]
         for i, name in enumerate(pose_names):
             col = ctk.CTkFrame(inner, fg_color="transparent")
-            col.pack(side="left", padx=22)
+            col.pack(side="left", padx=13)
             dot = ctk.CTkLabel(col, text="○", font=ctk.CTkFont(size=20),
                                text_color="#444444", fg_color="transparent")
             dot.pack()
@@ -806,11 +817,19 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 else:
                     self._current_landmarks = []
 
-                # Conteo de estabilidad para auto-captura
+                # Pose real de la cabeza (solo con dlib: en fallback los landmarks son falsos)
                 all_done = len(self._captured_poses) >= len(self.CAPTURE_POSES)
-                if faces and not self._pose_captured and not all_done and not self._advance_pending:
+                self._current_pose = (
+                    head_pose.estimate_head_pose(self._current_landmarks)
+                    if self._embedding_mode == "dlib" and self._current_landmarks else None
+                )
+                self._pose_ok = self._pose_gate(self._current_pose) if not all_done else True
+
+                # Conteo de estabilidad para auto-captura: solo cuenta si la cabeza
+                # está en la pose que se pide (antes bastaba con quedarse quieto).
+                if faces and self._pose_ok and not self._pose_captured and not all_done and not self._advance_pending:
                     self._stable_face_count += 1
-                elif not faces:
+                elif not faces or not self._pose_ok:
                     self._stable_face_count = 0
 
                 if (self._stable_face_count >= self.STABLE_FRAMES_NEEDED
@@ -825,6 +844,33 @@ class _Step4FaceCapture(ctk.CTkFrame):
                 break
             time.sleep(0.05)
 
+    def _pose_gate(self, pose) -> bool:
+        """¿La cabeza está en la pose que se pide ahora? (True si no se puede medir: fallback)."""
+        if self._embedding_mode != "dlib":
+            return True
+        if self._current_pose_idx >= len(self.CAPTURE_POSES):
+            return True
+        if pose is None:
+            return False
+        target = self.CAPTURE_POSES[self._current_pose_idx]["tipoParte"]
+        if target == "frontal":
+            return head_pose.is_frontal(pose)
+        if self._baseline_pose is None:
+            return False
+        return head_pose.matches_direction(pose.minus(self._baseline_pose), target)
+
+    def _pose_hint_text(self) -> str:
+        """Qué corregir cuando hay rostro pero la pose todavía no es la pedida."""
+        if self._current_pose is None:
+            return "Buscando tu rostro…"
+        target = self.CAPTURE_POSES[self._current_pose_idx]["tipoParte"]
+        return {
+            "frontal":   "Mira de frente a la cámara",
+            "derecha":   "Gira un poco más hacia tu DERECHA  →",
+            "izquierda": "Gira un poco más hacia tu IZQUIERDA  ←",
+            "arriba":    "Levanta un poco más la barbilla  ↑",
+        }.get(target, "Ajusta la posición de tu cabeza")
+
     def _try_capture_pose(self, frame, faces) -> None:
         import time
         if not faces or self._face_mgr is None:
@@ -837,6 +883,8 @@ class _Step4FaceCapture(ctk.CTkFrame):
         embedding = self._face_mgr.get_embedding(frame, box)
         if embedding is not None:
             self._captured_poses.append({"tipoParte": pose["tipoParte"], "embedding": embedding})
+            if pose["tipoParte"] == "frontal":
+                self._baseline_pose = self._current_pose   # referencia para giro/inclinación
             self._pose_captured = True
             self._last_capture_time = time.time()
             logger.info("Pose '%s' capturada (%d/%d)", pose["tipoParte"],
@@ -890,6 +938,8 @@ class _Step4FaceCapture(ctk.CTkFrame):
         if not self._captured_poses:
             return
         removed = self._captured_poses.pop()
+        if not self._captured_poses:
+            self._baseline_pose = None
         self._current_pose_idx = len(self._captured_poses)
         self._stable_face_count = 0
         self._pose_captured = False
@@ -958,7 +1008,10 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
             all_done = len(self._captured_poses) >= len(self.CAPTURE_POSES)
             if not all_done and not self._pose_captured and not self._advance_pending:
-                if has_face:
+                if has_face and not self._pose_ok:
+                    self.pose_progress.set(0)
+                    self.lbl_progress.configure(text=self._pose_hint_text(), text_color="#FFD54F")
+                elif has_face:
                     pct = min(100, int(self._stable_face_count / self.STABLE_FRAMES_NEEDED * 100))
                     self.pose_progress.set(pct / 100)
                     if pct > 0:
@@ -976,7 +1029,7 @@ class _Step4FaceCapture(ctk.CTkFrame):
 
         self.after(50, self._update_canvas)
 
-    # ── Guardar usuario con 3 encodings ──────────────────────────────────────
+    # ── Guardar usuario con 4 encodings ──────────────────────────────────────
 
     def _save_user(self) -> None:
         if len(self._captured_poses) < len(self.CAPTURE_POSES):
@@ -999,6 +1052,14 @@ class _Step4FaceCapture(ctk.CTkFrame):
         except Exception as exc:
             logger.warning("No se pudieron cargar encodings para verificar: %s", exc)
             candidates = []
+
+        # Re-registro: los encodings del propio usuario van a reemplazarse, así
+        # que no cuentan como duplicado (sí bloquea si coincide con OTRO usuario).
+        reregister_id = getattr(self.wizard, "_reregister_user_id", None)
+        if reregister_id is not None:
+            candidates = [
+                c for c in candidates if int(c["idUsuario"]) != int(reregister_id)
+            ]
 
         if candidates:
             self.lbl_status.configure(
@@ -1043,8 +1104,6 @@ class _Step4FaceCapture(ctk.CTkFrame):
             }
             for p in self._captured_poses
         ]
-
-        reregister_id = getattr(self.wizard, "_reregister_user_id", None)
 
         if reregister_id is not None:
             # Modo re-registro: reemplazar encodings del usuario existente
@@ -1101,6 +1160,9 @@ class _Step4FaceCapture(ctk.CTkFrame):
         self._advance_pending = False
         self._last_capture_time = 0.0
         self._current_landmarks = []
+        self._baseline_pose = None
+        self._current_pose = None
+        self._pose_ok = True
         self.btn_save.configure(state="disabled")
         self.btn_retry.configure(state="disabled")
         self._refresh_pose_indicators()

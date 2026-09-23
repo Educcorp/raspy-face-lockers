@@ -29,6 +29,22 @@
   </form>
 </div>
 
+{% if can_open %}
+<div class="card" id="open-card" data-status-url="{{ url_for('lockers.remote_status') }}">
+  <h3 style="margin-top:0;">Abrir locker manualmente</h3>
+  <div class="locker-open-grid">
+    {% for l in open_lockers %}
+    <button type="button" class="locker-open-btn" data-locker="{{ l.idlocker }}"
+            data-open-url="{{ url_for('lockers.open_locker', locker_id=l.idlocker) }}"
+            aria-label="Abrir locker {{ l.idlocker }}">{{ l.idlocker }}</button>
+    {% else %}
+    <p class="locker-open-hint">No hay lockers activos.</p>
+    {% endfor %}
+  </div>
+  <p class="locker-open-hint" id="open-hint">Gris = puerta abierta o abriéndose.</p>
+</div>
+{% endif %}
+
 <div class="card">
   <h3 style="margin-top:0;">{{ tr('assign.active') }}</h3>
   <table>
@@ -54,4 +70,79 @@
     </tbody>
   </table>
 </div>
+{% if can_open %}
+<script>
+(() => {
+  const card = document.getElementById('open-card');
+  if (!card) return;
+  const hint = document.getElementById('open-hint');
+  const HINT_DEFAULT = hint.textContent;
+  const buttons = new Map([...card.querySelectorAll('.locker-open-btn')].map((b) => [b.dataset.locker, b]));
+  const seenErrors = new Set();
+  let hintTimer = null;
+  let offline = false;
+  let firstRender = true;
+
+  const setHint = (text, isError) => {
+    hint.textContent = text;
+    hint.classList.toggle('is-error', !!isError);
+  };
+  // Mensaje temporal (5 s); si la Pi está desconectada, ese aviso tiene prioridad.
+  const say = (text, isError) => {
+    setHint(text, isError);
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { if (!offline) setHint(HINT_DEFAULT, false); }, 5000);
+  };
+
+  const render = (data) => {
+    if (!data.online) {
+      offline = true;
+      setHint('Raspberry Pi desconectada: no se puede abrir ningún locker.', true);
+    } else if (offline) {
+      offline = false;
+      setHint(HINT_DEFAULT, false);
+    }
+    data.lockers.forEach((l) => {
+      const btn = buttons.get(String(l.id));
+      if (!btn) return;
+      const busy = l.comando === 'pendiente' || l.comando === 'ejecutando';
+      const open = l.cerrada === false;
+      btn.classList.toggle('is-busy', busy);
+      btn.classList.toggle('is-open', open);
+      btn.disabled = !data.online || busy || open;
+      if (l.comando === 'error' && l.comando_id && !seenErrors.has(l.comando_id)) {
+        seenErrors.add(l.comando_id);
+        if (!firstRender) say('Locker ' + l.id + ': ' + (l.detalle || 'no se pudo abrir'), true);
+      }
+    });
+    firstRender = false;   // errores anteriores a abrir la página no se avisan
+  };
+
+  const poll = async () => {
+    if (document.hidden) return;
+    try {
+      const res = await fetch(card.dataset.statusUrl, { headers: { Accept: 'application/json' } });
+      if (res.ok) render(await res.json());
+    } catch (_) { /* sin red: se reintenta en el siguiente ciclo */ }
+  };
+
+  buttons.forEach((btn) => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.classList.add('is-busy');
+    try {
+      const res = await fetch(btn.dataset.openUrl, { method: 'POST', headers: { Accept: 'application/json' } });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) say(body.error || 'No se pudo abrir el locker.', true);
+    } catch (_) {
+      say('Sin conexión con el servidor.', true);
+    }
+    poll();
+  }));
+
+  poll();
+  setInterval(poll, 1500);
+  document.addEventListener('visibilitychange', poll);
+})();
+</script>
+{% endif %}
 {% endblock %}

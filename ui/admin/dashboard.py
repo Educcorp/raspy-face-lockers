@@ -43,7 +43,8 @@ _STATS_SQL = """
       (SELECT COUNT(*) FROM lockers WHERE estado='activo')             AS lockers,
       (SELECT COUNT(*) FROM asignacion_locker WHERE estado='activo')   AS asignaciones,
       (SELECT COUNT(*) FROM historial_accesos
-         WHERE fechaHoraAcceso::date = now()::date)                    AS accesos_hoy
+         WHERE (fechaHoraAcceso AT TIME ZONE 'America/Mexico_City')::date = (now() AT TIME ZONE 'America/Mexico_City')::date)
+                                                                       AS accesos_hoy
 """
 
 

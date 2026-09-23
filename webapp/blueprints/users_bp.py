@@ -9,7 +9,7 @@ from utils.validators import (
     validate_name, validate_tel,
 )
 from webapp.auth import (
-    ROLE_USER, can_assign_privileged_user_types, can_edit_catalogs,
+    ROLE_SUPERADMIN, ROLE_USER, can_assign_privileged_user_types, can_edit_catalogs,
     filter_assignable_user_types, is_superadmin, login_required, normalize_role,
 )
 from webapp.services import catalog_service, user_service
@@ -115,10 +115,15 @@ def _privileged_tipo_ids() -> set[int]:
 def _form_context(row: dict | None = None):
     tipos = filter_assignable_user_types(catalog_service.get_all_tipos_usuario())
     unidades = catalog_service.get_active_unidades()
+    own_id = (g.user or {}).get("idusuario")
     return {
         "row": row,
         "tipos": tipos,
         "unidades": unidades,
+        # "Mi perfil": el usuario en sesión se edita a sí mismo
+        "is_own": bool(row and own_id is not None and row.get("idusuario") == own_id),
+        # El rol de un superadmin no se cambia desde este formulario (ver _validate_and_save)
+        "target_is_superadmin": bool(row and normalize_role(row.get("tipo")) == ROLE_SUPERADMIN),
         # Para ocultar "Permisos de activación" cuando el tipo es Admin/Superadmin.
         "privileged_tipo_ids": sorted(_privileged_tipo_ids()),
         "row_privileged": bool(row) and _is_privileged(row),
@@ -190,6 +195,14 @@ def _validate_and_save(user_id: int | None) -> str | None:
     ):
         if err:
             return err
+
+    if user_id is not None:
+        current = user_service.get_user_by_id(user_id)
+        if current and normalize_role(current.get("tipo")) == ROLE_SUPERADMIN:
+            # "Superadmin" no está entre los tipos asignables, así que el <select> no lo
+            # ofrece y el navegador enviaba el primero (Admin): guardar tu propio perfil
+            # te degradaba. El rol de un superadmin no se toca desde este formulario.
+            tipo_id = current["idtipousuario"]
 
     assignable = filter_assignable_user_types(catalog_service.get_all_tipos_usuario())
     assignable_ids = {t["idtipousuario"] for t in assignable}

@@ -587,12 +587,19 @@ class LockerDetailOverlay(ctk.CTkFrame):
         )
 
     def _do_delete_locker(self) -> None:
+        # Defensa en profundidad: los lockers 1-4 tienen relé físico y nunca se borran.
+        if self._is_default:
+            return
         from database.connection import db_session
         with db_session() as conn:
+            # asignacion_locker.idLocker es ON DELETE RESTRICT: hay que borrar el
+            # historial (asignaciones + sus accesos) antes de poder borrar el locker.
             conn.execute(
-                "UPDATE asignacion_locker SET estado='vencido' WHERE idLocker=%s",
+                "DELETE FROM historial_accesos WHERE idLockerAsignado IN "
+                "(SELECT idLockerAsignado FROM asignacion_locker WHERE idLocker=%s)",
                 (self.locker_id,),
             )
+            conn.execute("DELETE FROM asignacion_locker WHERE idLocker=%s", (self.locker_id,))
             conn.execute("DELETE FROM lockers WHERE idLocker=%s", (self.locker_id,))
         self._close()
 

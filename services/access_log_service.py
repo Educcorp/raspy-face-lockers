@@ -8,7 +8,6 @@ import atexit
 import logging
 import queue
 import threading
-from datetime import datetime, timedelta
 from typing import Optional
 
 from database.connection import execute, fetch_all
@@ -98,20 +97,22 @@ def _insert_access(
 ) -> None:
     """Escritura real del registro. Corre en el hilo trabajador."""
     try:
-        now = datetime.now()
-        expires_at = now + (timedelta(minutes=5) if permitted else timedelta(minutes=1))
+        # fechaExpiracion es TIMESTAMPTZ: se calcula con el reloj de la BD. Antes se
+        # mandaba la hora LOCAL de la Pi como texto sin zona y Postgres la leía como
+        # UTC, dejando la expiración 6 h ANTES del propio acceso.
+        expires_minutes = 5 if permitted else 1
         execute(
             """
             INSERT INTO historial_accesos
                 (idLockerAsignado, idUsuario, accesoPermitido, motivo, fechaExpiracion)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, now() + make_interval(mins => %s))
             """,
             (
                 locker_assignment_id,
                 user_id,
                 "si" if permitted else "no",
                 motivo,
-                expires_at.strftime("%Y-%m-%dT%H:%M:%S"),
+                expires_minutes,
             ),
         )
     except Exception as exc:

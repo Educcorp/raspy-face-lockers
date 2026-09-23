@@ -5,6 +5,10 @@ Es la primera pantalla visible. Muestra el logo/nombre del sistema
 y una instrucción para acercarse a la cámara.
 Cuando se detecta actividad (o el botón de prueba en desarrollo)
 navega a ScanningScreen vía controller.show_frame().
+
+La detección solo confía en el detector HOG (confidence==1.0): el fallback
+Haar produce falsos positivos sobre paredes/objetos que aquí dispararían una
+transición a escaneo sin que hubiera nadie enfrente.
 """
 
 import customtkinter as ctk
@@ -18,6 +22,9 @@ from ui.theme import PALETTE
 from core.face_recognition import filter_close_faces
 
 logger = logging.getLogger(__name__)
+
+# Solo se confía en detecciones HOG (ver docstring del módulo).
+_MIN_HOG_CONFIDENCE = 1.0
 
 
 class StandbyScreen(ctk.CTkFrame):
@@ -40,12 +47,16 @@ class StandbyScreen(ctk.CTkFrame):
     TEXT_COLOR  = PALETTE["WHITE"]
     MUTED       = PALETTE["WHITE"]
 
+    # Segundos de detección continua antes de navegar a ScanningScreen.
+    CLOSE_HOLD_SECONDS = 3.0
+
     def __init__(self, parent: ctk.CTk, controller):
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
         self._monitor_thread: threading.Thread | None = None
         self._monitor_running = False
         self._transitioning = False
+        self._anim_job = None
 
         try:
             from core.face_recognition import get_face_recognition_manager
@@ -156,11 +167,20 @@ class StandbyScreen(ctk.CTkFrame):
             self.face_manager = get_face_recognition_manager()
         except Exception as e:
             logger.error("Error recreando face_manager en standby: %s", e)
+        # Cancelar cualquier animación previa antes de arrancar una nueva: sin
+        # esto, cada on_show() sumaba un ciclo recursivo de after() más
+        # (los frames se apilan con tkraise(), no se destruyen al ocultarse).
+        if self._anim_job:
+            self.after_cancel(self._anim_job)
+            self._anim_job = None
         self._animate_dots()
         self._start_face_monitor()
 
     def on_hide(self) -> None:
         self._stop_face_monitor()
+        if self._anim_job:
+            self.after_cancel(self._anim_job)
+            self._anim_job = None
 
     def _start_face_monitor(self) -> None:
         if self._monitor_running or self.face_manager is None:
@@ -197,13 +217,18 @@ class StandbyScreen(ctk.CTkFrame):
                     time.sleep(0.15)
                     continue
 
+                # Solo HOG: Haar (fallback) da falsos positivos sobre paredes
+                # y objetos, y aquí dispararían una transición a ScanningScreen
+                # sin que hubiera nadie enfrente.
+                hog_faces = [f for f in all_faces if f.get("confidence", 0) >= _MIN_HOG_CONFIDENCE]
+
                 # Solo reaccionar a caras cercanas (~1 metro)
-                faces = filter_close_faces(all_faces, frame)
+                faces = filter_close_faces(hog_faces, frame)
 
                 if faces:
                     if face_first_seen is None:
                         face_first_seen = time.time()
-                    elif time.time() - face_first_seen >= 3.0:
+                    elif time.time() - face_first_seen >= self.CLOSE_HOLD_SECONDS:
                         self._transitioning = True
                         self.after(0, self._go_scanning)
                         break

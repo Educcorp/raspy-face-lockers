@@ -164,6 +164,40 @@ CREATE TABLE IF NOT EXISTS historial_accesos (
 CREATE INDEX IF NOT EXISTS idx_historial_expiracion ON historial_accesos (fechaExpiracion, accesoPermitido);
 CREATE INDEX IF NOT EXISTS idx_historial_locker ON historial_accesos (idLockerAsignado, fechaHoraAcceso);
 
+-- ── Apertura remota (web → Pi): cola de comandos + estado de puertas ─────────
+-- Ver webapp/migrations/add_comandos_locker.sql para el porqué.
+
+CREATE TABLE IF NOT EXISTS comandos_locker (
+    idComando SERIAL PRIMARY KEY,
+    idLocker INTEGER NOT NULL,
+    accion TEXT NOT NULL DEFAULT 'abrir' CHECK (accion IN ('abrir')),
+    estado TEXT NOT NULL DEFAULT 'pendiente'
+        CHECK (estado IN ('pendiente', 'ejecutando', 'completado', 'error', 'expirado')),
+    solicitadoPor INTEGER,
+    fechaHoraSolicitud TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fechaHoraEjecucion TIMESTAMPTZ,
+    detalle TEXT,
+    CONSTRAINT fk_comando_locker
+        FOREIGN KEY (idLocker) REFERENCES lockers (idLocker)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_comando_usuario
+        FOREIGN KEY (solicitadoPor) REFERENCES usuarios (idUsuario)
+        ON UPDATE CASCADE ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_comandos_estado ON comandos_locker (estado, fechaHoraSolicitud);
+CREATE INDEX IF NOT EXISTS idx_comandos_locker ON comandos_locker (idLocker, fechaHoraSolicitud);
+
+CREATE TABLE IF NOT EXISTS estado_puerta (
+    idLocker INTEGER PRIMARY KEY,
+    -- TRUE = puerta cerrada, FALSE = abierta, NULL = sin lectura del sensor
+    cerrada BOOLEAN,
+    fechaHoraAct TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT fk_estado_puerta_locker
+        FOREIGN KEY (idLocker) REFERENCES lockers (idLocker)
+        ON UPDATE CASCADE ON DELETE CASCADE
+);
+
 -- ── Triggers: equivalentes en Postgres a los AFTER UPDATE de SQLite ─────────
 -- (en Postgres se implementan como BEFORE UPDATE que ajustan NEW antes de escribir)
 

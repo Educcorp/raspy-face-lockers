@@ -28,9 +28,24 @@ from config import (
 logger = logging.getLogger(__name__)
 
 # ── Filtro de distancia ─────────────────────────────────────────────────────
-# Cara debe ocupar al menos MIN_FACE_SIZE_RATIO del ancho del frame (~1 metro).
-# Pi Camera v2/3 ≈ 62° HFOV; a 1 m un rostro adulto ocupa ~82 px en 480 px.
-MIN_FACE_SIZE_RATIO: float = 0.17
+# Cara debe ocupar al menos MIN_FACE_SIZE_RATIO del ancho del frame.
+#
+# El ratio es independiente de la resolución (escala linealmente con el FOV),
+# así que sirve igual a 480px que a 1296px. Calibrado para ~1m: con Pi Camera
+# v2/3 (~62° HFOV) y un rostro adulto de referencia (~140mm de ancho), a 1m
+# el frame cubre ~1200mm ⇒ el rostro ocupa ~140/1200 ≈ 0.116 del ancho; se usa
+# 0.12 con un pequeño margen. (El valor anterior, 0.17, en realidad
+# correspondía a ~0.7m — la cuenta del comentario original de este archivo,
+# 82px en 480px, implicaba un rostro de ~205mm de ancho, poco realista, y
+# obligaba a acercarse más de lo que alguien esperaría.)
+#
+# Este único umbral es compartido a propósito por StandbyScreen (dispara la
+# transición a ScanningScreen), ScanningScreen (compuerta de autenticación +
+# hint "acércate"/"aléjate") y register_user.py (compuerta de captura): así
+# la distancia a la que el sistema reacciona es la misma en toda la
+# experiencia. Sigue siendo una estimación por geometría, no una medición con
+# esta cámara; pendiente de recalibrar con una prueba real si hiciera falta.
+MIN_FACE_SIZE_RATIO: float = 0.12
 
 
 def filter_close_faces(faces: list, frame) -> list:
@@ -609,6 +624,33 @@ class FaceEmbeddingExtractor:
             logger.warning(f"Error extrayendo landmarks: {e}")
             return None
 
+    def get_landmarks_fast(self, frame_bgr: np.ndarray,
+                           face_box: tuple) -> Optional[List[Tuple[int, int]]]:
+        """
+        Igual que get_landmarks() pero pensado para correr en CADA cuadro (medir la
+        pose de la cabeza): recorta el rostro ANTES de procesar en vez de aplicar
+        CLAHE a los 1296x972 px del frame completo. Devuelve coordenadas en el
+        sistema del frame original, o None en modo fallback / si falla.
+        """
+        if self._using_fallback or not self._loaded:
+            return None
+        try:
+            x, y, w, h = [int(v) for v in face_box[:4]]
+            img_h, img_w = frame_bgr.shape[:2]
+            pad = int(max(w, h) * 0.35)
+            x1, y1 = max(0, x - pad), max(0, y - pad)
+            x2, y2 = min(img_w, x + w + pad), min(img_h, y + h + pad)
+            roi = frame_bgr[y1:y2, x1:x2]
+            if roi.size == 0:
+                return None
+            roi_rgb = cv2.cvtColor(enhance_illumination(roi), cv2.COLOR_BGR2RGB)
+            rect = dlib.rectangle(x - x1, y - y1, x - x1 + w, y - y1 + h)
+            shape = self.shape_predictor(roi_rgb, rect)
+            return [(shape.part(i).x + x1, shape.part(i).y + y1) for i in range(68)]
+        except Exception as e:
+            logger.warning(f"Error extrayendo landmarks (rápido): {e}")
+            return None
+
     def compare_embeddings(self, emb_a: np.ndarray,
                            emb_b: np.ndarray) -> float:
         """Distancia euclidiana entre dos embeddings (menor = más parecido)."""
@@ -1064,6 +1106,11 @@ class FaceRecognitionManager:
                       face_box: tuple) -> Optional[List[Tuple[int, int]]]:
         """Extrae 68 landmarks faciales."""
         return self.embedding_extractor.get_landmarks(frame, face_box)
+
+    def get_landmarks_fast(self, frame: np.ndarray,
+                           face_box: tuple) -> Optional[List[Tuple[int, int]]]:
+        """Landmarks para uso por cuadro (recorta el rostro antes de procesar)."""
+        return self.embedding_extractor.get_landmarks_fast(frame, face_box)
 
     def release(self) -> None:
         """Libera recursos."""

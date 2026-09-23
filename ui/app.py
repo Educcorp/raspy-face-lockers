@@ -119,8 +119,12 @@ class LockerApp(ctk.CTk):
 
     # ── Navegación ────────────────────────────────────────────────────────────
 
-    def show_frame(self, frame_class: type) -> None:
-        """Trae al frente la pantalla indicada y llama on_show() si existe."""
+    def show_frame(self, frame_class: type, **kwargs) -> None:
+        """Trae al frente la pantalla indicada y llama on_show(**kwargs) si existe.
+
+        `kwargs` se reenvían tal cual (p. ej. "Mi perfil" pasa open_user_id). Antes
+        esta firma no los aceptaba y ese botón lanzaba TypeError en modo locker.
+        """
         for frame in self._frames.values():
             if frame.winfo_ismapped():
                 if hasattr(frame, "on_hide"):
@@ -130,7 +134,7 @@ class LockerApp(ctk.CTk):
         frame = self._frames[frame_class]
         frame.tkraise()
         if hasattr(frame, "on_show"):
-            frame.on_show()
+            frame.on_show(**kwargs)
         # Badge must always sit above every screen frame
         if getattr(self, "_badge_blink_job", None) is not None:
             self._badge_frame.lift()

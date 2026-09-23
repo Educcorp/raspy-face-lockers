@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 
 from webapp.auth import can_edit_catalogs, is_superadmin, login_required
 from webapp.services import catalog_service, locker_service
@@ -73,12 +73,34 @@ def delete_locker(locker_id: int):
     if locker_id in locker_service.get_protected_locker_ids():
         flash("Este locker es uno de los 4 originales y no se puede eliminar.", "warning")
         return redirect(url_for("lockers.list_lockers"))
+    if locker_service.has_active_assignment(locker_id):
+        flash("Este locker tiene una asignación activa. Libéralo primero en Asignaciones.", "warning")
+        return redirect(url_for("lockers.list_lockers"))
     try:
         locker_service.delete_locker(locker_id)
-        flash("Locker eliminado.", "success")
+        flash("Locker eliminado junto con su historial.", "success")
     except Exception:
-        flash("No se pudo eliminar: el locker tiene historial de asignaciones asociado.", "danger")
+        flash("No se pudo eliminar el locker.", "danger")
     return redirect(url_for("lockers.list_lockers"))
+
+
+@bp.route("/<int:locker_id>/abrir", methods=["POST"])
+@login_required
+def open_locker(locker_id: int):
+    """Pide a la Raspberry que abra un locker (la web solo encola el comando)."""
+    if not can_edit_catalogs():
+        return jsonify(ok=False, error="No tienes permiso para esta acción."), 403
+    ok, message = locker_service.request_open_locker(locker_id, _actor_id())
+    return jsonify(ok=ok, message=message, error=None if ok else message), (200 if ok else 409)
+
+
+@bp.route("/estado")
+@login_required
+def remote_status():
+    """Estado en vivo (puertas + último comando) que consulta la página de asignaciones."""
+    if not can_edit_catalogs():
+        return jsonify(ok=False, error="No tienes permiso para esta acción."), 403
+    return jsonify(ok=True, **locker_service.get_remote_status())
 
 
 @bp.route("/asignaciones", methods=["GET", "POST"])
@@ -111,4 +133,7 @@ def assignments():
         assignments=locker_service.get_active_assignments(),
         available_lockers=locker_service.get_available_lockers(),
         users=locker_service.get_users_without_locker(),
+        can_open=can_edit_catalogs(),
+        open_lockers=[l for l in locker_service.get_all_lockers() if l["estado"] == "activo"]
+        if can_edit_catalogs() else [],
     )

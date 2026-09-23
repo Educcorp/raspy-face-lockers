@@ -67,6 +67,14 @@ def main() -> None:
     from database.connection import warmup as _warmup_db
     threading.Thread(target=_warmup_db, daemon=True).start()
 
+    # Puente web → Pi: atiende aperturas de locker pedidas desde el panel web
+    # y publica el estado de las puertas. Nunca debe impedir el arranque.
+    try:
+        from services.remote_command_service import start_worker as _start_remote
+        _start_remote()
+    except Exception as exc:
+        logger.warning("No se pudo iniciar el servicio de comandos remotos: %s", exc)
+
     if args.mode == "locker":
         from ui.app import LockerApp
         LockerApp().mainloop()

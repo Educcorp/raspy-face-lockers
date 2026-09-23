@@ -1,83 +1,344 @@
 {% extends "base.html" %}
 {% block title %}Inicio · Smart Lockers{% endblock %}
+
 {% block content %}
-<h2>Centro de Control</h2>
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px;">
-  <a class="btn btn-primary" href="{{ url_for('users.new_user') }}">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-    Nuevo usuario
-  </a>
-</div>
 
-<h3>Estado de lockers</h3>
-<div class="locker-status-grid">
-  {% for locker in stats.lockers_fisicos %}
-  {% set ocupado = locker.asignacion_fecha is not none %}
-  {% if ocupado %}
-    {% set status_class = 'locker-occupied' %}
-  {% elif locker.locker_estado == 'activo' %}
-    {% set status_class = 'locker-available' %}
-  {% else %}
-    {% set status_class = 'locker-maintenance' %}
-  {% endif %}
-  <div class="card locker-card {{ status_class }}">
-    <span class="stat-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6"/><path d="M9 11h6"/><circle cx="12" cy="17" r="1"/></svg>
-    </span>
-    <div class="stat-label">Locker {{ locker.idlocker }}</div>
-    {% if ocupado %}
-    <div class="locker-status">Ocupado</div>
-    <div class="locker-user">Usuario: {{ locker.nombre }} {{ locker.appaterno }}{% if locker.apmaterno %} {{ locker.apmaterno }}{% endif %}</div>
-    {% elif locker.locker_estado == 'activo' %}
-    <div class="locker-status">Disponible</div>
-    {% else %}
-    <div class="locker-status">{{ locker.locker_estado|capitalize }}</div>
-    {% endif %}
-  </div>
-  {% endfor %}
-</div>
-
-<div class="mini-stats">
-  <div class="card mini-stat">
-    <span class="mini-stat-icon">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-    </span>
-    <div><div class="mini-stat-value">{{ stats.usuarios }}</div><div class="mini-stat-label">Usuarios activos</div></div>
-  </div>
-  <div class="card mini-stat">
-    <span class="mini-stat-icon">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 4v6"/></svg>
-    </span>
-    <div><div class="mini-stat-value">{{ stats.lockers }}</div><div class="mini-stat-label">Lockers activos</div></div>
-  </div>
-  <div class="card mini-stat">
-    <span class="mini-stat-icon">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="8" height="8" rx="1.5"/><rect x="13" y="5" width="8" height="8" rx="1.5"/><path d="M11 15h2a2 2 0 0 0 2-2v-1"/></svg>
-    </span>
-    <div><div class="mini-stat-value">{{ stats.asignaciones }}</div><div class="mini-stat-label">Asignaciones activas</div></div>
-  </div>
-  <div class="card mini-stat">
-    <span class="mini-stat-icon">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.24 7.76 2.83-2.83"/><path d="M18 12h4"/><path d="m16.24 16.24 2.83 2.83"/><path d="M12 18v4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M2 12h4"/><path d="m4.93 4.93 2.83 2.83"/></svg>
-    </span>
-    <div><div class="mini-stat-value">{{ stats.accesos_hoy }}</div><div class="mini-stat-label">Accesos hoy</div></div>
-  </div>
-</div>
-
-{% if stats.pendientes > 0 %}
-<div class="card notice-card">
-  <span class="stat-icon">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-  </span>
+<!-- ── Encabezado ─────────────────────────────────────────────────────── -->
+<div class="dashboard-header">
   <div>
-    <strong>{{ stats.pendientes }} usuario(s) esperan registro facial.</strong>
+    <span class="dashboard-eyebrow">PANEL DE ADMINISTRACIÓN</span>
+    <h2>Centro de Control</h2>
     <p>
-      Fueron dados de alta pero aún no tienen rostro capturado. Ve a
-      <a href="{{ url_for('users.list_users') }}">Usuarios</a> y presiona "Pendiente"
-      para capturar su rostro con la cámara de este equipo. La autenticación en el
-      locker seguirá usando la cámara física de la Raspberry Pi.
+      Supervisa el estado de los lockers y gestiona el acceso de los usuarios.
     </p>
   </div>
+
+  <div class="dashboard-actions">
+    <a class="btn btn-muted" href="{{ url_for('users.list_users') }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      Ver usuarios
+    </a>
+
+    <a class="btn btn-primary" href="{{ url_for('users.new_user') }}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14"/>
+        <path d="M5 12h14"/>
+      </svg>
+      Nuevo usuario
+    </a>
+  </div>
 </div>
+
+
+<!-- ── Resumen general ────────────────────────────────────────────────── -->
+<section class="dashboard-section">
+
+  <div class="section-heading">
+    <div>
+      <span class="section-eyebrow">RESUMEN</span>
+      <h3>Vista general</h3>
+    </div>
+  </div>
+
+  <div class="dashboard-stats">
+
+    <!-- Usuarios -->
+    <div class="card dashboard-stat-card">
+      <div class="dashboard-stat-top">
+        <span class="dashboard-stat-icon users-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </span>
+
+        <span class="dashboard-stat-caption">Usuarios</span>
+      </div>
+
+      <div class="dashboard-stat-value">
+        {{ stats.usuarios }}
+      </div>
+
+      <div class="dashboard-stat-label">
+        Usuarios activos
+      </div>
+    </div>
+
+
+    <!-- Lockers -->
+    <div class="card dashboard-stat-card">
+      <div class="dashboard-stat-top">
+        <span class="dashboard-stat-icon locker-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"/>
+            <path d="M3 10h18"/>
+            <path d="M9 4v6"/>
+          </svg>
+        </span>
+
+        <span class="dashboard-stat-caption">Lockers</span>
+      </div>
+
+      <div class="dashboard-stat-value">
+        {{ stats.lockers }}
+      </div>
+
+      <div class="dashboard-stat-label">
+        Lockers activos
+      </div>
+    </div>
+
+
+    <!-- Asignaciones -->
+    <div class="card dashboard-stat-card">
+      <div class="dashboard-stat-top">
+        <span class="dashboard-stat-icon assignment-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="8" height="8" rx="1.5"/>
+            <rect x="13" y="5" width="8" height="8" rx="1.5"/>
+            <path d="M11 15h2a2 2 0 0 0 2-2v-1"/>
+          </svg>
+        </span>
+
+        <span class="dashboard-stat-caption">Asignaciones</span>
+      </div>
+
+      <div class="dashboard-stat-value">
+        {{ stats.asignaciones }}
+      </div>
+
+      <div class="dashboard-stat-label">
+        Asignaciones activas
+      </div>
+    </div>
+
+
+    <!-- Accesos -->
+    <div class="card dashboard-stat-card">
+      <div class="dashboard-stat-top">
+        <span class="dashboard-stat-icon access-icon">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4"/>
+            <path d="m16.24 7.76 2.83-2.83"/>
+            <path d="M18 12h4"/>
+            <path d="m16.24 16.24 2.83 2.83"/>
+            <path d="M12 18v4"/>
+            <path d="m4.93 19.07 2.83-2.83"/>
+            <path d="M2 12h4"/>
+            <path d="m4.93 4.93 2.83 2.83"/>
+          </svg>
+        </span>
+
+        <span class="dashboard-stat-caption">Actividad</span>
+      </div>
+
+      <div class="dashboard-stat-value">
+        {{ stats.accesos_hoy }}
+      </div>
+
+      <div class="dashboard-stat-label">
+        Accesos registrados hoy
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ── Estado de lockers ──────────────────────────────────────────────── -->
+<section class="dashboard-section">
+
+  <div class="section-heading locker-heading">
+    <div>
+      <span class="section-eyebrow">MONITOREO</span>
+      <h3>Estado de lockers</h3>
+    </div>
+
+    <div class="locker-legend">
+      <span>
+        <i class="legend-dot available"></i>
+        Disponible
+      </span>
+
+      <span>
+        <i class="legend-dot occupied"></i>
+        Ocupado
+      </span>
+
+      <span>
+        <i class="legend-dot maintenance"></i>
+        Mantenimiento
+      </span>
+    </div>
+  </div>
+
+
+  <div class="locker-status-grid">
+
+    {% for locker in stats.lockers_fisicos %}
+
+      {% set ocupado = locker.asignacion_fecha is not none %}
+
+      {% if ocupado %}
+        {% set status_class = 'locker-occupied' %}
+      {% elif locker.locker_estado == 'activo' %}
+        {% set status_class = 'locker-available' %}
+      {% else %}
+        {% set status_class = 'locker-maintenance' %}
+      {% endif %}
+
+      <div class="card locker-card {{ status_class }}">
+
+        <div class="locker-card-top">
+
+          <span class="stat-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round">
+              <rect x="5" y="3" width="14" height="18" rx="2"/>
+              <path d="M9 7h6"/>
+              <path d="M9 11h6"/>
+              <circle cx="12" cy="17" r="1"/>
+            </svg>
+          </span>
+
+          <span class="locker-number">
+            #{{ locker.idlocker }}
+          </span>
+
+        </div>
+
+
+        <div class="locker-card-content">
+
+          {% if ocupado %}
+
+            <div class="locker-status">
+              Ocupado
+            </div>
+
+            <div class="locker-user">
+              {{ locker.nombre }}
+              {{ locker.appaterno }}
+              {% if locker.apmaterno %}
+                {{ locker.apmaterno }}
+              {% endif %}
+            </div>
+
+            <span class="locker-state-badge occupied">
+              En uso
+            </span>
+
+          {% elif locker.locker_estado == 'activo' %}
+
+            <div class="locker-status">
+              Disponible
+            </div>
+
+            <div class="locker-user">
+              Listo para asignación
+            </div>
+
+            <span class="locker-state-badge available">
+              Libre
+            </span>
+
+          {% else %}
+
+            <div class="locker-status">
+              {{ locker.locker_estado|capitalize }}
+            </div>
+
+            <div class="locker-user">
+              Locker fuera de servicio
+            </div>
+
+            <span class="locker-state-badge maintenance">
+              Revisar
+            </span>
+
+          {% endif %}
+
+        </div>
+
+      </div>
+
+    {% endfor %}
+
+  </div>
+
+</section>
+
+
+<!-- ── Avisos ─────────────────────────────────────────────────────────── -->
+{% if stats.pendientes > 0 %}
+
+<section class="dashboard-section">
+
+  <div class="card notice-card dashboard-notice">
+
+    <span class="notice-icon">
+      <svg width="19" height="19" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor"
+           stroke-width="2"
+           stroke-linecap="round"
+           stroke-linejoin="round">
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+        <path d="M12 9v4"/>
+        <path d="M12 17h.01"/>
+      </svg>
+    </span>
+
+    <div class="notice-content">
+
+      <div class="notice-title">
+        {{ stats.pendientes }} usuario(s) esperan registro facial
+      </div>
+
+      <p>
+        Estos usuarios fueron registrados pero todavía no cuentan
+        con un rostro capturado.
+      </p>
+
+      <a class="notice-link"
+         href="{{ url_for('users.list_users') }}">
+        Ir a usuarios y capturar rostro
+        <svg width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor"
+             stroke-width="2"
+             stroke-linecap="round"
+             stroke-linejoin="round">
+          <path d="M5 12h14"/>
+          <path d="m13 6 6 6-6 6"/>
+        </svg>
+      </a>
+
+    </div>
+
+  </div>
+
+</section>
+
 {% endif %}
 {% endblock %}

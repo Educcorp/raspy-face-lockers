@@ -1,34 +1,371 @@
 {% extends "base.html" %}
 {% block title %}Historial de Accesos · Smart Lockers{% endblock %}
-{% block content %}
-<h2>Registro de Accesos del Sistema</h2>
 
-<div class="card">
-  <table>
-    <thead>
-      <tr><th>Fecha</th><th>Usuario</th><th>Matrícula</th><th>Locker</th><th>Área</th><th>Resultado</th><th>Motivo</th></tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td>{{ r.fechahoraacceso | local_dt }}</td>
-        <td>{{ r.nombrecompleto }}</td>
-        <td>{{ r.matricula or '—' }}</td>
-        <td>{{ r.idlocker or '—' }}</td>
-        <td>{{ r.nombrearea or '—' }}</td>
-        <td>
-          {% if r.accesopermitido == 'si' %}
-            <span class="badge activo">Permitido</span>
-          {% else %}
-            <span class="badge suspendido">Denegado</span>
-          {% endif %}
-        </td>
-        <td>{{ labels.get(r.motivo, r.motivo or '—') }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="7">Sin registros.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+{% block content %}
+
+<div class="access-header">
+  <div>
+    <span class="dashboard-eyebrow">SEGURIDAD</span>
+    <h2>Registro de Accesos del Sistema</h2>
+    <p>Consulta y filtra los accesos registrados en el sistema.</p>
+  </div>
 </div>
+
+<!-- Filtros -->
+<div class="access-filters card">
+
+  <form method="GET" action="{{ url_for('history.list_history') }}" class="access-filter-form">
+
+    <!-- Buscador -->
+    <div class="access-search">
+      <label for="buscar">Buscar</label>
+
+      <div class="search-input-wrap">
+
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.3-4.3"></path>
+        </svg>
+
+        <input
+          type="text"
+          id="buscar"
+          name="buscar"
+          value="{{ buscar or '' }}"
+          placeholder="Usuario, matrícula o locker..."
+        >
+
+      </div>
+    </div>
+
+    <!-- Filtro por resultado -->
+    <div class="access-filter">
+      <label for="resultado">Resultado</label>
+
+      <select id="resultado" name="resultado">
+        <option value="" {% if not resultado %}selected{% endif %}>
+          Todos
+        </option>
+
+        <option value="si" {% if resultado == 'si' %}selected{% endif %}>
+          Permitidos
+        </option>
+
+        <option value="no" {% if resultado == 'no' %}selected{% endif %}>
+          Denegados
+        </option>
+      </select>
+    </div>
+
+    <!-- Botones -->
+    <div class="access-filter-actions">
+
+      <button type="submit" class="btn btn-primary">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <circle cx="11" cy="11" r="8"></circle>
+          <path d="m21 21-4.3-4.3"></path>
+        </svg>
+        Buscar
+      </button>
+
+      {% if buscar or resultado %}
+        <a
+          href="{{ url_for('history.list_history') }}"
+          class="btn btn-muted"
+        >
+          Limpiar
+        </a>
+      {% endif %}
+
+    </div>
+
+  </form>
+
+</div>
+
+
+<!-- Información de resultados -->
+<div class="access-results-info">
+
+  <span>
+    {% if total > 0 %}
+      Mostrando
+      <strong>{{ inicio }}</strong>
+      –
+      <strong>{{ fin }}</strong>
+      de
+      <strong>{{ total }}</strong>
+      registros
+    {% else %}
+      No se encontraron registros
+    {% endif %}
+  </span>
+
+</div>
+
+
+<!-- Tabla -->
+<div class="card access-table-card">
+
+  <div class="access-table-wrap">
+
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Usuario</th>
+          <th>Matrícula</th>
+          <th>Locker</th>
+          <th>Área</th>
+          <th>Resultado</th>
+          <th>Motivo</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {% for r in rows %}
+
+        <tr>
+
+          <td>
+            {{ r.fechahoraacceso | local_dt }}
+          </td>
+
+          <td>
+            {{ r.nombrecompleto }}
+          </td>
+
+          <td>
+            {{ r.matricula or '—' }}
+          </td>
+
+          <td>
+            {{ r.idlocker or '—' }}
+          </td>
+
+          <td>
+            {{ r.nombrearea or '—' }}
+          </td>
+
+          <td>
+            {% if r.accesopermitido == 'si' %}
+
+              <span class="badge activo">
+                Permitido
+              </span>
+
+            {% else %}
+
+              <span class="badge suspendido">
+                Denegado
+              </span>
+
+            {% endif %}
+          </td>
+
+          <td>
+            {{ labels.get(r.motivo, r.motivo or '—') }}
+          </td>
+
+        </tr>
+
+        {% else %}
+
+        <tr>
+          <td colspan="7" class="empty-access">
+            <div class="empty-access-icon">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+              </svg>
+            </div>
+
+            <strong>No se encontraron registros</strong>
+
+            <span>
+              Intenta cambiar los filtros o realizar otra búsqueda.
+            </span>
+          </td>
+        </tr>
+
+        {% endfor %}
+
+      </tbody>
+    </table>
+
+  </div>
+
+</div>
+
+
+<!-- Paginación -->
+{% if total_paginas > 1 %}
+
+<nav class="access-pagination" aria-label="Paginación de registros">
+
+  <!-- Página anterior -->
+  {% if pagina > 1 %}
+
+    <a
+      class="pagination-btn"
+      href="{{ url_for(
+        'history.list_history',
+        pagina=pagina-1,
+        buscar=buscar,
+        resultado=resultado
+      ) }}"
+      aria-label="Página anterior"
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m15 18-6-6 6-6"></path>
+      </svg>
+
+      Anterior
+    </a>
+
+  {% else %}
+
+    <span class="pagination-btn disabled">
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m15 18-6-6 6-6"></path>
+      </svg>
+
+      Anterior
+    </span>
+
+  {% endif %}
+
+
+  <!-- Números de página -->
+  <div class="pagination-pages">
+
+    {% for p in range(1, total_paginas + 1) %}
+
+      {% if p == pagina %}
+
+        <span class="pagination-number active">
+          {{ p }}
+        </span>
+
+      {% else %}
+
+        <a
+          class="pagination-number"
+          href="{{ url_for(
+            'history.list_history',
+            pagina=p,
+            buscar=buscar,
+            resultado=resultado
+          ) }}"
+        >
+          {{ p }}
+        </a>
+
+      {% endif %}
+
+    {% endfor %}
+
+  </div>
+
+
+  <!-- Página siguiente -->
+  {% if pagina < total_paginas %}
+
+    <a
+      class="pagination-btn"
+      href="{{ url_for(
+        'history.list_history',
+        pagina=pagina+1,
+        buscar=buscar,
+        resultado=resultado
+      ) }}"
+      aria-label="Página siguiente"
+    >
+      Siguiente
+
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m9 18 6-6-6-6"></path>
+      </svg>
+    </a>
+
+  {% else %}
+
+    <span class="pagination-btn disabled">
+      Siguiente
+
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m9 18 6-6-6-6"></path>
+      </svg>
+    </span>
+
+  {% endif %}
+
+</nav>
+
+{% endif %}
+
 {% endblock %}

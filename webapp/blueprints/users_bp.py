@@ -37,12 +37,65 @@ def _can_manage(row: dict) -> bool:
 @bp.route("/")
 @login_required
 def list_users():
-    users = user_service.get_all_users()
+    page = request.args.get("pagina", default=1, type=int)
+    search = request.args.get("buscar", default="", type=str).strip()
+    search_field = request.args.get(
+        "campo",
+        default="todos",
+        type=str,
+    ).strip().lower()
+
+    per_page = 15
+
+    if page < 1:
+        page = 1
+
+    allowed_fields = {"todos", "nombre", "matricula", "unidad"}
+
+    if search_field not in allowed_fields:
+        search_field = "todos"
+
+    users, total = user_service.get_users_paginated(
+        page=page,
+        per_page=per_page,
+        search=search,
+        search_field=search_field,
+    )
+
+    # Un admin solo puede ver usuarios normales.
     if not is_superadmin():
-        # Un admin solo da de alta y ve usuarios universales — nunca a otros
-        # admins ni al superadmin, que es quien controla esas cuentas.
         users = [u for u in users if not _is_privileged(u)]
-    return render_template("users/list.html", users=users)
+
+    total_paginas = max(1, (total + per_page - 1) // per_page)
+
+    if page > total_paginas:
+        page = total_paginas
+
+        users, total = user_service.get_users_paginated(
+            page=page,
+            per_page=per_page,
+            search=search,
+            search_field=search_field,
+        )
+
+        if not is_superadmin():
+            users = [u for u in users if not _is_privileged(u)]
+
+    inicio = ((page - 1) * per_page) + 1 if total > 0 else 0
+    fin = min(page * per_page, total)
+
+    return render_template(
+        "users/list.html",
+        users=users,
+        pagina=page,
+        per_page=per_page,
+        total=total,
+        total_paginas=total_paginas,
+        inicio=inicio,
+        fin=fin,
+        buscar=search,
+        campo=search_field,
+    )
 
 
 def _form_context(row: dict | None = None):

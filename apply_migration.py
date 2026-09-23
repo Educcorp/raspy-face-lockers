@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Script para aplicar la migración de permisoActivacion.
-Uso: python3 apply_migration.py
+Script para aplicar migraciones SQL de webapp/migrations/.
+Uso:
+    python3 apply_migration.py                            # add_permiso_activacion.sql
+    python3 apply_migration.py admins_permiso_ambos.sql   # otra migración
 """
 
 import sys
@@ -14,9 +16,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Cargar configuración
 from webapp.db import cursor
 
-def apply_migration():
-    """Aplica la migración SQL"""
-    migration_file = Path(__file__).parent / "webapp" / "migrations" / "add_permiso_activacion.sql"
+DEFAULT_MIGRATION = "add_permiso_activacion.sql"
+
+
+def apply_migration(filename: str = DEFAULT_MIGRATION):
+    """Aplica la migración SQL indicada (por defecto, add_permiso_activacion.sql)"""
+    migration_file = Path(__file__).parent / "webapp" / "migrations" / filename
     
     if not migration_file.exists():
         print(f"❌ Archivo de migración no encontrado: {migration_file}")
@@ -65,5 +70,5 @@ if __name__ == "__main__":
     
     app = create_app()
     with app.app_context():
-        success = apply_migration()
+        success = apply_migration(sys.argv[1] if len(sys.argv) > 1 else DEFAULT_MIGRATION)
         sys.exit(0 if success else 1)

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Mi perfil' if is_own else ('Editar Usuario' if row else 'Registro de Nuevo Usuario') }} · Smart Lockers{% endblock %}
+{% block title %}{{ tr('nav.mi_perfil') if is_own else (tr('form.edit_title') if row else tr('form.new_title')) }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>{{ 'Mi perfil' if is_own else ('Editar Usuario' if row else 'Registro de Nuevo Usuario') }}</h2>
+<h2>{{ tr('nav.mi_perfil') if is_own else (tr('form.edit_title') if row else tr('form.new_title')) }}</h2>
 
 {% if row and pending %}
 <div class="flash warning">
-  Este usuario aún no tiene rostro registrado.
-  <a href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">Registrar rostro ahora</a>
-  usando la cámara de este equipo.
+  {{ tr('form.no_face_1') }}
+  <a href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">{{ tr('form.no_face_link') }}</a>
+  {{ tr('form.no_face_2') }}
 </div>
 {% endif %}
 
@@ -15,40 +15,42 @@
   <form method="post">
     <div class="form-grid">
       <div class="form-row">
-        <label>Nombre(s)</label>
+        <label>{{ tr('form.first_name') }}</label>
         <input type="text" name="nombre" required value="{{ row.nombre if row else '' }}">
       </div>
       <div class="form-row">
-        <label>Apellido paterno</label>
+        <label>{{ tr('form.last_name1') }}</label>
         <input type="text" name="apPaterno" required value="{{ row.appaterno if row else '' }}">
       </div>
       <div class="form-row">
-        <label>Apellido materno</label>
+        <label>{{ tr('form.last_name2') }}</label>
         <input type="text" name="apMaterno" value="{{ row.apmaterno or '' }}">
       </div>
       <div class="form-row">
-        <label>Matrícula</label>
+        <label>{{ tr('common.matricula') }}</label>
         <input type="text" name="matricula" required maxlength="8" inputmode="numeric" pattern="[0-9]*" value="{{ row.matricula if row else '' }}">
       </div>
       <div class="form-row">
-        <label>Correo institucional</label>
+        <label>{{ tr('form.email') }}</label>
         <input type="email" name="emailInst" required value="{{ row.emailinst if row else '' }}">
       </div>
       <div class="form-row">
-        <label>Teléfono (opcional)</label>
+        <label>{{ tr('form.phone') }}</label>
         <input type="text" name="tel" value="{{ row.tel or '' }}">
       </div>
       {% if target_is_superadmin %}
       <div class="form-row">
-        <label>Tipo de usuario</label>
+        <label>{{ tr('form.user_type') }}</label>
         <input type="text" value="Superadmin" disabled>
       </div>
       {% elif g.user.role == 'superadmin' %}
       <div class="form-row">
-        <label>Tipo de usuario</label>
-        <select name="idTipoUsuario" required>
+        <label>{{ tr('form.user_type') }}</label>
+        <select name="idTipoUsuario" id="tipo-usuario" required>
           {% for t in tipos %}
-          <option value="{{ t.idtipousuario }}" {% if row and row.idtipousuario==t.idtipousuario %}selected{% endif %}>
+          <option value="{{ t.idtipousuario }}"
+                  {% if t.idtipousuario in privileged_tipo_ids %}data-privileged="1"{% endif %}
+                  {% if row and row.idtipousuario==t.idtipousuario %}selected{% endif %}>
             {{ t.nombretipousuario }}
           </option>
           {% endfor %}
@@ -56,7 +58,7 @@
       </div>
       {% endif %}
       <div class="form-row">
-        <label>Unidad académica</label>
+        <label>{{ tr('common.academic_unit') }}</label>
         <select name="idUnidadAcademica" required>
           {% for u in unidades %}
           <option value="{{ u.idunidadacademica }}" {% if row and row.idunidadacademica==u.idunidadacademica %}selected{% endif %}>
@@ -65,49 +67,78 @@
           {% endfor %}
         </select>
       </div>
-      <div class="form-row">
-        <label>Permisos de activación</label>
-        <select name="permisoactivacion" required>
-          <option value="">Selecciona los permisos</option>
-          <option value="recurso_compartido" {% if row and row.permisoactivacion=='recurso_compartido' %}selected{% endif %}>Recurso compartido</option>
-          <option value="locker" {% if row and row.permisoactivacion=='locker' %}selected{% endif %}>Locker</option>
-          <option value="ambos" {% if row and row.permisoactivacion=='ambos' %}selected{% endif %}>Ambos</option>
+      {# Admin/Superadmin siempre tienen "ambos": el campo se oculta (ver script abajo). #}
+      {% set sel_tipo = row.idtipousuario if row else (tipos[0].idtipousuario if tipos else none) %}
+      {% set perm_hidden = target_is_superadmin or ((sel_tipo in privileged_tipo_ids) if g.user.role == 'superadmin' else row_privileged) %}
+      <div class="form-row" id="perm-row" {% if perm_hidden %}hidden{% endif %}>
+        <label>{{ tr('form.perms') }}</label>
+        <select name="permisoactivacion" id="perm-select" {% if not perm_hidden %}required{% endif %}>
+          <option value="">{{ tr('perm.select') }}</option>
+          <option value="recurso_compartido" {% if row and row.permisoactivacion=='recurso_compartido' %}selected{% endif %}>{{ tr('perm.recurso') }}</option>
+          <option value="locker" {% if row and row.permisoactivacion=='locker' %}selected{% endif %}>{{ tr('perm.locker') }}</option>
+          <option value="ambos" {% if row and row.permisoactivacion=='ambos' %}selected{% endif %}>{{ tr('perm.ambos') }}</option>
         </select>
       </div>
       {% if row %}
       <div class="form-row">
-        <label>Estado</label>
+        <label>{{ tr('common.status') }}</label>
         <select name="estado">
           {% for opt in ['activo', 'inactivo', 'suspendido'] %}
-          <option value="{{ opt }}" {% if row.estado==opt %}selected{% endif %}>{{ opt }}</option>
+          <option value="{{ opt }}" {% if row.estado==opt %}selected{% endif %}>{{ opt|tr_status }}</option>
           {% endfor %}
         </select>
       </div>
       {% else %}
       <div class="form-row">
-        <label>PIN inicial (4 a 8 dígitos)</label>
+        <label>{{ tr('form.pin') }}</label>
         <input type="password" name="pin" required minlength="4" maxlength="8">
       </div>
       {% endif %}
     </div>
-    <button class="btn" type="submit">Guardar</button>
+    <button class="btn" type="submit">{{ tr('common.save') }}</button>
   </form>
 </div>
 
+<script>
+/* Si el tipo seleccionado es Admin/Superadmin se oculta "Permisos de
+   activación" (el servidor guarda "ambos"). Al volver a un tipo normal
+   reaparece y vuelve a ser obligatorio. */
+(() => {
+  const tipo = document.getElementById('tipo-usuario');
+  const row = document.getElementById('perm-row');
+  const perm = document.getElementById('perm-select');
+  if (!tipo || !row || !perm) return;
+  // Valor que tenía el usuario antes de elegir un tipo privilegiado, para
+  // restaurarlo si se regresa a un tipo normal.
+  let previous = row.hidden ? '' : perm.value;
+  const sync = () => {
+    const opt = tipo.options[tipo.selectedIndex];
+    const privileged = !!(opt && opt.dataset.privileged);
+    if (privileged && !row.hidden) previous = perm.value;
+    if (!privileged && row.hidden) perm.value = previous;
+    row.hidden = privileged;
+    perm.required = !privileged;
+    if (privileged) perm.value = 'ambos';
+  };
+  tipo.addEventListener('change', sync);
+  sync();
+})();
+</script>
+
 {% if row %}
 <div class="card">
-  <h3>Acciones</h3>
+  <h3>{{ tr('form.actions') }}</h3>
   <div class="actions-row">
     <a class="btn" href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">
-      {{ 'Volver a capturar rostro' if not pending else 'Registrar rostro' }}
+      {{ tr('form.recapture') if not pending else tr('form.capture') }}
     </a>
     <form method="post" action="{{ url_for('users.reset_pin', user_id=row.idusuario) }}">
-      <button class="btn btn-muted" type="submit">Generar nuevo PIN</button>
+      <button class="btn btn-muted" type="submit">{{ tr('form.new_pin') }}</button>
     </form>
     {% if g.user.role == 'superadmin' %}
     <form method="post" action="{{ url_for('users.delete_user', user_id=row.idusuario) }}"
-          data-confirm="¿Eliminar este usuario permanentemente? Esta acción no se puede deshacer.">
-      <button class="btn btn-danger" type="submit">Eliminar permanentemente</button>
+          data-confirm="{{ tr('form.delete_confirm') }}">
+      <button class="btn btn-danger" type="submit">{{ tr('form.delete') }}</button>
     </form>
     {% endif %}
   </div>

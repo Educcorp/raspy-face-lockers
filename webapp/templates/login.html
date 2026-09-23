@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Acceso de Administrador · Smart Lockers{% endblock %}
+{% block title %}{{ tr('login.page_title') }} · Smart Lockers{% endblock %}
 {% block content %}
 <div class="login-wrap">
   <div class="card login-card">
     <div class="login-brand">
       <span class="brand-mark">SL</span>
-      <h1>Gestión de Acceso Seguro</h1>
-      <p class="subtitle">Acceso administrativo con matrícula y PIN</p>
+      <h1>{{ tr('login.heading') }}</h1>
+      <p class="subtitle">{{ tr('login.subtitle') }}</p>
     </div>
     <form method="post">
       <div class="form-row">
-        <label for="matricula">Matrícula</label>
+        <label for="matricula">{{ tr('common.matricula') }}</label>
         <input type="text" id="matricula" name="matricula" required autofocus autocomplete="username">
       </div>
       <div class="form-row">
-        <label for="pin">PIN</label>
+        <label for="pin">{{ tr('login.pin') }}</label>
         <input type="password" id="pin" name="pin" required autocomplete="current-password">
       </div>
-      <button class="btn" type="submit">Entrar</button>
+      <button class="btn" type="submit">{{ tr('login.enter') }}</button>
     </form>
   </div>
 </div>

@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 
-{% block title %}Gestión de Usuarios · Smart Lockers{% endblock %}
+{% block title %}{{ tr('users.heading') }} · Smart Lockers{% endblock %}
 
 {% block content %}
 
 <div class="access-header">
   <div>
-    <h2>Gestión de Usuarios</h2>
+    <h2>{{ tr('users.heading') }}</h2>
     <p class="muted">
-      Consulta, busca y administra los usuarios registrados.
+      {{ tr('users.intro') }}
     </p>
   </div>
 
   <a class="btn btn-primary" href="{{ url_for('users.new_user') }}">
-    + Nuevo usuario
+    {{ tr('users.new') }}
   </a>
 </div>
 
@@ -29,17 +29,17 @@
 
     <!-- Campo de búsqueda -->
     <div class="access-search">
-      <label for="buscar">Buscar</label>
+      <label for="buscar">{{ tr('common.search') }}</label>
 
       <div class="search-input-wrap">
-        <span class="search-icon">⌕</span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
 
         <input
           type="text"
           id="buscar"
           name="buscar"
           value="{{ buscar }}"
-          placeholder="Escribe para buscar..."
+          placeholder="{{ tr('users.search_ph') }}"
         >
       </div>
     </div>
@@ -47,35 +47,35 @@
 
     <!-- Campo donde buscar -->
     <div class="access-filter">
-      <label for="campo">Buscar por</label>
+      <label for="campo">{{ tr('common.search_by') }}</label>
 
       <select id="campo" name="campo">
         <option
           value="todos"
           {% if campo == 'todos' %}selected{% endif %}
         >
-          Todos
+          {{ tr('common.all') }}
         </option>
 
         <option
           value="nombre"
           {% if campo == 'nombre' %}selected{% endif %}
         >
-          Nombre
+          {{ tr('common.name') }}
         </option>
 
         <option
           value="matricula"
           {% if campo == 'matricula' %}selected{% endif %}
         >
-          Matrícula
+          {{ tr('common.matricula') }}
         </option>
 
         <option
           value="unidad"
           {% if campo == 'unidad' %}selected{% endif %}
         >
-          Unidad
+          {{ tr('common.unit') }}
         </option>
       </select>
     </div>
@@ -85,7 +85,7 @@
     <div class="access-filter-actions">
 
       <button type="submit" class="btn btn-primary">
-        Buscar
+        {{ tr('common.search') }}
       </button>
 
       {% if buscar or campo != 'todos' %}
@@ -93,7 +93,7 @@
           href="{{ url_for('users.list_users') }}"
           class="btn"
         >
-          Limpiar
+          {{ tr('common.clear') }}
         </a>
       {% endif %}
 
@@ -109,16 +109,15 @@
 
   <span>
     {% if total > 0 %}
-      Mostrando <strong>{{ inicio }}–{{ fin }}</strong>
-      de <strong>{{ total }}</strong> usuarios
+      {{ tr('users.showing', a=inicio, b=fin, total=total) | safe }}
     {% else %}
-      No se encontraron usuarios
+      {{ tr('users.none_found') }}
     {% endif %}
   </span>
 
   {% if buscar %}
     <span>
-      Búsqueda:
+      {{ tr('users.search_label') }}
       <strong>"{{ buscar }}"</strong>
     </span>
   {% endif %}
@@ -135,17 +134,17 @@
 
       <thead>
         <tr>
-          <th>Nombre</th>
-          <th>Matrícula</th>
+          <th>{{ tr('common.name') }}</th>
+          <th>{{ tr('common.matricula') }}</th>
 
           {% if g.user.role == 'superadmin' %}
-            <th>Tipo</th>
+            <th>{{ tr('common.type') }}</th>
           {% endif %}
 
-          <th>Unidad</th>
-          <th>Estado</th>
-          <th>Permisos</th>
-          <th>Rostro</th>
+          <th>{{ tr('common.unit') }}</th>
+          <th>{{ tr('common.status') }}</th>
+          <th>{{ tr('users.col.perms') }}</th>
+          <th>{{ tr('users.col.face') }}</th>
           <th></th>
         </tr>
       </thead>
@@ -190,7 +189,7 @@
           <!-- Estado -->
           <td>
             <span class="badge {{ u.estado }}">
-              {{ u.estado }}
+              {{ u.estado|tr_status }}
             </span>
           </td>
 
@@ -201,19 +200,19 @@
             {% if u.permisoactivacion == 'locker' %}
 
               <span class="badge perm-locker">
-                Locker
+                {{ tr('perm.locker') }}
               </span>
 
             {% elif u.permisoactivacion == 'recurso_compartido' %}
 
               <span class="badge perm-recurso">
-                Recurso compartido
+                {{ tr('perm.recurso') }}
               </span>
 
             {% elif u.permisoactivacion == 'ambos' %}
 
               <span class="badge perm-ambos">
-                Ambos
+                {{ tr('perm.ambos') }}
               </span>
 
             {% else %}
@@ -233,7 +232,7 @@
             {% if u.n_encodings and u.n_encodings > 0 %}
 
               <span class="badge activo">
-                Registrado
+                {{ tr('users.face_ok') }}
               </span>
 
             {% else %}
@@ -243,7 +242,7 @@
                 style="text-decoration:none;"
                 href="{{ url_for('face.capture_page', user_id=u.idusuario) }}"
               >
-                Pendiente
+                {{ tr('users.face_pending') }}
               </a>
 
             {% endif %}
@@ -257,7 +256,7 @@
               class="btn btn-sm"
               href="{{ url_for('users.edit_user', user_id=u.idusuario) }}"
             >
-              Editar
+              {{ tr('common.edit') }}
             </a>
           </td>
 
@@ -272,10 +271,10 @@
             class="empty-access"
           >
             {% if buscar %}
-              No se encontraron usuarios para
+              {{ tr('users.none_for') }}
               <strong>"{{ buscar }}"</strong>.
             {% else %}
-              No hay usuarios registrados.
+              {{ tr('users.none') }}
             {% endif %}
           </td>
         </tr>
@@ -294,7 +293,7 @@
 <!-- PAGINACIÓN -->
 {% if total_paginas > 1 %}
 
-<nav class="access-pagination" aria-label="Paginación de usuarios">
+<nav class="access-pagination" aria-label="{{ tr('users.pagination') }}">
 
   <!-- Anterior -->
   {% if pagina > 1 %}
@@ -308,13 +307,13 @@
         campo=campo
       ) }}"
     >
-      ← Anterior
+      ← {{ tr('common.prev') }}
     </a>
 
   {% else %}
 
     <span class="pagination-btn disabled">
-      ← Anterior
+      ← {{ tr('common.prev') }}
     </span>
 
   {% endif %}
@@ -364,13 +363,13 @@
         campo=campo
       ) }}"
     >
-      Siguiente →
+      {{ tr('common.next') }} →
     </a>
 
   {% else %}
 
     <span class="pagination-btn disabled">
-      Siguiente →
+      {{ tr('common.next') }} →
     </span>
 
   {% endif %}

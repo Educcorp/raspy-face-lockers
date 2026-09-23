@@ -164,7 +164,7 @@ a { color: inherit; }
 }
 .dropdown-panel a { border-radius: 10px; padding: 9px 12px; font-size: 0.86rem; font-weight: 500; }
 
-.topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.topbar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
 
 .user-chip { display: flex; align-items: center; gap: 9px; padding: 4px 6px 4px 4px; }
 
@@ -208,7 +208,7 @@ a { color: inherit; }
 .user-menu .dropdown-panel a.danger-link svg { opacity: 0.85; }
 .dropdown-divider { height: 1px; background: var(--border); margin: 5px 4px; }
 
-.nav-toggle-btn { display: none; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 6px 10px; border-radius: 999px; }
+.nav-toggle-btn { display: none; cursor: pointer; font-size: 1.35rem; line-height: 1; padding: 6px 8px; border-radius: 999px; }
 .nav-toggle-btn:hover { background: var(--surface-alt); }
 
 .mobile-panel { display: none; }
@@ -799,7 +799,9 @@ tbody tr:hover { background: var(--surface-alt); }
     border: 1px solid var(--border);
     box-shadow: var(--shadow-sm);
   }
-  .nav-toggle-input:checked ~ .mobile-panel { display: flex; }
+  .nav-toggle-input:checked ~ .topbar-wrap .mobile-panel {
+    display: flex;
+  }
 
   .mobile-panel a, .mobile-panel summary {
     padding: 11px 14px;

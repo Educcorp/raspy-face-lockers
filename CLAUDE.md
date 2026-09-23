@@ -141,9 +141,10 @@ amplificaba ~3px por cada píxel a 400px y degradaba los 68 landmarks. El
 ### 8. GPIO / hardware físico
 - `core/gpio_controller.py` — 4 relés (HW-316, activo-bajo) para los
   solenoides de los lockers 1-4, pines BCM 17/27/22/23.
-  `GPIO_CONFIG["locker_open_seconds"] = 2.5` es cuánto tiempo el relé queda
-  energizado (ventana real para que la persona jale la puerta) — pendiente
-  de subir a ~10s a pedido del usuario (2026-09-23), aún no aplicado.
+  `GPIO_CONFIG["locker_open_seconds"] = 10.0` es cuánto tiempo el relé queda
+  energizado (ventana real para que la persona jale la puerta) — subido de
+  2.5s a 10s a pedido del usuario (2026-09-23); vigilar temperatura del
+  solenoide en las primeras pruebas con hardware real.
 - `core/door_switch_controller.py` + `DOOR_SWITCH_CONFIG` — sensores de
   puerta (KW11-3Z) en los mismos 4 lockers, pines BCM 5/6/12/13. Se sondean
   para saber si la puerta sigue abierta y avisar (`DOOR_ALERT_DELAY_S=10s`
@@ -215,8 +216,6 @@ Orden cronológico, resumido — el detalle completo vive en los commits.
 
 ## Pendiente / próximos pasos conocidos
 
-- Subir `GPIO_CONFIG["locker_open_seconds"]` de 2.5 a ~10s (pedido
-  2026-09-23, no aplicado aún).
 - Re-convertir y validar los modelos de anti-spoofing (punto 5) antes de
   reactivarlos — el sistema hoy no tiene protección contra fotos/pantallas.
 - Calibrar `MIN_FACE_SIZE_RATIO` con una medición real en esta cámara (hoy

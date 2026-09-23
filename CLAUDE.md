@@ -148,17 +148,22 @@ amplificaba ~3px por cada píxel a 400px y degradaba los 68 landmarks. El
 - `core/door_switch_controller.py` + `DOOR_SWITCH_CONFIG` — sensores de
   puerta (KW11-3Z) en los mismos 4 lockers, pines BCM 5/6/12/13. Se sondean
   para saber si la puerta sigue abierta y avisar (`DOOR_ALERT_DELAY_S=10s`
-  antes de alertar, en `scanning_screen.py`).
+  antes de alertar, en `scanning_screen.py`). **Esta Pi es una Pi 5:
+  `RPi.GPIO` 0.7.x no funciona ahí** ("Cannot determine SOC peripheral base
+  address"), así que el controlador cae a `pinctrl` (una sola llamada
+  `pinctrl get 5,6,12,13`, caché 100ms) igual que los relés. Antes no tenía
+  ese fallback y `read_state()` devolvía siempre `None` — los sensores
+  "no funcionaban" en toda la app, no solo en el panel admin.
 - `core/tool_gpio_controller.py` — relé aparte (BCM24) para un taladro/toma
   controlada, no lockers; llegó por otra rama (`ferrrr`), no tocado en estas
   sesiones.
 - **`ui/admin/locker_assignment.py`** tiene la sección "Abrir locker
-  manualmente". El 2026-09-23 se intentó restaurar ahí un mensaje de estado
-  ("Locker N abierto") que existía antes de un refactor y se había perdido
-  — **el usuario reportó que esos cambios rompieron los sensores y los
-  descartó** (revertidos, no están en el árbol). Si se vuelve a tocar este
-  archivo, ir con cuidado especial y probar con hardware real antes de
-  darlo por bueno.
+  manualmente": cada botón muestra el estado de la puerta según el sensor
+  (`Abriendo…` / `Abierto` gris-deshabilitado / `Cerrado`), sin widgets
+  nuevos. Un intento anterior (2026-09-23) de restaurar un mensaje de estado
+  ahí "rompió los sensores" y se descartó; la causa probable era el punto
+  de arriba (RPi.GPIO en Pi 5), no el mensaje. Sigue sin verificarse con
+  puerta física — probar con hardware real antes de darlo por bueno.
 
 ## Convenciones del repo
 
@@ -214,6 +219,17 @@ Orden cronológico, resumido — el detalle completo vive en los commits.
    (`~/.local/bin/claude`, vía `curl -fsSL https://claude.ai/install.sh |
    bash`) — agregado `~/.local/bin` al PATH en `~/.bashrc`.
 
+### Reglas de negocio del panel admin de la Pi (2026-09-23)
+- **Actualizar rostro** (`register_user.py::_save_user`): el chequeo de
+  duplicado biométrico excluye los encodings del propio usuario que se
+  re-registra (`_reregister_user_id`); solo bloquea si el rostro coincide con
+  OTRO usuario.
+- **Eliminar locker** (`lockers_catalog.py::_do_delete_locker`): borra
+  `historial_accesos` → `asignacion_locker` → `lockers` en una transacción
+  (la FK `fk_asignacion_locker` es RESTRICT, antes solo marcaba `vencido` y
+  fallaba). Los lockers 1-4 (`_DEFAULT_LOCKER_IDS`, con relé físico) nunca se
+  pueden eliminar; uno con asignación activa tampoco (liberar primero).
+
 ## Pendiente / próximos pasos conocidos
 
 - Re-convertir y validar los modelos de anti-spoofing (punto 5) antes de
@@ -224,9 +240,9 @@ Orden cronológico, resumido — el detalle completo vive en los commits.
 - Revisar el orden de color RGB/BGR entre lo que entrega `picamera2` y lo
   que espera `get_embedding()` — quedó señalado como sospechoso pendiente,
   nunca descartado con una prueba en vivo.
-- `ui/admin/locker_assignment.py`: la restauración del mensaje "Locker N
-  abierto" quedó revertida por romper los sensores — si se retoma, probar
-  con hardware real, no solo con mocks.
+- Probar con puerta física el estado Abriendo/Abierto/Cerrado del panel de
+  asignaciones y el fallback `pinctrl` de los sensores (solo se probó con
+  sensores simulados + lectura real de pines sin mover ninguna puerta).
 - `run.sh` estaba roto por un `.venv/` vacío heredado — no verificado si
   sigue así.
 - Rotar la contraseña de Postgres de Railway (apareció en texto plano en

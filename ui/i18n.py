@@ -543,6 +543,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "assignment.opening":         {"es": "Abriendo Locker {n}…",           "en": "Opening Locker {n}…"},
     "assignment.opened_ok":       {"es": "Locker {n} abierto",             "en": "Locker {n} opened"},
     "assignment.open_failed":     {"es": "No se pudo abrir Locker {n}",    "en": "Could not open Locker {n}"},
+    "assignment.door_opening":    {"es": "Abriendo…",                    "en": "Opening…"},
+    "assignment.door_open":       {"es": "Abierto",                      "en": "Open"},
+    "assignment.door_closed":     {"es": "Cerrado",                      "en": "Closed"},
 
     # ── Admin: RegisterUserScreen ────────────────────────────────────────────
     "register.title": {

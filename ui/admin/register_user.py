@@ -1000,6 +1000,14 @@ class _Step4FaceCapture(ctk.CTkFrame):
             logger.warning("No se pudieron cargar encodings para verificar: %s", exc)
             candidates = []
 
+        # Re-registro: los encodings del propio usuario van a reemplazarse, así
+        # que no cuentan como duplicado (sí bloquea si coincide con OTRO usuario).
+        reregister_id = getattr(self.wizard, "_reregister_user_id", None)
+        if reregister_id is not None:
+            candidates = [
+                c for c in candidates if int(c["idUsuario"]) != int(reregister_id)
+            ]
+
         if candidates:
             self.lbl_status.configure(
                 text="Verificando identidad biométrica…",
@@ -1043,8 +1051,6 @@ class _Step4FaceCapture(ctk.CTkFrame):
             }
             for p in self._captured_poses
         ]
-
-        reregister_id = getattr(self.wizard, "_reregister_user_id", None)
 
         if reregister_id is not None:
             # Modo re-registro: reemplazar encodings del usuario existente

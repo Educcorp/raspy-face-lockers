@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Asignación de Casilleros · Smart Lockers{% endblock %}
+{% block title %}{{ tr('assign.heading') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>Asignación de Casilleros</h2>
+<h2>{{ tr('assign.heading') }}</h2>
 
 <div class="card">
-  <h3>Asignar locker</h3>
+  <h3>{{ tr('assign.assign_locker') }}</h3>
   <form method="post">
     <input type="hidden" name="action" value="assign">
     <div class="form-grid">
       <div class="form-row">
-        <label>Usuario</label>
+        <label>{{ tr('common.user') }}</label>
         <select name="idUsuario" required>
           {% for u in users %}
-          <option value="{{ u.idusuario }}">{{ u.nombre }} {{ u.appaterno }} · Matr. {{ u.matricula }}</option>
+          <option value="{{ u.idusuario }}">{{ u.nombre }} {{ u.appaterno }} · {{ tr('assign.matr') }} {{ u.matricula }}</option>
           {% endfor %}
         </select>
       </div>
       <div class="form-row">
-        <label>Locker disponible</label>
+        <label>{{ tr('assign.available') }}</label>
         <select name="idLocker" required>
           {% for l in available_lockers %}
           <option value="{{ l.idlocker }}">Locker {{ l.idlocker }} · {{ l.nombrearea }}</option>
@@ -25,14 +25,14 @@
         </select>
       </div>
     </div>
-    <button class="btn" type="submit">Asignar</button>
+    <button class="btn" type="submit">{{ tr('assign.assign') }}</button>
   </form>
 </div>
 
 <div class="card">
-  <h3 style="margin-top:0;">Asignaciones activas</h3>
+  <h3 style="margin-top:0;">{{ tr('assign.active') }}</h3>
   <table>
-    <thead><tr><th>Locker</th><th>Usuario</th><th>Matrícula</th><th>Desde</th><th></th></tr></thead>
+    <thead><tr><th>{{ tr('common.locker') }}</th><th>{{ tr('common.user') }}</th><th>{{ tr('common.matricula') }}</th><th>{{ tr('common.since') }}</th><th></th></tr></thead>
     <tbody>
       {% for a in assignments %}
       <tr>
@@ -41,15 +41,15 @@
         <td>{{ a.matricula }}</td>
         <td>{{ a.fechahorareg | local_dt }}</td>
         <td>
-          <form method="post" data-confirm="¿Liberar este locker?">
+          <form method="post" data-confirm="{{ tr('assign.release_confirm') }}">
             <input type="hidden" name="action" value="release">
             <input type="hidden" name="idLockerAsignado" value="{{ a.idlockerasignado }}">
-            <button class="btn btn-sm btn-danger" type="submit">Liberar</button>
+            <button class="btn btn-sm btn-danger" type="submit">{{ tr('assign.release') }}</button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5">No hay asignaciones activas.</td></tr>
+      <tr><td colspan="5">{{ tr('assign.none') }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

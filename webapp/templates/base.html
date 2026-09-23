@@ -1,14 +1,38 @@
 <!doctype html>
-<html lang="es">
+{% macro nav_utils() %}
+<div class="nav-utils">
+  <button type="button" class="nav-icon-btn theme-toggle"
+          data-label-dark="{{ tr('nav.theme_dark') }}" data-label-light="{{ tr('nav.theme_light') }}"
+          aria-label="{{ tr('nav.theme_dark') }}" title="{{ tr('nav.theme_dark') }}">
+    <svg class="icon-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    <svg class="icon-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+  </button>
+  <a class="nav-lang-btn" href="{{ url_for('set_lang', code='en' if current_lang() == 'es' else 'es') }}"
+     aria-label="{{ tr('nav.lang_switch') }}" title="{{ tr('nav.lang_switch') }}">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    <span>{{ tr('nav.lang_btn_short') }}</span>
+  </a>
+</div>
+{% endmacro %}
+<html lang="{{ current_lang() }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Panel de Control · Smart Lockers{% endblock %}</title>
+  <title>{% block title %}{{ tr('app.title') }} · Smart Lockers{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  <script>
+    /* Aplica el tema guardado ANTES de pintar, para que el modo oscuro no
+       parpadee en blanco al cambiar de página. */
+    (() => {
+      let theme = 'light';
+      try { theme = localStorage.getItem('theme') || 'light'; } catch (e) {}
+      document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+    })();
+  </script>
 </head>
 <body>
   {% if g.user %}
@@ -24,40 +48,45 @@
       <nav class="topbar-nav">
         <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.blueprint == 'dashboard' else '' }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
-          Inicio
+          {{ tr('nav.inicio') }}
         </a>
         <a href="{{ url_for('users.list_users') }}" class="{{ 'active' if request.blueprint == 'users' else '' }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Usuarios
+          {{ tr('nav.usuarios') }}
         </a>
         <a href="{{ url_for('lockers.list_lockers') }}" class="{{ 'active' if request.endpoint == 'lockers.list_lockers' else '' }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M9 4v6"/></svg>
-          Lockers
+          {{ tr('nav.lockers') }}
         </a>
         <a href="{{ url_for('lockers.assignments') }}" class="{{ 'active' if request.endpoint == 'lockers.assignments' else '' }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="8" height="8" rx="1.5"/><rect x="13" y="5" width="8" height="8" rx="1.5"/><path d="M11 15h2a2 2 0 0 0 2-2v-1"/></svg>
-          Asignaciones
+          {{ tr('nav.asignaciones') }}
         </a>
         <a href="{{ url_for('history.list_history') }}" class="{{ 'active' if request.blueprint == 'history' else '' }}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
-          Historial
+          {{ tr('nav.historial') }}
+        </a>
+        <a href="{{ url_for('resources.list_resources') }}" class="{{ 'active' if request.blueprint == 'resources' else '' }}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          {{ tr('nav.recursos') }}
         </a>
         {% if g.user.role == 'superadmin' %}
         <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
           <summary>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83A2 2 0 0 0 9.59 3.24L4 3a1 1 0 0 0-1 1l.24 5.59a2 2 0 0 0 .59 1.41l9.58 9.58a2 2 0 0 0 2.83 0l4.34-4.34a2 2 0 0 0 .01-2.83Z"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
-            Catálogos
+            {{ tr('nav.catalogos') }}
             <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </summary>
           <div class="dropdown-panel">
-            <a href="{{ url_for('catalogs.unidades') }}">Unidades académicas</a>
-            <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
+            <a href="{{ url_for('catalogs.unidades') }}">{{ tr('nav.unidades') }}</a>
+            <a href="{{ url_for('catalogs.areas') }}">{{ tr('nav.areas') }}</a>
           </div>
         </details>
         {% endif %}
       </nav>
 
       <div class="topbar-right">
+        {{ nav_utils() }}
         <details class="nav-dropdown user-menu">
           <summary>
             <span class="user-avatar">{{ g.user.full_name[:1] }}</span>
@@ -70,37 +99,38 @@
           <div class="dropdown-panel">
             <a href="{{ url_for('users.edit_user', user_id=g.user.idusuario) }}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>
-              Mi perfil
+              {{ tr('nav.mi_perfil') }}
             </a>
             <div class="dropdown-divider"></div>
             <a href="{{ url_for('auth.logout') }}" class="danger-link">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-              Cerrar sesión
+              {{ tr('nav.cerrar_sesion') }}
             </a>
           </div>
         </details>
-        <label for="nav-toggle" class="nav-toggle-btn" aria-label="Abrir menú">&#9776;</label>
+        <label for="nav-toggle" class="nav-toggle-btn" aria-label="{{ tr('nav.open_menu') }}">&#9776;</label>
       </div>
     </header>
 
     <nav class="mobile-panel">
-      <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.blueprint == 'dashboard' else '' }}">Inicio</a>
-      <a href="{{ url_for('users.list_users') }}" class="{{ 'active' if request.blueprint == 'users' else '' }}">Usuarios</a>
-      <a href="{{ url_for('lockers.list_lockers') }}" class="{{ 'active' if request.endpoint == 'lockers.list_lockers' else '' }}">Lockers</a>
-      <a href="{{ url_for('lockers.assignments') }}" class="{{ 'active' if request.endpoint == 'lockers.assignments' else '' }}">Asignaciones</a>
-      <a href="{{ url_for('history.list_history') }}" class="{{ 'active' if request.blueprint == 'history' else '' }}">Historial</a>
+      <a href="{{ url_for('dashboard.index') }}" class="{{ 'active' if request.blueprint == 'dashboard' else '' }}">{{ tr('nav.inicio') }}</a>
+      <a href="{{ url_for('users.list_users') }}" class="{{ 'active' if request.blueprint == 'users' else '' }}">{{ tr('nav.usuarios') }}</a>
+      <a href="{{ url_for('lockers.list_lockers') }}" class="{{ 'active' if request.endpoint == 'lockers.list_lockers' else '' }}">{{ tr('nav.lockers') }}</a>
+      <a href="{{ url_for('lockers.assignments') }}" class="{{ 'active' if request.endpoint == 'lockers.assignments' else '' }}">{{ tr('nav.asignaciones') }}</a>
+      <a href="{{ url_for('history.list_history') }}" class="{{ 'active' if request.blueprint == 'history' else '' }}">{{ tr('nav.historial') }}</a>
+      <a href="{{ url_for('resources.list_resources') }}" class="{{ 'active' if request.blueprint == 'resources' else '' }}">{{ tr('nav.recursos') }}</a>
       {% if g.user.role == 'superadmin' %}
       <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
-        <summary>Catálogos <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+        <summary>{{ tr('nav.catalogos') }} <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
         <div class="dropdown-panel">
-          <a href="{{ url_for('catalogs.unidades') }}">Unidades académicas</a>
-          <a href="{{ url_for('catalogs.areas') }}">Áreas</a>
+          <a href="{{ url_for('catalogs.unidades') }}">{{ tr('nav.unidades') }}</a>
+          <a href="{{ url_for('catalogs.areas') }}">{{ tr('nav.areas') }}</a>
         </div>
       </details>
       {% endif %}
       <div class="dropdown-divider"></div>
-      <a href="{{ url_for('users.edit_user', user_id=g.user.idusuario) }}">Mi perfil</a>
-      <a href="{{ url_for('auth.logout') }}">Cerrar sesión</a>
+      <a href="{{ url_for('users.edit_user', user_id=g.user.idusuario) }}">{{ tr('nav.mi_perfil') }}</a>
+      <a href="{{ url_for('auth.logout') }}">{{ tr('nav.cerrar_sesion') }}</a>
     </nav>
   </div>
 
@@ -121,8 +151,8 @@
       </span>
       <p id="confirm-modal-message"></p>
       <div class="modal-actions">
-        <button type="button" id="confirm-modal-cancel" class="btn btn-muted">Cancelar</button>
-        <button type="button" id="confirm-modal-ok" class="btn btn-danger">Confirmar</button>
+        <button type="button" id="confirm-modal-cancel" class="btn btn-muted">{{ tr('common.cancel') }}</button>
+        <button type="button" id="confirm-modal-ok" class="btn btn-danger">{{ tr('common.confirm') }}</button>
       </div>
     </div>
   </div>
@@ -176,6 +206,28 @@
       });
     })();
 
+    /* Ajuste automático del nav: si algo se sale de la barra (nombre de
+       usuario largo, zoom, otra fuente…) primero oculta los íconos y, si
+       aun así no cabe, colapsa el menú al botón ☰. */
+    (() => {
+      const root = document.documentElement;
+      const topbar = document.querySelector('.topbar');
+      if (!topbar) return;
+      const overflows = () => topbar.scrollWidth > topbar.clientWidth + 1;
+      const fit = () => {
+        root.classList.remove('nav-no-icons', 'nav-compact');
+        if (!overflows()) return;
+        root.classList.add('nav-no-icons');
+        if (!overflows()) return;
+        root.classList.add('nav-compact');
+      };
+      let raf = null;
+      const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(fit); };
+      fit();
+      window.addEventListener('resize', schedule);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    })();
+
     (() => {
       const topbarWrap = document.querySelector('.topbar-wrap');
       if (!topbarWrap) return;
@@ -194,6 +246,7 @@
   </script>
   {% else %}
   <div class="container-plain">
+    <div class="login-utils">{{ nav_utils() }}</div>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
         <div class="flash {{ category }}" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:50;">{{ message }}</div>
@@ -205,6 +258,29 @@
   {% endif %}
 
   <script>
+    /* Botón de modo oscuro (igual que toggle_theme() de la app de escritorio). */
+    (() => {
+      const root = document.documentElement;
+      const syncButtons = () => {
+        const dark = root.dataset.theme === 'dark';
+        document.querySelectorAll('.theme-toggle').forEach((btn) => {
+          const label = dark ? btn.dataset.labelLight : btn.dataset.labelDark;
+          btn.setAttribute('aria-label', label);
+          btn.title = label;
+          btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+        });
+      };
+      document.querySelectorAll('.theme-toggle').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+          root.dataset.theme = next;
+          try { localStorage.setItem('theme', next); } catch (e) {}
+          syncButtons();
+        });
+      });
+      syncButtons();
+    })();
+
     document.querySelectorAll('.flash').forEach((el) => {
       setTimeout(() => {
         el.classList.add('flash-hide');

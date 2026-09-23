@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Inicio · Smart Lockers{% endblock %}
+{% block title %}{{ tr('nav.inicio') }} · Smart Lockers{% endblock %}
 
 {% block content %}
 
 <!-- ── Encabezado ─────────────────────────────────────────────────────── -->
 <div class="dashboard-header">
   <div>
-    <span class="dashboard-eyebrow">PANEL DE ADMINISTRACIÓN</span>
-    <h2>Centro de Control</h2>
+    <span class="dashboard-eyebrow">{{ tr('dash.eyebrow') }}</span>
+    <h2>{{ tr('dash.heading') }}</h2>
     <p>
-      Supervisa el estado de los lockers y gestiona el acceso de los usuarios.
+      {{ tr('dash.intro') }}
     </p>
   </div>
 
@@ -23,7 +23,7 @@
         <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
-      Ver usuarios
+      {{ tr('dash.view_users') }}
     </a>
 
     <a class="btn btn-primary" href="{{ url_for('users.new_user') }}">
@@ -33,7 +33,7 @@
         <path d="M12 5v14"/>
         <path d="M5 12h14"/>
       </svg>
-      Nuevo usuario
+      {{ tr('dash.new_user') }}
     </a>
   </div>
 </div>
@@ -44,8 +44,8 @@
 
   <div class="section-heading">
     <div>
-      <span class="section-eyebrow">RESUMEN</span>
-      <h3>Vista general</h3>
+      <span class="section-eyebrow">{{ tr('dash.summary') }}</span>
+      <h3>{{ tr('dash.overview') }}</h3>
     </div>
   </div>
 
@@ -65,7 +65,7 @@
           </svg>
         </span>
 
-        <span class="dashboard-stat-caption">Usuarios</span>
+        <span class="dashboard-stat-caption">{{ tr('dash.cap.users') }}</span>
       </div>
 
       <div class="dashboard-stat-value">
@@ -73,7 +73,7 @@
       </div>
 
       <div class="dashboard-stat-label">
-        Usuarios activos
+        {{ tr('dash.stat.users') }}
       </div>
     </div>
 
@@ -91,7 +91,7 @@
           </svg>
         </span>
 
-        <span class="dashboard-stat-caption">Lockers</span>
+        <span class="dashboard-stat-caption">{{ tr('dash.cap.lockers') }}</span>
       </div>
 
       <div class="dashboard-stat-value">
@@ -99,7 +99,7 @@
       </div>
 
       <div class="dashboard-stat-label">
-        Lockers activos
+        {{ tr('dash.stat.lockers') }}
       </div>
     </div>
 
@@ -117,7 +117,7 @@
           </svg>
         </span>
 
-        <span class="dashboard-stat-caption">Asignaciones</span>
+        <span class="dashboard-stat-caption">{{ tr('dash.cap.assignments') }}</span>
       </div>
 
       <div class="dashboard-stat-value">
@@ -125,7 +125,7 @@
       </div>
 
       <div class="dashboard-stat-label">
-        Asignaciones activas
+        {{ tr('dash.stat.assignments') }}
       </div>
     </div>
 
@@ -148,7 +148,7 @@
           </svg>
         </span>
 
-        <span class="dashboard-stat-caption">Actividad</span>
+        <span class="dashboard-stat-caption">{{ tr('dash.cap.activity') }}</span>
       </div>
 
       <div class="dashboard-stat-value">
@@ -156,7 +156,7 @@
       </div>
 
       <div class="dashboard-stat-label">
-        Accesos registrados hoy
+        {{ tr('dash.stat.access') }}
       </div>
     </div>
 
@@ -169,24 +169,24 @@
 
   <div class="section-heading locker-heading">
     <div>
-      <span class="section-eyebrow">MONITOREO</span>
-      <h3>Estado de lockers</h3>
+      <span class="section-eyebrow">{{ tr('dash.monitoring') }}</span>
+      <h3>{{ tr('dash.locker_status') }}</h3>
     </div>
 
     <div class="locker-legend">
       <span>
         <i class="legend-dot available"></i>
-        Disponible
+        {{ tr('dash.available') }}
       </span>
 
       <span>
         <i class="legend-dot occupied"></i>
-        Ocupado
+        {{ tr('dash.occupied') }}
       </span>
 
       <span>
         <i class="legend-dot maintenance"></i>
-        Mantenimiento
+        {{ tr('dash.maintenance') }}
       </span>
     </div>
   </div>
@@ -235,7 +235,7 @@
           {% if ocupado %}
 
             <div class="locker-status">
-              Ocupado
+              {{ tr('dash.occupied') }}
             </div>
 
             <div class="locker-user">
@@ -247,35 +247,35 @@
             </div>
 
             <span class="locker-state-badge occupied">
-              En uso
+              {{ tr('dash.in_use') }}
             </span>
 
           {% elif locker.locker_estado == 'activo' %}
 
             <div class="locker-status">
-              Disponible
+              {{ tr('dash.available') }}
             </div>
 
             <div class="locker-user">
-              Listo para asignación
+              {{ tr('dash.ready') }}
             </div>
 
             <span class="locker-state-badge available">
-              Libre
+              {{ tr('dash.free') }}
             </span>
 
           {% else %}
 
             <div class="locker-status">
-              {{ locker.locker_estado|capitalize }}
+              {{ locker.locker_estado|tr_status }}
             </div>
 
             <div class="locker-user">
-              Locker fuera de servicio
+              {{ tr('dash.out_of_service') }}
             </div>
 
             <span class="locker-state-badge maintenance">
-              Revisar
+              {{ tr('dash.review') }}
             </span>
 
           {% endif %}
@@ -313,17 +313,16 @@
     <div class="notice-content">
 
       <div class="notice-title">
-        {{ stats.pendientes }} usuario(s) esperan registro facial
+        {{ tr('dash.notice_title', n=stats.pendientes) }}
       </div>
 
       <p>
-        Estos usuarios fueron registrados pero todavía no cuentan
-        con un rostro capturado.
+        {{ tr('dash.notice_body') }}
       </p>
 
       <a class="notice-link"
          href="{{ url_for('users.list_users') }}">
-        Ir a usuarios y capturar rostro
+        {{ tr('dash.notice_cta') }}
         <svg width="14" height="14" viewBox="0 0 24 24"
              fill="none" stroke="currentColor"
              stroke-width="2"

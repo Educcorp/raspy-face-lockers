@@ -29,6 +29,38 @@
   --shadow: 0 16px 40px -12px rgba(60, 45, 30, 0.22);
 }
 
+/* ── Modo oscuro — misma paleta que DARK_PALETTE de ui/theme.py (app de
+   escritorio), para que ambas interfaces se vean igual en oscuro. ─────── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1c1712;
+  --card: #241d17;
+  --surface-alt: #2e251d;
+  --border: #3a2f25;
+  --text: #f1e9df;
+  --muted: #a3937f;
+
+  --accent: #e08a5f;
+  --accent-hover: #c1603c;
+  --accent-soft: #3a2a20;
+  --accent-soft-strong: #4a3527;
+
+  --sage: #8fae90;
+  --sage-soft: #2a332a;
+
+  --success: #7fa889;
+  --success-soft: #25332a;
+  --danger: #d97b6f;
+  --danger-soft: #3a2422;
+  --warn: #d9a95f;
+  --warn-soft: #382d1c;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme="dark"] .modal-overlay { background: rgba(0, 0, 0, 0.6); }
+:root[data-theme="dark"] .btn.btn-danger:hover { background: var(--accent-hover); }
+
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
@@ -207,6 +239,34 @@ a { color: inherit; }
 .user-menu .dropdown-panel a.danger-link:hover { background: var(--danger-soft); }
 .user-menu .dropdown-panel a.danger-link svg { opacity: 0.85; }
 .dropdown-divider { height: 1px; background: var(--border); margin: 5px 4px; }
+
+/* ── Botones de modo oscuro / idioma (como el NavDrawer del escritorio) ── */
+.nav-utils { display: flex; align-items: center; gap: 6px; }
+.nav-icon-btn, .nav-lang-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 38px;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.nav-icon-btn { width: 38px; padding: 0; }
+.nav-lang-btn { padding: 0 14px 0 11px; white-space: nowrap; }
+.nav-icon-btn:hover, .nav-lang-btn:hover { background: var(--border); }
+.nav-icon-btn:focus-visible, .nav-lang-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nav-lang-btn svg { opacity: 0.75; flex-shrink: 0; }
+
+.theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+.login-utils { position: fixed; top: 18px; right: 20px; z-index: 40; }
 
 .nav-toggle-btn { display: none; cursor: pointer; font-size: 1.35rem; line-height: 1; padding: 6px 8px; border-radius: 999px; }
 .nav-toggle-btn:hover { background: var(--surface-alt); }
@@ -551,7 +611,7 @@ tbody tr:hover { background: var(--surface-alt); }
   width: 132px; height: 132px;
   border-radius: 50%;
   position: relative;
-  background: radial-gradient(circle at 32% 28%, #fffdfb, var(--accent-soft) 55%, var(--accent-soft-strong) 100%);
+  background: radial-gradient(circle at 32% 28%, var(--card), var(--accent-soft) 55%, var(--accent-soft-strong) 100%);
   border: 1px solid var(--border);
   box-shadow: inset 0 -12px 22px rgba(44, 36, 29, 0.08), var(--shadow-sm);
   transition: box-shadow 0.25s ease;
@@ -581,7 +641,7 @@ tbody tr:hover { background: var(--surface-alt); }
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   transition: background 0.2s ease;
-  box-shadow: 0 0 0 3px rgba(255, 253, 251, 0.75);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card) 75%, transparent);
   pointer-events: none;
 }
 .pose-sphere.matched .sphere-dot { background: var(--success); }
@@ -1260,23 +1320,31 @@ tbody tr:hover { background: var(--surface-alt); }
 
 /* ── Input de búsqueda ───────────────────────────────────────────── */
 
+/* El contenedor es la referencia del ícono: sin position: relative la lupa
+   se posicionaba contra la tarjeta de filtros y quedaba descentrada. */
+.search-input-wrap {
+  position: relative;
+}
+
+.search-input-wrap svg,
 .search-icon {
   position: absolute;
-  left: 30px;
-  top: 60%;
+  left: 14px;
+  top: 50%;
   transform: translateY(-50%);
-  font-size: 40px;
-  line-height: 1;
   color: var(--muted);
   pointer-events: none;
   z-index: 2;
 }
 
-.search-input-wrap svg {
-  position: absolute;
-  left: 13px;
-  color: var(--muted);
-  pointer-events: none;
+.search-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .search-input-wrap input {
@@ -1576,4 +1644,183 @@ tbody tr:hover { background: var(--surface-alt); }
 
 @media (min-width: 640px) {
   .user-meta { display: flex; }
+}
+
+/* ── Topbar con botones de tema/idioma ───────────────────────────────── */
+.topbar { gap: 12px; }
+.topbar-nav a, .topbar-nav summary { padding: 9px 12px; gap: 6px; }
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Barra más ancha que el contenido en pantallas grandes, para que quepan
+   las 7 secciones + tema/idioma + usuario. */
+@media (min-width: 1401px) {
+  .topbar { max-width: 1320px; }
+}
+
+/* Aspecto del menú desplegable (☰). Solo se ve cuando el nav está colapsado. */
+.mobile-panel {
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px auto 0;
+  max-width: 1180px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.mobile-panel a, .mobile-panel summary {
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: flex; align-items: center; gap: 10px;
+  list-style: none;
+}
+.mobile-panel a:hover, .mobile-panel summary:hover { background: var(--surface-alt); }
+.mobile-panel a.active, .mobile-panel details.active summary { background: var(--accent); color: #fff; }
+.mobile-panel .dropdown-panel { position: static; box-shadow: none; border: none; padding: 0 0 0 14px; }
+
+/* Paso 1: sin íconos en el nav (solo texto).
+   - Siempre hasta 1400 px.
+   - A cualquier ancho si el script de base.html detecta que no cabe
+     (clase nav-no-icons en <html>: nombres largos, zoom, otra fuente…). */
+@media (max-width: 1400px) {
+  .topbar-nav a > svg,
+  .topbar-nav summary > svg:not(.chev) { display: none; }
+}
+html.nav-no-icons .topbar-nav a > svg,
+html.nav-no-icons .topbar-nav summary > svg:not(.chev) { display: none; }
+
+/* Paso 2: nav colapsado al botón ☰.
+   - Siempre hasta 1240 px.
+   - A cualquier ancho si aun sin íconos no cabe (clase nav-compact). */
+@media (max-width: 1240px) {
+  .topbar-nav { display: none; }
+  .nav-toggle-btn { display: block; }
+  .nav-toggle-input:checked ~ .topbar-wrap .mobile-panel { display: flex; }
+}
+html.nav-compact .topbar-nav { display: none; }
+html.nav-compact .nav-toggle-btn { display: block; }
+html.nav-compact .nav-toggle-input:checked ~ .topbar-wrap .mobile-panel { display: flex; }
+
+@media (max-width: 480px) {
+  .brand-text { display: none; }
+  .topbar { gap: 12px; padding-left: 12px; }
+  .topbar-right { gap: 6px; }
+  .nav-lang-btn { padding: 0 10px 0 9px; }
+}
+@media (max-width: 400px) {
+  .user-menu summary { padding-right: 4px; }
+  .user-menu summary .chev { display: none; }
+}
+@media (max-width: 340px) {
+  .topbar { gap: 8px; padding-right: 6px; }
+  .nav-utils, .topbar-right { gap: 4px; }
+  .nav-lang-btn svg { display: none; }
+  .nav-lang-btn { padding: 0 10px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RECURSOS COMPARTIDOS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.res-permission { align-items: center; padding: 18px 20px; }
+.res-permission .notice-content p { margin-bottom: 0; }
+.res-permission-ok { border-left-color: var(--sage); }
+.res-permission-ok .notice-icon { background: var(--sage-soft); color: var(--sage); }
+.res-permission-no { border-left-color: var(--warn); }
+
+.res-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+  margin-top: 6px;
+}
+.res-grid .res-card { margin-bottom: 0; }
+
+.res-card {
+  display: flex;
+  flex-direction: column;
+  border-top: 3px solid var(--border);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.res-card[data-state="on"] { border-top-color: var(--success); }
+
+.res-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.res-icon {
+  width: 52px; height: 52px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-alt);
+  color: var(--muted);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.res-card[data-state="on"] .res-icon { background: var(--success-soft); color: var(--success); }
+
+.res-name { margin: 0 0 4px; font-size: 1.3rem; }
+.res-desc { margin: 0 0 20px; color: var(--muted); font-size: 0.86rem; line-height: 1.5; }
+
+/* Botón con switch (role="switch") */
+.res-toggle {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.res-toggle:hover:not(:disabled) { border-color: var(--accent); }
+.res-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.res-toggle:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.res-switch {
+  position: relative;
+  width: 44px; height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.2s ease;
+}
+.res-knob {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+.res-toggle[aria-checked="true"] .res-switch { background: var(--success); }
+.res-toggle[aria-checked="true"] .res-knob { transform: translateX(20px); }
+
+.res-demo-note {
+  margin: 18px 2px 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

@@ -98,10 +98,31 @@ def list_users():
     )
 
 
+# Los Admin y Superadmin siempre tienen ambos permisos de activación (locker y
+# recurso compartido): si pueden entrar al panel, pueden activar todo.
+PERMISO_PRIVILEGIADO = "ambos"
+
+
+def _privileged_tipo_ids() -> set[int]:
+    """IDs de los tipos de usuario Admin/Superadmin."""
+    return {
+        t["idtipousuario"]
+        for t in catalog_service.get_all_tipos_usuario()
+        if normalize_role(t.get("nombretipousuario")) != ROLE_USER
+    }
+
+
 def _form_context(row: dict | None = None):
     tipos = filter_assignable_user_types(catalog_service.get_all_tipos_usuario())
     unidades = catalog_service.get_active_unidades()
-    return {"row": row, "tipos": tipos, "unidades": unidades}
+    return {
+        "row": row,
+        "tipos": tipos,
+        "unidades": unidades,
+        # Para ocultar "Permisos de activación" cuando el tipo es Admin/Superadmin.
+        "privileged_tipo_ids": sorted(_privileged_tipo_ids()),
+        "row_privileged": bool(row) and _is_privileged(row),
+    }
 
 
 @bp.route("/nuevo", methods=["GET", "POST"])
@@ -185,7 +206,12 @@ def _validate_and_save(user_id: int | None) -> str | None:
 
     if not tipo_id or not unidad_id:
         return "Selecciona un tipo de usuario y una unidad académica."
-    
+
+    # Admin/Superadmin: el campo de permisos no se muestra y siempre es "ambos",
+    # sin importar lo que llegue en el formulario.
+    if tipo_id in _privileged_tipo_ids():
+        permiso_activacion = PERMISO_PRIVILEGIADO
+
     if permiso_activacion not in ("recurso_compartido", "locker", "ambos"):
         return "Selecciona permisos de activación válidos."
 

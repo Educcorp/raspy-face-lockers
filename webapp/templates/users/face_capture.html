@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Registrar rostro · Smart Locker{% endblock %}
+{% block title %}{{ tr('face.page_title') }} · Smart Locker{% endblock %}
 {% block content %}
-<h2>Captura de Reconocimiento Facial: {{ row.nombre }} {{ row.appaterno }}</h2>
+<h2>{{ tr('face.heading') }}: {{ row.nombre }} {{ row.appaterno }}</h2>
 <p style="color:var(--muted);">
-  Pide a {{ row.nombre }} que se coloque frente a la cámara y siga la esfera, la captura es automática.
+  {{ tr('face.intro', name=row.nombre) }}
 </p>
 
 <div class="face-capture-layout">
@@ -14,7 +14,7 @@
       <div id="sphere" class="pose-sphere">
         <div id="sphere-target" class="sphere-target"></div>
         <div id="sphere-dot" class="sphere-dot"></div>
-        <div id="sphere-noface" class="no-face">Buscando tu rostro…</div>
+        <div id="sphere-noface" class="no-face">{{ tr('face.searching') }}</div>
       </div>
       <p id="hint" class="capture-hint"></p>
     </div>
@@ -34,14 +34,14 @@
   </div>
 
   <div class="card face-capture-side">
-    <h3>Progreso</h3>
-    <p id="progress-count" class="progress-count-text">{{ done_count }} de {{ total }} poses capturadas</p>
+    <h3>{{ tr('face.progress') }}</h3>
+    <p id="progress-count" class="progress-count-text">{{ tr('face.count', done=done_count, total=total) }}</p>
 
     <div class="pose-checklist">
       {% for p in poses %}
       <div class="pose-check-item" data-pose="{{ p.tipoParte }}" data-state="{{ 'done' if loop.index0 < done_count else 'pending' }}">
         <span class="pose-check-icon">{{ p.icon }}</span>
-        <span class="pose-check-label">{{ p.tipoParte|capitalize }}</span>
+        <span class="pose-check-label">{{ tr('face.pose.' ~ p.tipoParte) }}</span>
         <span class="pose-check-status">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
         </span>
@@ -51,19 +51,19 @@
 
     <div id="done-controls" class="face-capture-done-controls">
       <form method="post" action="{{ url_for('face.save', user_id=row.idusuario) }}">
-        <button class="btn" type="submit" style="width:100%;">Guardar rostro</button>
+        <button class="btn" type="submit" style="width:100%;">{{ tr('face.save') }}</button>
       </form>
     </div>
 
     <details id="manual-fallback" class="manual-fallback-details">
-      <summary>¿Problemas para que te detecte? Captura manual</summary>
+      <summary>{{ tr('face.manual_summary') }}</summary>
       <button id="btn-capture-manual" class="btn btn-muted" style="width:100%; margin-top:10px;">
-        Capturar esta pose ahora
+        {{ tr('face.manual_btn') }}
       </button>
     </details>
 
     <form method="post" action="{{ url_for('face.cancel', user_id=row.idusuario) }}" style="margin-top:10px;">
-      <button class="btn btn-muted" type="submit" style="width:100%;">Cancelar</button>
+      <button class="btn btn-muted" type="submit" style="width:100%;">{{ tr('common.cancel') }}</button>
     </form>
   </div>
 </div>
@@ -79,13 +79,23 @@ let nextPose = {{ (next_pose.tipoParte if next_pose else '') | tojson }};
 let allDone = {{ 'true' if all_done else 'false' }};
 
 const POSE_LABELS = {
-  {% for p in poses %}"{{ p.tipoParte }}": {{ p.label | tojson }},{% endfor %}
+  {% for p in poses %}"{{ p.tipoParte }}": {{ tr('face.instr.' ~ p.tipoParte) | tojson }},{% endfor %}
 };
+
+/* Textos del idioma activo (botón de idioma del nav). */
+const I18N = {
+  {% for k in ['count','all_done','cam_error','no_detector','detector_off','no_face','calibrating','farther','closer','center','follow','hold','capturing','err_no_face','err_extract','err_dup','other_user','err_generic','err_conn'] %}"{{ k }}": {{ tr('face.js.' ~ k) | tojson }},{% endfor %}
+};
+const fmt = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 
 /* ── Calibración: si un giro se ve invertido al probar con tu cámara, ────
    cambia estos dos signos (1 <-> -1). No afecta lo que se guarda en la
    base de datos (el servidor no valida la pose real), solo la UI. ────── */
-const YAW_SIGN = 1;
+// -1: la cámara ve al usuario al revés (sin espejo). Con 1, "derecha" se
+// cumplía girando a la IZQUIERDA y viceversa. El punto de la esfera también
+// se mueve ahora hacia el mismo lado que la persona, igual que el video (que
+// sí se muestra en espejo).
+const YAW_SIGN = -1;
 const PITCH_SIGN = 1;
 
 const YAW_NORMALIZE = 0.16;
@@ -126,9 +136,9 @@ let loopHandle = null;
 let landmarker = null;
 
 function refreshInstruction() {
-  progressCount.textContent = `${doneCount} de ${TOTAL_POSES} poses capturadas`;
+  progressCount.textContent = fmt(I18N.count, { done: doneCount, total: TOTAL_POSES });
   if (allDone) {
-    instruction.textContent = "¡Todas las poses capturadas!";
+    instruction.textContent = I18N.all_done;
     hint.textContent = "";
     doneControls.style.display = "flex";
     sphere.style.display = "none";
@@ -158,7 +168,7 @@ async function startCamera() {
     video.srcObject = stream;
     await video.play();
   } catch (err) {
-    feedback.textContent = "No se pudo acceder a la cámara: " + err.message;
+    feedback.textContent = I18N.cam_error + err.message;
   }
 }
 
@@ -184,8 +194,8 @@ async function initDetector() {
     });
     detectLoop();
   } catch (err) {
-    hint.textContent = "No se pudo cargar la detección automática — usa la captura manual de abajo.";
-    sphereNoFace.textContent = "Detección no disponible";
+    hint.textContent = I18N.no_detector;
+    sphereNoFace.textContent = I18N.detector_off;
     manualFallback.open = true;
   }
 }
@@ -203,7 +213,7 @@ function detectLoop() {
     sphereNoFace.style.display = "flex";
     sphereDot.style.display = "none";
     sphere.classList.remove('matched');
-    hint.textContent = "No detecto tu rostro, acércate y mira a la cámara.";
+    hint.textContent = I18N.no_face;
     holdStart = null;
     setProgress(0, "");
     return;
@@ -232,7 +242,7 @@ function detectLoop() {
 
   if (baseYaw === null) {
     calibFrames.push([rawYaw, rawPitch]);
-    hint.textContent = "Calibrando… mantente frente a la cámara.";
+    hint.textContent = I18N.calibrating;
     if (calibFrames.length >= 15) {
       baseYaw = calibFrames.reduce((s, f) => s + f[0], 0) / calibFrames.length;
       basePitch = calibFrames.reduce((s, f) => s + f[1], 0) / calibFrames.length;
@@ -252,18 +262,18 @@ function detectLoop() {
   sphere.classList.toggle('matched', ready);
 
   if (!framingOk) {
-    hint.textContent = faceWidth >= 0.75 ? "Aléjate un poco de la cámara" : faceWidth <= 0.22 ? "Acércate un poco a la cámara" : "Céntrate en el cuadro";
+    hint.textContent = faceWidth >= 0.75 ? I18N.farther : faceWidth <= 0.22 ? I18N.closer : I18N.center;
     holdStart = null;
     setProgress(0, "");
   } else if (!poseOk) {
-    hint.textContent = "Sigue la esfera hacia la posición indicada";
+    hint.textContent = I18N.follow;
     holdStart = null;
     setProgress(0, "");
   } else {
-    hint.textContent = "¡Perfecto, mantente así!";
+    hint.textContent = I18N.hold;
     if (holdStart === null) holdStart = performance.now();
     const elapsed = performance.now() - holdStart;
-    setProgress((elapsed / HOLD_MS) * 100, "Capturando rostro…");
+    setProgress((elapsed / HOLD_MS) * 100, I18N.capturing);
     if (elapsed >= HOLD_MS) {
       holdStart = null;
       captureCurrentPose();
@@ -285,7 +295,7 @@ async function captureCurrentPose() {
   if (isCapturing || !nextPose) return;
   isCapturing = true;
   feedback.textContent = "";
-  setProgress(100, "Capturando rostro…");
+  setProgress(100, I18N.capturing);
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -316,15 +326,15 @@ async function captureCurrentPose() {
         }, 550);
       } else {
         feedback.textContent = ({
-          no_face: "No se detectó ningún rostro al capturar. Inténtalo de nuevo.",
-          extraction_failed: "No se pudo procesar el rostro. Intenta de nuevo con mejor luz.",
-          rostro_duplicado: `Este rostro ya está registrado a nombre de ${data.nombre || 'otro usuario'}.`,
-        })[data.reason] || "No se pudo capturar. Intenta de nuevo.";
+          no_face: I18N.err_no_face,
+          extraction_failed: I18N.err_extract,
+          rostro_duplicado: fmt(I18N.err_dup, { name: data.nombre || I18N.other_user }),
+        })[data.reason] || I18N.err_generic;
         setProgress(0, "");
         isCapturing = false;
       }
     } catch (err) {
-      feedback.textContent = "Error de conexión: " + err.message;
+      feedback.textContent = I18N.err_conn + err.message;
       setProgress(0, "");
       isCapturing = false;
     }

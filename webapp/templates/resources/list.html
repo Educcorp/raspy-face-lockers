@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('res.page_title') }} · Smart Lockers{% endblock %}
+
+
+{% block content %}
+
+<div class="access-header">
+  <div>
+    <span class="dashboard-eyebrow">{{ tr('res.eyebrow') }}</span>
+    <h2>{{ tr('res.heading') }}</h2>
+    <p>{{ tr('res.intro') }}</p>
+  </div>
+</div>
+
+<!-- Recursos -->
+<div class="res-grid">
+  {% for r in resources %}
+  {% set nombre = tr('res.name', n=r.numero) %}
+  <div class="card res-card" data-resource="{{ r.id }}" data-state="off">
+    <div class="res-card-top">
+      <span class="res-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
+      </span>
+      <span class="badge res-badge inactivo" data-role="badge">{{ tr('res.inactive') }}</span>
+    </div>
+
+    <h3 class="res-name">{{ nombre }}</h3>
+    <p class="res-desc">{{ tr('res.desc') }}</p>
+
+    <button type="button"
+            class="res-toggle"
+            role="switch"
+            aria-checked="false"
+            aria-label="{{ nombre }}"
+            data-name="{{ nombre }}">
+      <span class="res-switch" aria-hidden="true"><span class="res-knob"></span></span>
+      <span class="res-toggle-text" data-role="label">
+        {{ tr('res.activate') }}
+      </span>
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+<p class="res-demo-note">{{ tr('res.demo_note') }}</p>
+<p class="visually-hidden" aria-live="polite" id="res-live"></p>
+
+<script>
+/* Solo front: el estado se guarda en este navegador (localStorage).
+   Cuando exista el backend, cambiar setState() por un POST al servidor
+   (que también debe validar la sesión). */
+(() => {
+  const T = {
+    active: {{ tr('res.active') | tojson }},
+    inactive: {{ tr('res.inactive') | tojson }},
+    activate: {{ tr('res.activate') | tojson }},
+    deactivate: {{ tr('res.deactivate') | tojson }},
+    on: {{ tr('res.toggled_on') | tojson }},
+    off: {{ tr('res.toggled_off') | tojson }},
+  };
+  const KEY = 'shared-resources-demo';
+  const live = document.getElementById('res-live');
+
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+
+  const render = (card, on) => {
+    card.dataset.state = on ? 'on' : 'off';
+    const badge = card.querySelector('[data-role="badge"]');
+    badge.textContent = on ? T.active : T.inactive;
+    badge.classList.toggle('activo', on);
+    badge.classList.toggle('inactivo', !on);
+    const btn = card.querySelector('.res-toggle');
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    card.querySelector('[data-role="label"]').textContent = on ? T.deactivate : T.activate;
+  };
+
+  const setState = (id, on) => {
+    saved[id] = on;
+    try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+  };
+
+  document.querySelectorAll('.res-card').forEach((card) => {
+    const id = card.dataset.resource;
+    render(card, saved[id] === true);
+    const btn = card.querySelector('.res-toggle');
+    btn.addEventListener('click', () => {
+      const on = card.dataset.state !== 'on';
+      setState(id, on);
+      render(card, on);
+      live.textContent = (on ? T.on : T.off).replace('{name}', btn.dataset.name);
+    });
+  });
+})();
+</script>
+
+{% endblock %}

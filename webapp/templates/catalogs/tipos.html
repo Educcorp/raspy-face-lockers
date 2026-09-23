@@ -1,34 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Gestión de Roles · Smart Lockers{% endblock %}
+{% block title %}{{ tr('types.heading') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>Gestión de Roles</h2>
+<h2>{{ tr('types.heading') }}</h2>
 
 <div class="card" style="max-width:480px;">
-  <h3 style="margin-top:0;">Nuevo tipo</h3>
+  <h3 style="margin-top:0;">{{ tr('types.new') }}</h3>
   <form method="post">
     <div class="form-row">
-      <label>Nombre</label>
+      <label>{{ tr('common.name') }}</label>
       <input type="text" name="nombreTipoUsuario" required maxlength="60">
     </div>
-    <button class="btn" type="submit">Crear</button>
+    <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
 </div>
 
 <div class="card">
   <table>
-    <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
     <tbody>
       {% for t in tipos %}
       <tr>
         <td>{{ t.nombretipousuario }}</td>
-        <td><span class="badge {{ t.estado }}">{{ t.estado }}</span></td>
+        <td><span class="badge {{ t.estado }}">{{ t.estado|tr_status }}</span></td>
         <td>
           <form method="post" style="display:inline">
             <input type="hidden" name="idTipoUsuario" value="{{ t.idtipousuario }}">
             <input type="hidden" name="nombreTipoUsuario" value="{{ t.nombretipousuario }}">
             <input type="hidden" name="estado" value="{{ 'inactivo' if t.estado=='activo' else 'activo' }}">
             <button class="btn btn-sm btn-muted" type="submit">
-              {{ 'Desactivar' if t.estado=='activo' else 'Activar' }}
+              {{ tr('common.deactivate') if t.estado=='activo' else tr('common.activate') }}
             </button>
           </form>
         </td>

@@ -1,17 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Gestión de Áreas · Smart Lockers{% endblock %}
+{% block title %}{{ tr('areas.heading') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>Gestión de Áreas</h2>
+<h2>{{ tr('areas.heading') }}</h2>
 
 <div class="card" style="max-width:480px;">
-  <h3 style="margin-top:0;">Nueva área</h3>
+  <h3 style="margin-top:0;">{{ tr('areas.new') }}</h3>
   <form method="post">
     <div class="form-row">
-      <label>Nombre</label>
+      <label>{{ tr('common.name') }}</label>
       <input type="text" name="nombreArea" required maxlength="30">
     </div>
     <div class="form-row">
-      <label>Unidad académica (opcional)</label>
+      <label>{{ tr('areas.unit_optional') }}</label>
       <select name="idUnidadAcademica">
         <option value="">—</option>
         {% for u in unidades %}
@@ -19,19 +19,19 @@
         {% endfor %}
       </select>
     </div>
-    <button class="btn" type="submit">Crear</button>
+    <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
 </div>
 
 <div class="card">
   <table>
-    <thead><tr><th>Nombre</th><th>Unidad</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('common.unit') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
     <tbody>
       {% for a in areas %}
       <tr>
         <td>{{ a.nombrearea }}</td>
         <td>{{ a.nombreunidad or '—' }}</td>
-        <td><span class="badge {{ a.estado }}">{{ a.estado }}</span></td>
+        <td><span class="badge {{ a.estado }}">{{ a.estado|tr_status }}</span></td>
         <td>
           <form method="post" style="display:inline">
             <input type="hidden" name="idArea" value="{{ a.idarea }}">
@@ -39,12 +39,12 @@
             <input type="hidden" name="idUnidadAcademica" value="{{ a.idunidadacademica or '' }}">
             <input type="hidden" name="estado" value="{{ 'inactivo' if a.estado=='activo' else 'activo' }}">
             <button class="btn btn-sm btn-muted" type="submit">
-              {{ 'Desactivar' if a.estado=='activo' else 'Activar' }}
+              {{ tr('common.deactivate') if a.estado=='activo' else tr('common.activate') }}
             </button>
           </form>
           <form method="post" action="{{ url_for('catalogs.delete_area', area_id=a.idarea) }}"
-                style="display:inline" data-confirm="¿Eliminar esta área permanentemente?">
-            <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
+                style="display:inline" data-confirm="{{ tr('areas.delete_confirm') }}">
+            <button class="btn btn-sm btn-danger" type="submit">{{ tr('common.delete') }}</button>
           </form>
         </td>
       </tr>

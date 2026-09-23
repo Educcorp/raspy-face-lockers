@@ -1,15 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Gestión de Casilleros · Smart Lockers{% endblock %}
+{% block title %}{{ tr('lockers.heading') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>Lockers</h2>
-<h2>Gestión de Casilleros</h2>
+<h2>{{ tr('nav.lockers') }}</h2>
+<h2>{{ tr('lockers.heading') }}</h2>
 
 <div class="card">
-  <h3>Nuevo locker</h3>
+  <h3>{{ tr('lockers.new') }}</h3>
   <form method="post">
     <div class="form-grid">
       <div class="form-row">
-        <label>Unidad académica</label>
+        <label>{{ tr('common.academic_unit') }}</label>
         <select name="idUnidadAcademica" required>
           {% for u in unidades %}
           <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
@@ -17,7 +17,7 @@
         </select>
       </div>
       <div class="form-row">
-        <label>Área</label>
+        <label>{{ tr('common.area') }}</label>
         <select name="idArea" required>
           {% for a in areas %}
           <option value="{{ a.idarea }}">{{ a.nombrearea }}</option>
@@ -25,13 +25,13 @@
         </select>
       </div>
     </div>
-    <button class="btn" type="submit">Crear</button>
+    <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
 </div>
 
 <div class="card">
   <table>
-    <thead><tr><th>ID</th><th>Unidad</th><th>Área</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>ID</th><th>{{ tr('common.unit') }}</th><th>{{ tr('common.area') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
     <tbody>
       {% for l in lockers %}
       <tr>
@@ -43,18 +43,18 @@
             <select name="estado" class="status-select st-{{ l.estado }}"
                     onchange="this.className='status-select st-'+this.value; this.form.submit()">
               {% for opt in ['activo', 'inactivo', 'mantenimiento'] %}
-              <option value="{{ opt }}" {% if l.estado==opt %}selected{% endif %}>{{ opt|capitalize }}</option>
+              <option value="{{ opt }}" {% if l.estado==opt %}selected{% endif %}>{{ opt|tr_status }}</option>
               {% endfor %}
             </select>
           </form>
         </td>
         <td>
           <details class="row-edit">
-            <summary class="btn btn-sm btn-muted">Editar</summary>
+            <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
             <div class="row-edit-panel">
               <form method="post" action="{{ url_for('lockers.set_location', locker_id=l.idlocker) }}">
                 <div class="form-row">
-                  <label>Unidad académica</label>
+                  <label>{{ tr('common.academic_unit') }}</label>
                   <select name="idUnidadAcademica" required>
                     {% for u in unidades %}
                     <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==l.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
@@ -62,21 +62,21 @@
                   </select>
                 </div>
                 <div class="form-row">
-                  <label>Área</label>
+                  <label>{{ tr('common.area') }}</label>
                   <select name="idArea" required>
                     {% for a in areas %}
                     <option value="{{ a.idarea }}" {% if a.idarea==l.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
                     {% endfor %}
                   </select>
                 </div>
-                <button class="btn btn-sm" type="submit">Guardar cambios</button>
+                <button class="btn btn-sm" type="submit">{{ tr('common.save_changes') }}</button>
               </form>
               {% if g.user.role == 'superadmin' %}
               <form method="post" action="{{ url_for('lockers.delete_locker', locker_id=l.idlocker) }}"
-                    data-confirm="¿Eliminar este locker permanentemente?" style="margin-top:10px;">
+                    data-confirm="{{ tr('lockers.delete_confirm') }}" style="margin-top:10px;">
                 <button class="btn btn-sm btn-danger" type="submit" style="width:100%;"
-                        {% if loop.index0 < 4 %}disabled title="Los 4 lockers físicos originales no se pueden eliminar."{% endif %}>
-                  Eliminar locker
+                        {% if loop.index0 < 4 %}disabled title="{{ tr('lockers.protected') }}"{% endif %}>
+                  {{ tr('lockers.delete') }}
                 </button>
               </form>
               {% endif %}

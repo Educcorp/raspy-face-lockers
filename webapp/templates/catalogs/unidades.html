@@ -1,32 +1,32 @@
 {% extends "base.html" %}
-{% block title %}Gestión de Unidades Académicas · Smart Lockers{% endblock %}
+{% block title %}{{ tr('units.page_title') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>Unidades Académicas</h2>
+<h2>{{ tr('units.heading') }}</h2>
 
 <div class="card" style="max-width:480px;">
-  <h3 style="margin-top:0;">Nueva unidad</h3>
+  <h3 style="margin-top:0;">{{ tr('units.new') }}</h3>
   <form method="post">
     <div class="form-row">
-      <label>Nombre</label>
+      <label>{{ tr('common.name') }}</label>
       <input type="text" name="nombreUnidadAcademica" required maxlength="100">
     </div>
     <div class="form-row">
-      <label>Zona (opcional)</label>
+      <label>{{ tr('units.zone_optional') }}</label>
       <input type="text" name="zona" maxlength="100">
     </div>
-    <button class="btn" type="submit">Crear</button>
+    <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
 </div>
 
 <div class="card">
   <table>
-    <thead><tr><th>Nombre</th><th>Zona</th><th>Estado</th><th></th></tr></thead>
+    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('units.zone') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
     <tbody>
       {% for u in unidades %}
       <tr>
         <td>{{ u.nombreunidadacademica }}</td>
         <td>{{ u.zona or '—' }}</td>
-        <td><span class="badge {{ u.estado }}">{{ u.estado }}</span></td>
+        <td><span class="badge {{ u.estado }}">{{ u.estado|tr_status }}</span></td>
         <td>
           <form method="post" style="display:inline">
             <input type="hidden" name="idUnidadAcademica" value="{{ u.idunidadacademica }}">
@@ -34,12 +34,12 @@
             <input type="hidden" name="zona" value="{{ u.zona or '' }}">
             <input type="hidden" name="estado" value="{{ 'inactivo' if u.estado=='activo' else 'activo' }}">
             <button class="btn btn-sm btn-muted" type="submit">
-              {{ 'Desactivar' if u.estado=='activo' else 'Activar' }}
+              {{ tr('common.deactivate') if u.estado=='activo' else tr('common.activate') }}
             </button>
           </form>
           <form method="post" action="{{ url_for('catalogs.delete_unidad', unidad_id=u.idunidadacademica) }}"
-                style="display:inline" data-confirm="¿Eliminar esta unidad permanentemente?">
-            <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
+                style="display:inline" data-confirm="{{ tr('units.delete_confirm') }}">
+            <button class="btn btn-sm btn-danger" type="submit">{{ tr('common.delete') }}</button>
           </form>
         </td>
       </tr>

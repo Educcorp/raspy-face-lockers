@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 from zoneinfo import ZoneInfo
 
-import click
-from flask import Flask, g, redirect, url_for
+from urllib.parse import urlparse
 
-from webapp import config, db
+import click
+from flask import Flask, g, redirect, request, url_for
+
+from webapp import config, db, i18n
 from webapp.auth import load_logged_in_user
 
 LOCAL_TZ = ZoneInfo("America/Mexico_City")
@@ -30,6 +32,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         app.config.update(test_config)
 
     app.jinja_env.filters["local_dt"] = format_local_dt
+    i18n.init_app(app)
 
     db.init_app(app)
 
@@ -44,6 +47,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     from webapp.blueprints.lockers_bp import bp as lockers_bp
     from webapp.blueprints.history_bp import bp as history_bp
     from webapp.blueprints.face_bp import bp as face_bp
+    from webapp.blueprints.resources_bp import bp as resources_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -52,10 +56,29 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(lockers_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(face_bp)
+    app.register_blueprint(resources_bp)
 
     @app.route("/")
     def index():
         return redirect(url_for("dashboard.index"))
+
+    @app.route("/lang/<code>")
+    def set_lang(code: str):
+        """Botón de idioma del nav: guarda la cookie y regresa a la misma
+        página. Solo se regresa a URLs del mismo host (evita open redirect)."""
+        target = url_for("index")
+        ref = request.referrer
+        if ref:
+            parsed = urlparse(ref)
+            if parsed.netloc == request.host:
+                target = parsed.path + (f"?{parsed.query}" if parsed.query else "")
+        resp = redirect(target)
+        if code in i18n.LANGS:
+            resp.set_cookie(
+                i18n.COOKIE_NAME, code,
+                max_age=60 * 60 * 24 * 365, samesite="Lax",
+            )
+        return resp
 
     app.cli.add_command(init_db_command)
     app.cli.add_command(create_admin_command)

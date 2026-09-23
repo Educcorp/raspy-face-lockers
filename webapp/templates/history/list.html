@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Historial de Accesos · Smart Lockers{% endblock %}
+{% block title %}{{ tr('hist.page_title') }} · Smart Lockers{% endblock %}
 
 {% block content %}
 
 <div class="access-header">
   <div>
-    <span class="dashboard-eyebrow">SEGURIDAD</span>
-    <h2>Registro de Accesos del Sistema</h2>
-    <p>Consulta y filtra los accesos registrados en el sistema.</p>
+    <span class="dashboard-eyebrow">{{ tr('hist.eyebrow') }}</span>
+    <h2>{{ tr('hist.heading') }}</h2>
+    <p>{{ tr('hist.intro') }}</p>
   </div>
 </div>
 
@@ -18,7 +18,7 @@
 
     <!-- Buscador -->
     <div class="access-search">
-      <label for="buscar">Buscar</label>
+      <label for="buscar">{{ tr('common.search') }}</label>
 
       <div class="search-input-wrap">
 
@@ -41,7 +41,7 @@
           id="buscar"
           name="buscar"
           value="{{ buscar or '' }}"
-          placeholder="Usuario, matrícula o locker..."
+          placeholder="{{ tr('hist.search_ph') }}"
         >
 
       </div>
@@ -49,19 +49,19 @@
 
     <!-- Filtro por resultado -->
     <div class="access-filter">
-      <label for="resultado">Resultado</label>
+      <label for="resultado">{{ tr('hist.result') }}</label>
 
       <select id="resultado" name="resultado">
         <option value="" {% if not resultado %}selected{% endif %}>
-          Todos
+          {{ tr('common.all') }}
         </option>
 
         <option value="si" {% if resultado == 'si' %}selected{% endif %}>
-          Permitidos
+          {{ tr('hist.granted_pl') }}
         </option>
 
         <option value="no" {% if resultado == 'no' %}selected{% endif %}>
-          Denegados
+          {{ tr('hist.denied_pl') }}
         </option>
       </select>
     </div>
@@ -83,7 +83,7 @@
           <circle cx="11" cy="11" r="8"></circle>
           <path d="m21 21-4.3-4.3"></path>
         </svg>
-        Buscar
+        {{ tr('common.search') }}
       </button>
 
       {% if buscar or resultado %}
@@ -91,7 +91,7 @@
           href="{{ url_for('history.list_history') }}"
           class="btn btn-muted"
         >
-          Limpiar
+          {{ tr('common.clear') }}
         </a>
       {% endif %}
 
@@ -107,15 +107,9 @@
 
   <span>
     {% if total > 0 %}
-      Mostrando
-      <strong>{{ inicio }}</strong>
-      –
-      <strong>{{ fin }}</strong>
-      de
-      <strong>{{ total }}</strong>
-      registros
+      {{ tr('hist.showing', a=inicio, b=fin, total=total) | safe }}
     {% else %}
-      No se encontraron registros
+      {{ tr('hist.none') }}
     {% endif %}
   </span>
 
@@ -130,13 +124,12 @@
     <table>
       <thead>
         <tr>
-          <th>Fecha</th>
-          <th>Usuario</th>
-          <th>Matrícula</th>
-          <th>Locker</th>
-          <th>Área</th>
-          <th>Resultado</th>
-          <th>Motivo</th>
+          <th>{{ tr('common.date') }}</th>
+          <th>{{ tr('common.time') }}</th>
+          <th>{{ tr('common.user') }}</th>
+          <th>{{ tr('common.matricula') }}</th>
+          <th>{{ tr('hist.result') }}</th>
+          <th>{{ tr('hist.reason') }}</th>
         </tr>
       </thead>
 
@@ -147,7 +140,11 @@
         <tr>
 
           <td>
-            {{ r.fechahoraacceso | local_dt }}
+            {{ r.fechahoraacceso | local_dt('%d/%m/%y') }}
+          </td>
+
+          <td>
+            {{ r.fechahoraacceso | local_dt('%H:%M') }}
           </td>
 
           <td>
@@ -159,31 +156,23 @@
           </td>
 
           <td>
-            {{ r.idlocker or '—' }}
-          </td>
-
-          <td>
-            {{ r.nombrearea or '—' }}
-          </td>
-
-          <td>
             {% if r.accesopermitido == 'si' %}
 
               <span class="badge activo">
-                Permitido
+                {{ tr('hist.granted') }}
               </span>
 
             {% else %}
 
               <span class="badge suspendido">
-                Denegado
+                {{ tr('hist.denied') }}
               </span>
 
             {% endif %}
           </td>
 
           <td>
-            {{ labels.get(r.motivo, r.motivo or '—') }}
+            {{ r.motivo | tr_motivo(labels.get(r.motivo)) }}
           </td>
 
         </tr>
@@ -191,7 +180,7 @@
         {% else %}
 
         <tr>
-          <td colspan="7" class="empty-access">
+          <td colspan="6" class="empty-access">
             <div class="empty-access-icon">
               <svg
                 width="22"
@@ -208,10 +197,10 @@
               </svg>
             </div>
 
-            <strong>No se encontraron registros</strong>
+            <strong>{{ tr('hist.none') }}</strong>
 
             <span>
-              Intenta cambiar los filtros o realizar otra búsqueda.
+              {{ tr('hist.none_hint') }}
             </span>
           </td>
         </tr>
@@ -229,7 +218,7 @@
 <!-- Paginación -->
 {% if total_paginas > 1 %}
 
-<nav class="access-pagination" aria-label="Paginación de registros">
+<nav class="access-pagination" aria-label="{{ tr('hist.pagination') }}">
 
   <!-- Página anterior -->
   {% if pagina > 1 %}
@@ -242,7 +231,7 @@
         buscar=buscar,
         resultado=resultado
       ) }}"
-      aria-label="Página anterior"
+      aria-label="{{ tr('common.prev_page') }}"
     >
       <svg
         width="16"
@@ -257,7 +246,7 @@
         <path d="m15 18-6-6 6-6"></path>
       </svg>
 
-      Anterior
+      {{ tr('common.prev') }}
     </a>
 
   {% else %}
@@ -276,7 +265,7 @@
         <path d="m15 18-6-6 6-6"></path>
       </svg>
 
-      Anterior
+      {{ tr('common.prev') }}
     </span>
 
   {% endif %}
@@ -325,9 +314,9 @@
         buscar=buscar,
         resultado=resultado
       ) }}"
-      aria-label="Página siguiente"
+      aria-label="{{ tr('common.next_page') }}"
     >
-      Siguiente
+      {{ tr('common.next') }}
 
       <svg
         width="16"
@@ -346,7 +335,7 @@
   {% else %}
 
     <span class="pagination-btn disabled">
-      Siguiente
+      {{ tr('common.next') }}
 
       <svg
         width="16"

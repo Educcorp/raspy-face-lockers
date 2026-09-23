@@ -28,9 +28,24 @@ from config import (
 logger = logging.getLogger(__name__)
 
 # ── Filtro de distancia ─────────────────────────────────────────────────────
-# Cara debe ocupar al menos MIN_FACE_SIZE_RATIO del ancho del frame (~1 metro).
-# Pi Camera v2/3 ≈ 62° HFOV; a 1 m un rostro adulto ocupa ~82 px en 480 px.
-MIN_FACE_SIZE_RATIO: float = 0.17
+# Cara debe ocupar al menos MIN_FACE_SIZE_RATIO del ancho del frame.
+#
+# El ratio es independiente de la resolución (escala linealmente con el FOV),
+# así que sirve igual a 480px que a 1296px. Calibrado para ~1m: con Pi Camera
+# v2/3 (~62° HFOV) y un rostro adulto de referencia (~140mm de ancho), a 1m
+# el frame cubre ~1200mm ⇒ el rostro ocupa ~140/1200 ≈ 0.116 del ancho; se usa
+# 0.12 con un pequeño margen. (El valor anterior, 0.17, en realidad
+# correspondía a ~0.7m — la cuenta del comentario original de este archivo,
+# 82px en 480px, implicaba un rostro de ~205mm de ancho, poco realista, y
+# obligaba a acercarse más de lo que alguien esperaría.)
+#
+# Este único umbral es compartido a propósito por StandbyScreen (dispara la
+# transición a ScanningScreen), ScanningScreen (compuerta de autenticación +
+# hint "acércate"/"aléjate") y register_user.py (compuerta de captura): así
+# la distancia a la que el sistema reacciona es la misma en toda la
+# experiencia. Sigue siendo una estimación por geometría, no una medición con
+# esta cámara; pendiente de recalibrar con una prueba real si hiciera falta.
+MIN_FACE_SIZE_RATIO: float = 0.12
 
 
 def filter_close_faces(faces: list, frame) -> list:

@@ -342,12 +342,12 @@ class LoginScreen(ctk.CTkFrame):
         self.controller.on_login_success()
 
     def _go_back_locker(self) -> None:
-        """Regresa a la pantalla de standby del locker sin iniciar sesión."""
+        """Regresa a la pantalla inicial del kiosco sin iniciar sesión."""
         self._matricula_var.set("")
         self._pin_var.set("")
         self.lbl_error.configure(text="")
-        from ui.locker_screen.standby_screen import StandbyScreen
-        self.controller.show_frame(StandbyScreen)
+        from ui.locker_screen.mode_select_screen import ModeSelectScreen
+        self.controller.show_frame(ModeSelectScreen)
 
     def on_show(self, **_kwargs) -> None:
         """Limpia los campos cada vez que se muestra la pantalla."""

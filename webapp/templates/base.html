@@ -66,10 +66,19 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
           {{ tr('nav.historial') }}
         </a>
-        <a href="{{ url_for('resources.list_resources') }}" class="{{ 'active' if request.blueprint == 'resources' else '' }}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-          {{ tr('nav.recursos') }}
-        </a>
+        <details class="nav-dropdown {{ 'active' if request.blueprint == 'resources' else '' }}">
+          <summary>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            {{ tr('nav.recursos') }}
+            <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="dropdown-panel">
+            {% if g.user.role == 'superadmin' %}
+            <a href="{{ url_for('resources.catalog') }}">{{ tr('nav.recursos_catalogo') }}</a>
+            {% endif %}
+            <a href="{{ url_for('resources.authorizations') }}">{{ tr('nav.recursos_autorizaciones') }}</a>
+          </div>
+        </details>
         {% if g.user.role == 'superadmin' %}
         <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
           <summary>
@@ -118,7 +127,15 @@
       <a href="{{ url_for('lockers.list_lockers') }}" class="{{ 'active' if request.endpoint == 'lockers.list_lockers' else '' }}">{{ tr('nav.lockers') }}</a>
       <a href="{{ url_for('lockers.assignments') }}" class="{{ 'active' if request.endpoint == 'lockers.assignments' else '' }}">{{ tr('nav.asignaciones') }}</a>
       <a href="{{ url_for('history.list_history') }}" class="{{ 'active' if request.blueprint == 'history' else '' }}">{{ tr('nav.historial') }}</a>
-      <a href="{{ url_for('resources.list_resources') }}" class="{{ 'active' if request.blueprint == 'resources' else '' }}">{{ tr('nav.recursos') }}</a>
+      <details class="nav-dropdown {{ 'active' if request.blueprint == 'resources' else '' }}">
+        <summary>{{ tr('nav.recursos') }} <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+        <div class="dropdown-panel">
+          {% if g.user.role == 'superadmin' %}
+          <a href="{{ url_for('resources.catalog') }}">{{ tr('nav.recursos_catalogo') }}</a>
+          {% endif %}
+          <a href="{{ url_for('resources.authorizations') }}">{{ tr('nav.recursos_autorizaciones') }}</a>
+        </div>
+      </details>
       {% if g.user.role == 'superadmin' %}
       <details class="nav-dropdown {{ 'active' if request.blueprint == 'catalogs' else '' }}">
         <summary>{{ tr('nav.catalogos') }} <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>

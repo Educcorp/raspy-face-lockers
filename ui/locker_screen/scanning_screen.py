@@ -77,6 +77,13 @@ class ScanningScreen(ctk.CTkFrame):
     SILHOUETTE_NO_FACE  = (200, 80, 80, 160)    # rojo semi-transparente
     SILHOUETTE_FACE_OK  = (90, 180, 90, 160)     # verde semi-transparente
 
+    # Modos de flujo (ver ModeSelectScreen): "locker" es el comportamiento
+    # histórico sin cambios; "recurso" solo cambia qué se muestra al tener
+    # éxito y evita abrir el relay del locker — la activación real del
+    # recurso (taladro) llega con la conexión de hardware, no aquí.
+    FLOW_LOCKER   = "locker"
+    FLOW_RESOURCE = "recurso"
+
     MAX_ATTEMPTS    = 3
     PIN_MAX_FAILS   = 3
     LOCK_SECONDS    = 60
@@ -105,6 +112,11 @@ class ScanningScreen(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTk, controller) -> None:
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
+        # Flujo activo (ver on_show): "locker" (default, sin cambios de
+        # comportamiento) o "recurso" (activar un recurso compartido).
+        self._flow_mode: str = self.FLOW_LOCKER
+        self._flow_resource: dict | None = None
+        self._flow_duration_minutes: int | None = None
         self._attempts  = 0
         self._face_detected = False
         self._success_shown = False
@@ -369,6 +381,29 @@ class ScanningScreen(ctk.CTkFrame):
             self._success_inner,
             text="",
             font=theme.font_display(88, "bold"),
+            text_color=PALETTE["WHITE"],
+            fg_color="transparent",
+            anchor="center",
+        )
+
+        # Nombre del recurso activado (modo "recurso") — mismo rol visual que
+        # el número de locker grande, pero es texto (p. ej. "Taladro").
+        self.lbl_success_resource_name = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=theme.font_display(34, "bold"),
+            text_color=PALETTE["WHITE"],
+            fg_color="transparent",
+            wraplength=390,
+            justify="center",
+            anchor="center",
+        )
+
+        # Duración asignada al recurso (modo "recurso")
+        self.lbl_success_resource_duration = ctk.CTkLabel(
+            self._success_inner,
+            text="",
+            font=theme.font_body(16, "bold"),
             text_color=PALETTE["WHITE"],
             fg_color="transparent",
             anchor="center",
@@ -887,8 +922,18 @@ class ScanningScreen(ctk.CTkFrame):
 
     # ── API pública ───────────────────────────────────────────────────────────
 
-    def on_show(self) -> None:
-        """Inicia captura de vídeo cuando la pantalla se activa."""
+    def on_show(self, mode: str = FLOW_LOCKER, resource: dict | None = None,
+                duration_minutes: int | None = None) -> None:
+        """Inicia captura de vídeo cuando la pantalla se activa.
+
+        `mode`/`resource`/`duration_minutes` los pasa DurationSelectScreen
+        cuando el flujo es "activar recurso" (ver ModeSelectScreen). Sin
+        argumentos (como hace StandbyScreen hoy) el comportamiento es
+        exactamente el de siempre: flujo de locker.
+        """
+        self._flow_mode = mode
+        self._flow_resource = resource
+        self._flow_duration_minutes = duration_minutes
         self._attempts = 0
         self._success_shown = False
         self._user_data = None
@@ -1009,7 +1054,21 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_matricula.pack(pady=(0, 16))
 
-        if locker_num:
+        if self._flow_mode == self.FLOW_RESOURCE:
+            from ui.locker_screen.resource_select_screen import resource_display_name
+            from ui.locker_screen.duration_select_screen import duration_display_label
+
+            self.overlay_bg.configure(fg_color=PALETTE["SUCCESS"])  # verde: recurso activado
+            self.lbl_status.configure(text=t("scan.access_granted"), text_color=PALETTE["SUCCESS_SOFT"])
+            self.lbl_success_main.configure(text=t("scan.resource_activated"))
+            self.lbl_success_main.pack(pady=(0, 6))
+            self.lbl_success_resource_name.configure(text=resource_display_name(self._flow_resource))
+            self.lbl_success_resource_name.pack(pady=(0, 6))
+            self.lbl_success_resource_duration.configure(
+                text=t("scan.resource_duration", d=duration_display_label(self._flow_duration_minutes))
+            )
+            self.lbl_success_resource_duration.pack(pady=(0, 8))
+        elif locker_num:
             self.overlay_bg.configure(fg_color=PALETTE["SUCCESS"])  # verde: locker desbloqueado
             self.lbl_status.configure(text=t("scan.access_granted"), text_color=PALETTE["SUCCESS_SOFT"])
             self.lbl_success_main.configure(text=t("scan.unlocked"))
@@ -1031,7 +1090,14 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts.configure(text="")
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
         self.btn_admin.place_forget()
-        if locker_num and self._should_wait_for_door(int(locker_num)):
+        # El door-wait solo aplica al locker físico — en modo "recurso" nunca
+        # hay puerta que esperar, aunque el usuario reconocido tenga un
+        # locker asignado.
+        if (
+            self._flow_mode != self.FLOW_RESOURCE
+            and locker_num
+            and self._should_wait_for_door(int(locker_num))
+        ):
             self._start_door_close_wait(int(locker_num), user_data.get("locker_assignment_id"))
         else:
             self._start_countdown(self.DISPLAY_SECONDS)
@@ -1219,8 +1285,16 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Métodos internos ──────────────────────────────────────────────────────
 
     def _go_standby(self) -> None:
-        from ui.locker_screen.standby_screen import StandbyScreen
-        self.controller.show_frame(StandbyScreen)
+        # Modo "recurso" no tiene una StandbyScreen propia — su "inicio" es
+        # ModeSelectScreen, el mismo lugar del que salió (ver ResourceSelectScreen/
+        # DurationSelectScreen). El modo "locker" no cambia: sigue volviendo a
+        # StandbyScreen exactamente como antes.
+        if self._flow_mode == self.FLOW_RESOURCE:
+            from ui.locker_screen.mode_select_screen import ModeSelectScreen
+            self.controller.show_frame(ModeSelectScreen)
+        else:
+            from ui.locker_screen.standby_screen import StandbyScreen
+            self.controller.show_frame(StandbyScreen)
 
     def _finalize_auto_return(self) -> None:
         if self._camera_thread and self._camera_thread.is_alive():
@@ -1769,14 +1843,24 @@ class ScanningScreen(ctk.CTkFrame):
             return
 
         locker_id = result.get("idLocker")
-        if locker_id:
+        is_resource_flow = self._flow_mode == self.FLOW_RESOURCE
+
+        if is_resource_flow:
+            # Igual que en _recognize_current_face: solo interfaz, no se abre
+            # el relay del locker en el flujo de "activar recurso".
+            logger.info(
+                "Modo recurso (PIN): usuario id=%s autenticado, activación de hardware pendiente (solo interfaz)",
+                result.get("idUsuario"),
+            )
+        elif locker_id:
             threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
         else:
             logger.info("PIN auth: usuario id=%s sin locker asignado", result.get("idUsuario"))
 
-        access_log_service.register_access(
-            result.get("idLockerAsignado"), permitted=True, motivo="pin"
-        )
+        if not is_resource_flow:
+            access_log_service.register_access(
+                result.get("idLockerAsignado"), permitted=True, motivo="pin"
+            )
 
         full_name = " ".join(
             p for p in [result.get("nombre"), result.get("apPaterno"), result.get("apMaterno")]
@@ -1892,26 +1976,40 @@ class ScanningScreen(ctk.CTkFrame):
 
         locker_id = matched.get("idLocker")
         user_id   = matched.get("idUsuario")
-        if locker_id and self._camera_running:
+        is_resource_flow = self._flow_mode == self.FLOW_RESOURCE
+
+        if is_resource_flow:
+            # Solo interfaz por ahora: NUNCA abrir el relay del locker aquí —
+            # aunque el usuario reconocido tenga uno asignado, esta pantalla
+            # se invocó para activar un recurso compartido, no el locker. La
+            # activación real del relay de la herramienta (core/tool_gpio_
+            # controller.py) y su registro en el historial llegan con la
+            # conexión de hardware.
+            logger.info(
+                "Modo recurso: usuario id=%s reconocido, activación de hardware pendiente (solo interfaz)",
+                user_id,
+            )
+        elif locker_id and self._camera_running:
             threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
         elif locker_id:
             logger.info("Reconocimiento completado pero cámara detenida — locker no abierto")
         else:
             logger.info("Usuario id=%s autenticado pero sin locker asignado", user_id)
 
-        if locker_id:
-            access_log_service.register_access(
-                matched.get("idLockerAsignado"),
-                permitted=True,
-                user_id=user_id,
-            )
-        else:
-            access_log_service.register_access(
-                None,
-                permitted=False,
-                motivo="sin_asignacion",
-                user_id=user_id,
-            )
+        if not is_resource_flow:
+            if locker_id:
+                access_log_service.register_access(
+                    matched.get("idLockerAsignado"),
+                    permitted=True,
+                    user_id=user_id,
+                )
+            else:
+                access_log_service.register_access(
+                    None,
+                    permitted=False,
+                    motivo="sin_asignacion",
+                    user_id=user_id,
+                )
 
         full_name = " ".join(
             p for p in [matched.get("nombre"), matched.get("apPaterno"), matched.get("apMaterno")]

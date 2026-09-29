@@ -80,14 +80,23 @@ class LockerApp(ctk.CTk):
         from ui.locker_screen.standby_screen  import StandbyScreen
         from ui.locker_screen.scanning_screen import ScanningScreen
         from ui.locker_screen.user_display    import UserDisplayScreen
+        from ui.locker_screen.mode_select_screen     import ModeSelectScreen
+        from ui.locker_screen.resource_select_screen import ResourceSelectScreen
+        from ui.locker_screen.duration_select_screen import DurationSelectScreen
 
         self._frames: dict[type, ctk.CTkFrame] = {}
-        for FrameClass in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+        for FrameClass in (
+            ModeSelectScreen, StandbyScreen, ScanningScreen, UserDisplayScreen,
+            ResourceSelectScreen, DurationSelectScreen,
+        ):
             frame = FrameClass(parent=self, controller=self)
             self._frames[FrameClass] = frame
             frame.grid(row=0, column=0, sticky="nsew")
 
-        self.show_frame(StandbyScreen)
+        # ModeSelectScreen ("Smart Access") es ahora la primera pantalla —
+        # antes era StandbyScreen. El flujo de locker sigue llegando a
+        # StandbyScreen exactamente igual, solo que ahora pasa por aquí primero.
+        self.show_frame(ModeSelectScreen)
 
         # ── Badge de locker abierto (flota sobre todas las pantallas) ─────────
         self._badge_blink_job = None
@@ -220,9 +229,9 @@ class LockerApp(ctk.CTk):
 
     def logout(self) -> None:
         from auth.session import clear_session
-        from ui.locker_screen.standby_screen import StandbyScreen
+        from ui.locker_screen.mode_select_screen import ModeSelectScreen
         clear_session()
-        self.show_frame(StandbyScreen)
+        self.show_frame(ModeSelectScreen)
 
     def show_user(self, user_data: dict) -> None:
         from ui.locker_screen.scanning_screen import ScanningScreen
@@ -322,20 +331,28 @@ class LockerApp(ctk.CTk):
         from ui.locker_screen.standby_screen  import StandbyScreen
         from ui.locker_screen.scanning_screen import ScanningScreen
         from ui.locker_screen.user_display    import UserDisplayScreen
+        from ui.locker_screen.mode_select_screen     import ModeSelectScreen
+        from ui.locker_screen.resource_select_screen import ResourceSelectScreen
+        from ui.locker_screen.duration_select_screen import DurationSelectScreen
         from auth.session import is_authenticated
+
+        _locker_family = (
+            ModeSelectScreen, StandbyScreen, ScanningScreen, UserDisplayScreen,
+            ResourceSelectScreen, DurationSelectScreen,
+        )
 
         # Remember if we were on a locker screen before rebuilding
         locker_was_active = any(
             cls in self._frames and self._frames[cls].winfo_ismapped()
-            for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen)
+            for cls in _locker_family
         )
 
         try:
-            for cls in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+            for cls in _locker_family:
                 if cls in self._frames:
                     self._frames[cls].destroy()
                     del self._frames[cls]
-            for FrameClass in (StandbyScreen, ScanningScreen, UserDisplayScreen):
+            for FrameClass in _locker_family:
                 frame = FrameClass(parent=self, controller=self)
                 self._frames[FrameClass] = frame
                 frame.grid(row=0, column=0, sticky="nsew")
@@ -367,11 +384,11 @@ class LockerApp(ctk.CTk):
                 if is_authenticated():
                     self.show_frame(DashboardScreen)
                 elif locker_was_active:
-                    self.show_frame(StandbyScreen)
+                    self.show_frame(ModeSelectScreen)
                 else:
                     self.show_frame(LoginScreen)
             else:
-                self.show_frame(StandbyScreen)
+                self.show_frame(ModeSelectScreen)
         finally:
             if veil.winfo_exists():
                 veil.lift()

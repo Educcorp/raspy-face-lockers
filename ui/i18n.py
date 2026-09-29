@@ -23,6 +23,72 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Start scan",
     },
 
+    # ── Común ─────────────────────────────────────────────────────────────────
+    "common.back": {
+        "es": "←  Volver",
+        "en": "←  Back",
+    },
+
+    # ── Locker: ModeSelectScreen (pantalla inicial "Smart Access") ────────────
+    "mode.brand": {
+        "es": "Smart Access",
+        "en": "Smart Access",
+    },
+    "mode.subtitle": {
+        "es": "Selecciona qué deseas hacer",
+        "en": "Select what you want to do",
+    },
+    "mode.open_locker": {
+        "es": "Abrir locker",
+        "en": "Open locker",
+    },
+    "mode.activate_resource": {
+        "es": "Activar recurso",
+        "en": "Activate resource",
+    },
+
+    # ── Locker: ResourceSelectScreen ───────────────────────────────────────────
+    "resource.page_title": {
+        "es": "Recursos compartidos",
+        "en": "Shared resources",
+    },
+    "resource.instruction": {
+        "es": "Elige el recurso que quieres activar",
+        "en": "Choose the resource you want to activate",
+    },
+    "resource.select": {
+        "es": "Seleccionar",
+        "en": "Select",
+    },
+    "resource.taladro.name": {
+        "es": "Taladro",
+        "en": "Drill",
+    },
+    "resource.taladro.desc": {
+        "es": "Taladro eléctrico de uso compartido",
+        "en": "Shared electric drill",
+    },
+
+    # ── Locker: DurationSelectScreen ───────────────────────────────────────────
+    "duration.page_title": {
+        "es": "Tiempo de uso",
+        "en": "Usage time",
+    },
+    "duration.instruction": {
+        "es": "¿Por cuánto tiempo usarás {resource}?",
+        "en": "How long will you use {resource}?",
+    },
+    "duration.max_note": {
+        "es": "Máximo 3 horas por préstamo",
+        "en": "Maximum 3 hours per checkout",
+    },
+    "duration.30min": {"es": "30 min", "en": "30 min"},
+    "duration.1h":    {"es": "1 hora", "en": "1 hour"},
+    "duration.1h30":  {"es": "1 h 30 min", "en": "1 h 30 min"},
+    "duration.2h":    {"es": "2 horas", "en": "2 hours"},
+    "duration.2h30":  {"es": "2 h 30 min", "en": "2 h 30 min"},
+    "duration.3h":    {"es": "3 horas", "en": "3 hours"},
+
     # ── Locker: ScanningScreen (estados) ─────────────────────────────────────
     "scan.position_face": {
         "es": "POSICIONA TU ROSTRO",
@@ -129,6 +195,14 @@ STRINGS: dict[str, dict[str, str]] = {
     "scan.success_no_locker": {
         "es": "Sin locker asignado",
         "en": "No locker assigned",
+    },
+    "scan.resource_activated": {
+        "es": "RECURSO ACTIVADO",
+        "en": "RESOURCE ACTIVATED",
+    },
+    "scan.resource_duration": {
+        "es": "Tiempo asignado: {d}",
+        "en": "Assigned time: {d}",
     },
     "scan.not_recognized_use_pin": {
         "es": "✗ No reconocido — usa tu PIN",

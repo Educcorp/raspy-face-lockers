@@ -1648,7 +1648,12 @@ tbody tr:hover { background: var(--surface-alt); }
 
 /* ── Topbar con botones de tema/idioma ───────────────────────────────── */
 .topbar { gap: 12px; }
-.topbar-nav a, .topbar-nav summary { padding: 9px 12px; gap: 6px; }
+/* padding/gap recortados un poco respecto al valor base (9px 15px / 7px):
+   con 2 dropdowns (Recursos + Catálogos) cada uno suma un chevron extra que
+   un link plano no tiene, así que hay que devolverle ese margen a la barra
+   para que las 7 secciones + tema/idioma + usuario sigan cabiendo con íconos. */
+.topbar-nav a, .topbar-nav summary { padding: 9px 10px; gap: 5px; }
+.nav-dropdown summary .chev { margin-left: -2px; }
 .user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Barra más ancha que el contenido en pantallas grandes, para que quepan

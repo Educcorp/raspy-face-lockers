@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ tr('res.catalog_page_title') }} · Smart Lockers{% endblock %}
+
+{% block content %}
+
+<div class="access-header">
+  <div>
+    <span class="dashboard-eyebrow">{{ tr('res.catalog_eyebrow') }}</span>
+    <h2>{{ tr('res.catalog_page_heading') }}</h2>
+    <p>{{ tr('res.catalog_intro') }}</p>
+  </div>
+</div>
+
+<div class="card" style="max-width:560px;">
+  <h3 style="margin-top:0;">{{ tr('res.new_recurso') }}</h3>
+  <form method="post" action="{{ url_for('resources.new_recurso') }}">
+    <div class="form-row">
+      <label>{{ tr('res.name_label') }}</label>
+      <input type="text" name="nombre" required maxlength="60">
+    </div>
+    <div class="form-row">
+      <label>{{ tr('res.desc_label') }}</label>
+      <input type="text" name="descripcion" maxlength="300">
+    </div>
+    <button class="btn" type="submit">{{ tr('common.create') }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('res.desc_label') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
+    <tbody>
+      {% for r in recursos %}
+      <tr>
+        <td>{{ r.nombre }}</td>
+        <td>{{ r.descripcion or '—' }}</td>
+        <td><span class="badge {{ r.estado }}">{{ r.estado|tr_status }}</span></td>
+        <td>
+          <form method="post" action="{{ url_for('resources.set_recurso_estado', recurso_id=r.idrecurso) }}" style="display:inline">
+            <input type="hidden" name="estado" value="{{ 'inactivo' if r.estado=='activo' else 'activo' }}">
+            <button class="btn btn-sm btn-muted" type="submit">
+              {{ tr('common.deactivate') if r.estado=='activo' else tr('common.activate') }}
+            </button>
+          </form>
+          <details class="row-edit">
+            <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
+            <div class="row-edit-panel">
+              <form method="post" action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}">
+                <div class="form-row">
+                  <label>{{ tr('res.name_label') }}</label>
+                  <input type="text" name="nombre" value="{{ r.nombre }}" required maxlength="60">
+                </div>
+                <div class="form-row">
+                  <label>{{ tr('res.desc_label') }}</label>
+                  <input type="text" name="descripcion" value="{{ r.descripcion or '' }}" maxlength="300">
+                </div>
+                <button class="btn btn-sm" type="submit">{{ tr('common.save_changes') }}</button>
+              </form>
+              <form method="post" action="{{ url_for('resources.delete_recurso', recurso_id=r.idrecurso) }}"
+                    data-confirm="{{ tr('res.delete_confirm') }}" style="margin-top:10px;">
+                <button class="btn btn-sm btn-danger" type="submit" style="width:100%;">{{ tr('common.delete') }}</button>
+              </form>
+            </div>
+          </details>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">{{ tr('res.no_recursos') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

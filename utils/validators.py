@@ -22,6 +22,8 @@ MAX_AREA_NOMBRE = 30
 MAX_UNIDAD_NOMBRE = 100
 MAX_ZONA        = 100
 MAX_TIPO_NOMBRE = 60
+MAX_RECURSO_NOMBRE = 60
+MAX_RECURSO_DESC   = 300
 
 
 # ── Validadores de campos de usuario ─────────────────────────────────────────
@@ -107,6 +109,23 @@ def validate_tipo_nombre(value: str) -> str | None:
         return "Nombre del tipo: mínimo 2 caracteres"
     if len(value) > MAX_TIPO_NOMBRE:
         return f"Nombre del tipo: máximo {MAX_TIPO_NOMBRE} caracteres"
+    return None
+
+
+def validate_recurso_nombre(value: str) -> str | None:
+    if len(value) < 2:
+        return "Nombre del recurso: mínimo 2 caracteres"
+    if len(value) > MAX_RECURSO_NOMBRE:
+        return f"Nombre del recurso: máximo {MAX_RECURSO_NOMBRE} caracteres"
+    return None
+
+
+def validate_recurso_descripcion(value: str) -> str | None:
+    """Campo opcional."""
+    if not value:
+        return None
+    if len(value) > MAX_RECURSO_DESC:
+        return f"Descripción: máximo {MAX_RECURSO_DESC} caracteres"
     return None
 
 

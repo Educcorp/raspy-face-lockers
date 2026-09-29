@@ -198,6 +198,43 @@ CREATE TABLE IF NOT EXISTS estado_puerta (
         ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+-- ── Recursos compartidos + autorizaciones por usuario ───────────────────────
+-- Ver webapp/migrations/add_recursos.sql para el porqué.
+
+CREATE TABLE IF NOT EXISTS recursos (
+    idRecurso SERIAL PRIMARY KEY,
+    nombre TEXT NOT NULL CHECK (length(nombre) <= 60),
+    descripcion TEXT CHECK (length(descripcion) <= 300),
+    estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'inactivo')),
+    fechaHoraReg TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fechaHoraAct TIMESTAMPTZ NOT NULL DEFAULT now(),
+    creadoPor INTEGER NOT NULL,
+    modificadoPor INTEGER,
+    CONSTRAINT uq_recurso_nombre UNIQUE (nombre)
+);
+
+-- Usuarios autorizados a activar un recurso. A diferencia de asignacion_locker
+-- (1 asignación activa por locker/usuario), aquí un recurso puede tener varios
+-- usuarios autorizados y un usuario puede estar autorizado en varios recursos.
+CREATE TABLE IF NOT EXISTS recurso_autorizados (
+    idRecursoAutorizado SERIAL PRIMARY KEY,
+    idRecurso INTEGER NOT NULL,
+    idUsuario INTEGER NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'inactivo')),
+    fechaHoraReg TIMESTAMPTZ NOT NULL DEFAULT now(),
+    creadoPor INTEGER NOT NULL,
+    modificadoPor INTEGER,
+    CONSTRAINT fk_recurso_autorizado_recurso
+        FOREIGN KEY (idRecurso) REFERENCES recursos (idRecurso)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_recurso_autorizado_usuario
+        FOREIGN KEY (idUsuario) REFERENCES usuarios (idUsuario)
+        ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_recurso_autorizado_activo
+    ON recurso_autorizados (idRecurso, idUsuario) WHERE estado = 'activo';
+
 -- ── Triggers: equivalentes en Postgres a los AFTER UPDATE de SQLite ─────────
 -- (en Postgres se implementan como BEFORE UPDATE que ajustan NEW antes de escribir)
 
@@ -241,6 +278,10 @@ CREATE TRIGGER trg_asignacion_act BEFORE UPDATE ON asignacion_locker
 DROP TRIGGER IF EXISTS trg_encoding_act ON encoding;
 CREATE TRIGGER trg_encoding_act BEFORE UPDATE ON encoding
     FOR EACH ROW EXECUTE FUNCTION trg_touch_updated_at();
+
+DROP TRIGGER IF EXISTS trg_recursos_act ON recursos;
+CREATE TRIGGER trg_recursos_act BEFORE UPDATE ON recursos
+    FOR EACH ROW EXECUTE FUNCTION trg_touch_fecha_hora_act();
 
 -- ── Vistas ───────────────────────────────────────────────────────────────
 

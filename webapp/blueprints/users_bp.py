@@ -116,6 +116,7 @@ def _form_context(row: dict | None = None):
     tipos = filter_assignable_user_types(catalog_service.get_all_tipos_usuario())
     unidades = catalog_service.get_active_unidades()
     own_id = (g.user or {}).get("idusuario")
+    privileged_ids = sorted(_privileged_tipo_ids())
     return {
         "row": row,
         "tipos": tipos,
@@ -125,8 +126,12 @@ def _form_context(row: dict | None = None):
         # El rol de un superadmin no se cambia desde este formulario (ver _validate_and_save)
         "target_is_superadmin": bool(row and normalize_role(row.get("tipo")) == ROLE_SUPERADMIN),
         # Para ocultar "Permisos de activación" cuando el tipo es Admin/Superadmin.
-        "privileged_tipo_ids": sorted(_privileged_tipo_ids()),
+        "privileged_tipo_ids": privileged_ids,
         "row_privileged": bool(row) and _is_privileged(row),
+        # Alta nueva (Superadmin): sin esto el <select> de tipo caía en el primer
+        # <option> alfabético ("Admin"), que oculta "Permisos de activación" de
+        # entrada aunque lo normal sea dar de alta un "Usuario".
+        "default_tipo_id": next((t["idtipousuario"] for t in tipos if t["idtipousuario"] not in privileged_ids), None),
     }
 
 

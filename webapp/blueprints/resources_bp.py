@@ -2,8 +2,9 @@
 Recursos compartidos: catálogo + usuarios autorizados a activarlos.
 
 Dos páginas separadas a propósito, para que no choquen en la misma interfaz:
-  - /recursos/catalogo        → alta/edición/baja del recurso en sí (Superadmin,
-                                 igual que Áreas/Unidades/Tipos en catalogs_bp.py).
+  - /recursos/catalogo        → alta/edición/activar-desactivar del recurso en sí
+                                 (Admin y Superadmin; eliminar sigue siendo solo
+                                 Superadmin) — mismo reparto que lockers_bp.py.
   - /recursos/autorizaciones  → relación recurso↔usuario (Admin y Superadmin,
                                  igual que la asignación de lockers).
 
@@ -27,7 +28,7 @@ from __future__ import annotations
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from utils.validators import validate_recurso_descripcion, validate_recurso_nombre
-from webapp.auth import can_edit_catalogs, login_required, superadmin_required
+from webapp.auth import can_edit_catalogs, is_superadmin, login_required
 from webapp.services import resource_service
 
 bp = Blueprint("resources", __name__, url_prefix="/recursos")
@@ -43,17 +44,25 @@ def index():
     return redirect(url_for("resources.authorizations"))
 
 
-# ── Catálogo de recursos (solo Superadmin, igual que Áreas/Unidades/Tipos) ────
+# ── Catálogo de recursos (Admin y Superadmin; eliminar solo Superadmin) ───────
+# Mismo reparto que lockers_bp.py: crear/editar/estado los puede hacer cualquier
+# admin logueado en el panel (can_edit_catalogs ya es siempre True para una
+# sesión web, porque solo Admin/Superadmin pueden iniciar sesión aquí); eliminar
+# queda reservado a Superadmin.
 
 @bp.route("/catalogo")
-@superadmin_required
+@login_required
 def catalog():
     return render_template("resources/catalog.html", recursos=resource_service.get_all_recursos())
 
 
 @bp.route("/nuevo", methods=["POST"])
-@superadmin_required
+@login_required
 def new_recurso():
+    if not can_edit_catalogs():
+        flash("No tienes permiso para esta acción.", "danger")
+        return redirect(url_for("resources.catalog"))
+
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip() or None
 
@@ -69,8 +78,12 @@ def new_recurso():
 
 
 @bp.route("/<int:recurso_id>/editar", methods=["POST"])
-@superadmin_required
+@login_required
 def edit_recurso(recurso_id: int):
+    if not can_edit_catalogs():
+        flash("No tienes permiso para esta acción.", "danger")
+        return redirect(url_for("resources.catalog"))
+
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip() or None
 
@@ -86,8 +99,12 @@ def edit_recurso(recurso_id: int):
 
 
 @bp.route("/<int:recurso_id>/estado", methods=["POST"])
-@superadmin_required
+@login_required
 def set_recurso_estado(recurso_id: int):
+    if not can_edit_catalogs():
+        flash("No tienes permiso para esta acción.", "danger")
+        return redirect(url_for("resources.catalog"))
+
     estado = request.form.get("estado", "activo")
     resource_service.set_recurso_estado(recurso_id, estado, _actor_id())
     flash("Estado del recurso actualizado.", "success")
@@ -95,8 +112,12 @@ def set_recurso_estado(recurso_id: int):
 
 
 @bp.route("/<int:recurso_id>/eliminar", methods=["POST"])
-@superadmin_required
+@login_required
 def delete_recurso(recurso_id: int):
+    if not is_superadmin():
+        flash("Solo un superadministrador puede eliminar recursos.", "danger")
+        return redirect(url_for("resources.catalog"))
+
     resource_service.delete_recurso(recurso_id)
     flash("Recurso eliminado junto con sus autorizaciones.", "success")
     return redirect(url_for("resources.catalog"))

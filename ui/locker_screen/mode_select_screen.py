@@ -5,8 +5,14 @@ Primera pantalla que ve el usuario. Reemplaza a StandbyScreen como punto de
 entrada de LockerApp: en vez de arrancar directo con el auto-escaneo del
 locker, pregunta qué se quiere hacer.
 
-    ModeSelectScreen ──"Abrir locker"────► StandbyScreen (sin cambios)
-                     └─"Activar recurso"─► ResourceSelectScreen
+    ModeSelectScreen ──"Abrir locker"────► ScanningScreen (FLOW_LOCKER, directo)
+                     └─"Activar recurso"─► ResourceSelectScreen (elegir recurso)
+
+StandbyScreen (la pantalla de "acércate a la cámara" con detección de
+proximidad) ya no es parte de este flujo — a pedido explícito del usuario
+(2026-09-30) es un paso intermedio innecesario ahora que existe este menú;
+"Abrir locker" salta directo a ScanningScreen, igual que "Activar recurso"
+salta directo al catálogo de recursos.
 
 No toca cámara ni GPIO — es solo navegación, igual de ligera que un menú.
 """
@@ -148,10 +154,17 @@ class ModeSelectScreen(ctk.CTkFrame):
     # ── Navegación ────────────────────────────────────────────────────────────
 
     def _go_locker_flow(self) -> None:
-        from ui.locker_screen.standby_screen import StandbyScreen
-        self.controller.show_frame(StandbyScreen)
+        # Directo a escaneo — la pantalla intermedia de "acércate a la
+        # cámara" (StandbyScreen) ya no hace falta con este menú como punto
+        # de entrada (a pedido explícito del usuario, 2026-09-30).
+        from ui.locker_screen.scanning_screen import ScanningScreen
+        self.controller.show_frame(ScanningScreen, mode=ScanningScreen.FLOW_LOCKER)
 
     def _go_resource_flow(self) -> None:
+        # Catálogo primero, sin autenticar — se elige el recurso y el tiempo
+        # antes de nada; la autenticación es el último paso, dentro de
+        # DurationSelectScreen → ScanningScreen (FLOW_RESOURCE_CLAIM_AUTH),
+        # donde recién se valida autorización y se reclama la sesión.
         from ui.locker_screen.resource_select_screen import ResourceSelectScreen
         self.controller.show_frame(ResourceSelectScreen)
 

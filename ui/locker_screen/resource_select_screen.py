@@ -1,11 +1,19 @@
 """
 ResourceSelectScreen – catálogo de recursos compartidos activables (480×800 px).
 
-Se llega aquí desde ModeSelectScreen al elegir "Activar recurso". Muestra el
-catálogo real de la tabla `recursos` (antes era una lista hardcodeada) y, por
-cada uno, si ya hay una sesión de uso activa (`recurso_uso`) — en ese caso la
-tarjeta se marca "EN USO" y navega directo al estado de progreso en vez de
-dejar configurar un tiempo nuevo.
+Se llega aquí SIN autenticar: ModeSelectScreen → aquí directo. A pedido
+explícito del usuario (2026-09-30, revirtiendo el orden anterior) primero se
+elige el recurso y luego, en DurationSelectScreen, el tiempo — la
+autenticación (ScanningScreen, FLOW_RESOURCE_CLAIM_AUTH) es el ÚLTIMO paso,
+ahí es donde de verdad se valida autorización (resource_service.
+is_user_authorized) y se reclama la sesión. Como todavía no hay usuario
+identificado en esta pantalla, el catálogo no puede filtrar por autorización
+ni por dueño — solo distingue libre/"EN USO" (`recurso_uso`):
+    - libre → "Seleccionar", va a elegir el tiempo
+    - "EN USO" → "Ver estado", pide autenticarse (FLOW_RESOURCE_END_AUTH) y
+      solo si la identidad coincide con recurso_uso.idUsuario muestra el
+      progreso o deja terminar el uso — cualquier otra identidad se deniega
+      ahí, no aquí (no hay forma de saber de antemano quién es el dueño)
 """
 
 import customtkinter as ctk
@@ -96,8 +104,11 @@ class ResourceSelectScreen(ctk.CTkFrame):
         self._body.pack(fill="both", expand=True, padx=18, pady=(0, 18))
 
     def _load_resources(self) -> None:
-        """Recarga el catálogo real y el estado de uso de cada recurso — se
-        llama en cada on_show() para no mostrar "EN USO" obsoleto."""
+        """Recarga el catálogo real y el estado de uso de cada uno — se llama
+        en cada on_show() para no mostrar "EN USO" obsoleto. Sin usuario
+        identificado todavía: muestra TODOS los recursos activos, solo
+        distinguiendo libre/en uso (la autorización se valida después, al
+        autenticar)."""
         for w in self._body.winfo_children():
             w.destroy()
 
@@ -107,6 +118,7 @@ class ResourceSelectScreen(ctk.CTkFrame):
             logger.warning("No se pudo cargar el catálogo de recursos: %s", exc)
             resources = []
 
+        shown = 0
         for resource in resources:
             session = None
             try:
@@ -114,7 +126,19 @@ class ResourceSelectScreen(ctk.CTkFrame):
             except Exception as exc:
                 logger.warning("No se pudo consultar sesión de recurso %s: %s",
                                 resource.get("idRecurso"), exc)
+
             self._build_resource_card(self._body, resource, in_use=session is not None)
+            shown += 1
+
+        if shown == 0:
+            ctk.CTkLabel(
+                self._body,
+                text=t("resource.none_available"),
+                font=theme.font_body(14),
+                text_color=PALETTE["MUTED"],
+                fg_color="transparent",
+                wraplength=380, justify="center",
+            ).pack(pady=40)
 
     def _build_resource_card(self, parent, resource: dict, in_use: bool = False) -> None:
         card = ctk.CTkFrame(
@@ -199,10 +223,13 @@ class ResourceSelectScreen(ctk.CTkFrame):
         self.controller.show_frame(DurationSelectScreen, resource=resource)
 
     def _view_status(self, resource: dict) -> None:
+        # Cualquiera puede tocar "Ver estado" (todavía no sabemos quién es) —
+        # FLOW_RESOURCE_END_AUTH autentica y solo deja pasar al dueño real,
+        # verificado contra recurso_uso.idUsuario en ese momento.
         from ui.locker_screen.scanning_screen import ScanningScreen
         self.controller.show_frame(
             ScanningScreen,
-            mode=ScanningScreen.FLOW_RESOURCE_STATUS,
+            mode=ScanningScreen.FLOW_RESOURCE_END_AUTH,
             resource=resource,
         )
 

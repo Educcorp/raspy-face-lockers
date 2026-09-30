@@ -47,14 +47,23 @@ def is_user_authorized(recurso_id: int, user_id: int) -> bool:
 
 
 def get_active_session(recurso_id: int) -> Optional[dict]:
-    """Sesión 'en_uso' de un recurso, si existe (de cualquier usuario)."""
+    """Sesión 'en_uso' de un recurso, si existe (de cualquier usuario).
+
+    `remainingSeconds` se calcula con el reloj del SERVIDOR (now() de
+    Postgres), no con el de la Pi — comparar fechaFinPrevista contra
+    datetime.now() local ya causó bugs de reloj en este proyecto (ver
+    CLAUDE.md, fechas naive/UTC) y aquí el síntoma sería el mismo: si el
+    reloj de la Pi no está sincronizado, el tiempo restante sale mal (incluso
+    en 0 de entrada) aunque la sesión recién se haya reclamado.
+    """
     return fetch_one(
         """
         SELECT idRecursoUso AS "idRecursoUso", idRecurso AS "idRecurso",
                idUsuario AS "idUsuario",
                fechaHoraInicio AS "fechaHoraInicio",
-               duracionMinutos AS "duracionMinutos",
-               fechaFinPrevista AS "fechaFinPrevista"
+               duracionSegundos AS "duracionSegundos",
+               fechaFinPrevista AS "fechaFinPrevista",
+               GREATEST(0, EXTRACT(EPOCH FROM (fechaFinPrevista - now()))) AS "remainingSeconds"
         FROM recurso_uso
         WHERE idRecurso = %s AND estado = 'en_uso'
         """,
@@ -62,7 +71,7 @@ def get_active_session(recurso_id: int) -> Optional[dict]:
     )
 
 
-def claim_session(recurso_id: int, user_id: int, duracion_minutos: int) -> Optional[dict]:
+def claim_session(recurso_id: int, user_id: int, duracion_segundos: int) -> Optional[dict]:
     """
     Reclama una sesión de uso nueva sin condición de carrera entre procesos.
 
@@ -73,12 +82,12 @@ def claim_session(recurso_id: int, user_id: int, duracion_minutos: int) -> Optio
     """
     return execute_returning(
         """
-        INSERT INTO recurso_uso (idRecurso, idUsuario, duracionMinutos, fechaFinPrevista)
-        VALUES (%s, %s, %s, now() + make_interval(mins => %s))
+        INSERT INTO recurso_uso (idRecurso, idUsuario, duracionSegundos, fechaFinPrevista)
+        VALUES (%s, %s, %s, now() + make_interval(secs => %s))
         ON CONFLICT (idRecurso) WHERE estado = 'en_uso' DO NOTHING
         RETURNING idRecursoUso AS "idRecursoUso", fechaFinPrevista AS "fechaFinPrevista"
         """,
-        (recurso_id, user_id, duracion_minutos, duracion_minutos),
+        (recurso_id, user_id, duracion_segundos, duracion_segundos),
     )
 
 

@@ -79,20 +79,24 @@ class ScanningScreen(ctk.CTkFrame):
     SILHOUETTE_FACE_OK  = (90, 180, 90, 160)     # verde semi-transparente
 
     # Modos de flujo (ver ModeSelectScreen): "locker" es el comportamiento
-    # histórico sin cambios; "recurso" solo cambia qué se muestra al tener
-    # éxito y evita abrir el relay del locker — la activación real del
-    # recurso (taladro) llega con la conexión de hardware, no aquí.
-    FLOW_LOCKER   = "locker"
-    FLOW_RESOURCE = "recurso"
-    # Consultar el estado de un recurso YA en uso (viene de ResourceSelectScreen
-    # cuando la tarjeta ya muestra "EN USO"): no pide duración, solo reconoce al
-    # dueño de la sesión para mostrarle el progreso, o niega si es otro usuario.
-    FLOW_RESOURCE_STATUS = "recurso_status"
-
-    # Sentinel: _recognize_current_face ya mostró su propia UI (overlay de
-    # progreso o de denegado) y no necesita que el llamador dispare
-    # on_face_match/on_face_no_match encima.
-    _RESOURCE_HANDLED = "__resource_status_handled__"
+    # histórico sin cambios.
+    FLOW_LOCKER = "locker"
+    # Autenticar como ÚLTIMO paso del flujo de recurso (a pedido explícito del
+    # usuario, 2026-09-30: primero se elige el recurso en ResourceSelectScreen
+    # y el tiempo en DurationSelectScreen; solo al confirmar el tiempo se pide
+    # esta pantalla). Aquí es donde de verdad se valida autorización
+    # (resource_service.is_user_authorized), se reclama la sesión
+    # (claim_session) y se activa el relé — nada de eso ocurrió antes.
+    FLOW_RESOURCE_CLAIM_AUTH = "recurso_claim_auth"
+    # Re-autenticar (cámara o PIN) para poder TERMINAR una sesión de recurso ya
+    # en uso — se llega aquí desde ResourceSelectScreen ("Ver estado" de una
+    # tarjeta "EN USO"). Regla de negocio: solo el mismo usuario dueño de la
+    # sesión, autenticándose una SEGUNDA vez aquí, puede darla por terminada;
+    # no basta con haber elegido esa tarjeta en un catálogo sin identidad.
+    # Si la identidad reconocida no coincide con recurso_uso.idUsuario (otro
+    # usuario, o la sesión ya no existe), se deniega — igual que un PIN
+    # incorrecto — y NO se muestra el progreso ni el botón de terminar.
+    FLOW_RESOURCE_END_AUTH = "recurso_fin_auth"
 
     MAX_ATTEMPTS    = 3
     PIN_MAX_FAILS   = 3
@@ -122,12 +126,12 @@ class ScanningScreen(ctk.CTkFrame):
     def __init__(self, parent: ctk.CTk, controller) -> None:
         super().__init__(parent, fg_color=self.BG_COLOR, corner_radius=0)
         self.controller = controller
-        # Flujo activo (ver on_show): "locker" (default, sin cambios de
-        # comportamiento) o "recurso" (activar un recurso compartido).
+        # Flujo activo (ver on_show): FLOW_LOCKER (default, sin cambios de
+        # comportamiento), FLOW_RESOURCE_CLAIM_AUTH o FLOW_RESOURCE_END_AUTH.
         self._flow_mode: str = self.FLOW_LOCKER
         self._flow_resource: dict | None = None
-        self._flow_duration_minutes: int | None = None
-        # Estado de la pantalla de progreso de un recurso en uso (FLOW_RESOURCE_STATUS)
+        self._flow_duration_seconds: int | None = None  # FLOW_RESOURCE_CLAIM_AUTH
+        # Estado de la pantalla de progreso de un recurso en uso (FLOW_RESOURCE_END_AUTH)
         self._resource_progress_session: dict | None = None
         self._resource_progress_job = None
         self._resource_progress_total_s: float = 1.0
@@ -168,6 +172,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_done_at = 0.0           # cuándo se superó el reto (0 = no superado)
         self._challenge_msg: tuple[str, str] | None = None   # (texto, pista) para la UI
         self._auto_return_started_ts: float | None = None
+        self._manual_stop_started_ts: float | None = None
         self._door_wait_job = None
         self._door_wait_active = False
         self._door_wait_started_at = 0.0
@@ -310,6 +315,24 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.btn_admin.place(x=452, y=44, anchor="center")
 
+        # ── Botón de regreso (top-left) — sin esto no había forma de salir de
+        # la pantalla de escaneo salvo esperar o cancelar el PIN.
+        self.btn_back = ctk.CTkButton(
+            self,
+            text="←",
+            font=ctk.CTkFont(size=20, weight="bold"),
+            fg_color=self.SURFACE,
+            bg_color="transparent",
+            hover_color=self.SURFACE_ALT,
+            text_color=self.TEXT_COLOR,
+            border_width=1,
+            border_color=self.PRIMARY,
+            width=38, height=38,
+            corner_radius=999,
+            command=self._go_standby_safe,
+        )
+        self.btn_back.place(x=28, y=44, anchor="center")
+
         # ── Overlay de éxito — fondo verde pantalla completa ─────────────────
         self.overlay_bg = ctk.CTkFrame(
             self,
@@ -396,29 +419,6 @@ class ScanningScreen(ctk.CTkFrame):
             self._success_inner,
             text="",
             font=theme.font_display(88, "bold"),
-            text_color=PALETTE["WHITE"],
-            fg_color="transparent",
-            anchor="center",
-        )
-
-        # Nombre del recurso activado (modo "recurso") — mismo rol visual que
-        # el número de locker grande, pero es texto (p. ej. "Taladro").
-        self.lbl_success_resource_name = ctk.CTkLabel(
-            self._success_inner,
-            text="",
-            font=theme.font_display(34, "bold"),
-            text_color=PALETTE["WHITE"],
-            fg_color="transparent",
-            wraplength=390,
-            justify="center",
-            anchor="center",
-        )
-
-        # Duración asignada al recurso (modo "recurso")
-        self.lbl_success_resource_duration = ctk.CTkLabel(
-            self._success_inner,
-            text="",
-            font=theme.font_body(16, "bold"),
             text_color=PALETTE["WHITE"],
             fg_color="transparent",
             anchor="center",
@@ -527,15 +527,30 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_door_alert_subtitle.pack(pady=(4, 0))
 
-        # ── Overlay de progreso de un recurso ya en uso (modo "recurso_status") ─
-        # Se muestra cuando el dueño de una sesión activa vuelve a autenticarse:
-        # barra de tiempo transcurrido/restante + botón para terminar el uso.
+        # ── Overlay de progreso de un recurso ya en uso (FLOW_RESOURCE_END_AUTH) ─
+        # Tiempo real: restante grande + transcurrido, ambos en HH:MM:SS,
+        # actualizados cada segundo — más botón para terminar el uso.
         self.resource_progress_overlay = ctk.CTkFrame(
             self,
             fg_color=PALETTE["ACCENT"],
             corner_radius=0,
             width=self.WIN_W, height=self.WIN_H,
         )
+
+        # Volver no termina la sesión — el recurso sigue "en_uso", el usuario
+        # puede regresar más tarde desde ResourceSelectScreen ("Ver estado").
+        ctk.CTkButton(
+            self.resource_progress_overlay,
+            text=t("common.back"),
+            font=theme.font_body(14, "bold"),
+            fg_color="transparent",
+            hover_color=PALETTE["ACCENT_SOFT_STRONG"],
+            text_color=PALETTE["WHITE"],
+            width=110, height=40,
+            corner_radius=14,
+            command=self._go_standby,
+        ).place(x=18, y=18)
+
         _rp = ctk.CTkFrame(self.resource_progress_overlay, fg_color="transparent")
         _rp.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.86)
 
@@ -557,14 +572,31 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_progress_resource_name.pack(pady=(0, 18))
 
+        ctk.CTkLabel(
+            _rp,
+            text=t("resource.remaining_label"),
+            font=theme.font_body(13, "bold"),
+            text_color=PALETTE["ACCENT_SOFT_STRONG"],
+            fg_color="transparent",
+        ).pack()
+
         self.lbl_progress_time = ctk.CTkLabel(
             _rp,
-            text="00:00",
+            text="00:00:00",
             font=theme.font_display(48, "bold"),
             text_color=PALETTE["WHITE"],
             fg_color="transparent",
         )
-        self.lbl_progress_time.pack(pady=(0, 12))
+        self.lbl_progress_time.pack(pady=(0, 4))
+
+        self.lbl_progress_elapsed = ctk.CTkLabel(
+            _rp,
+            text="",
+            font=theme.font_body(13, "bold"),
+            text_color=PALETTE["ACCENT_SOFT_STRONG"],
+            fg_color="transparent",
+        )
+        self.lbl_progress_elapsed.pack(pady=(0, 12))
 
         self.progress_resource_bar = ctk.CTkProgressBar(
             _rp,
@@ -787,9 +819,7 @@ class ScanningScreen(ctk.CTkFrame):
                         self.after(0, self.on_face_no_match)
                     else:
                         user_data = self._recognize_current_face(frame, faces)
-                        if user_data == self._RESOURCE_HANDLED:
-                            pass  # ya se mostró el overlay correspondiente (ver _recognize_current_face)
-                        elif user_data:
+                        if user_data:
                             self.after(0, self.on_face_match, user_data)
                         else:
                             self.after(0, self.on_face_no_match)
@@ -935,6 +965,7 @@ class ScanningScreen(ctk.CTkFrame):
             self.canvas.create_image(0, 0, anchor="nw", image=photo)
             self.canvas.image = photo
             self.btn_admin.lift()
+            self.btn_back.lift()
 
             if not self._success_shown:
                 dist = self._distance_hint
@@ -1001,17 +1032,20 @@ class ScanningScreen(ctk.CTkFrame):
     # ── API pública ───────────────────────────────────────────────────────────
 
     def on_show(self, mode: str = FLOW_LOCKER, resource: dict | None = None,
-                duration_minutes: int | None = None) -> None:
+                duration_seconds: int | None = None) -> None:
         """Inicia captura de vídeo cuando la pantalla se activa.
 
-        `mode`/`resource`/`duration_minutes` los pasa DurationSelectScreen
-        cuando el flujo es "activar recurso" (ver ModeSelectScreen). Sin
-        argumentos (como hace StandbyScreen hoy) el comportamiento es
-        exactamente el de siempre: flujo de locker.
+        `mode`/`resource` los pasa ResourceSelectScreen (FLOW_RESOURCE_END_AUTH,
+        "Ver estado" de una tarjeta en uso) o DurationSelectScreen
+        (FLOW_RESOURCE_CLAIM_AUTH, con `duration_seconds` ya configurado —
+        aquí es donde se autentica, se valida autorización y se reclama la
+        sesión de verdad). Sin argumentos (como hace ModeSelectScreen al elegir
+        "Abrir locker") el comportamiento es exactamente el de siempre: flujo
+        de locker.
         """
         self._flow_mode = mode
         self._flow_resource = resource
-        self._flow_duration_minutes = duration_minutes
+        self._flow_duration_seconds = duration_seconds
         self._attempts = 0
         self._success_shown = False
         self._user_data = None
@@ -1054,6 +1088,8 @@ class ScanningScreen(ctk.CTkFrame):
         self._hide_lock_overlay()
         self.btn_admin.place(x=452, y=44, anchor="center")
         self.btn_admin.lift()
+        self.btn_back.place(x=28, y=44, anchor="center")
+        self.btn_back.lift()
 
         # Recrear face_manager para obtener la instancia fresca del singleton
         # global de CameraManager. Sin esto, al volver del panel admin el manager
@@ -1111,10 +1147,99 @@ class ScanningScreen(ctk.CTkFrame):
             self.after_cancel(self._return_job)
             self._return_job = None
         self.door_warning_overlay.place_forget()
+
+        # Si se sale de la pantalla de progreso de un recurso sin presionar
+        # "Terminar de usar" (p. ej. con el nuevo botón "Atrás"), el tick de
+        # segundo a segundo NO debe seguir corriendo en el fondo — si no,
+        # volver más tarde a esta pantalla apilaría un segundo tick corriendo
+        # en paralelo. No termina la sesión: el recurso sigue "en_uso".
+        if self._resource_progress_job:
+            self.after_cancel(self._resource_progress_job)
+            self._resource_progress_job = None
+        self.resource_progress_overlay.place_forget()
+        self._resource_progress_session = None
         logger.info("Camera capture detenido")
 
     def on_face_match(self, user_data: dict) -> None:
-        """Muestra el overlay de resultado según si el usuario tiene locker o no."""
+        """Muestra el overlay de resultado según si el usuario tiene locker o
+        no — o, en los flujos de recurso, decide autorización/reclamo
+        (FLOW_RESOURCE_CLAIM_AUTH) o dueño de sesión (FLOW_RESOURCE_END_AUTH)
+        sin mostrar el overlay normal de éxito."""
+        if self._flow_mode == self.FLOW_RESOURCE_CLAIM_AUTH:
+            # Último paso del flujo de recurso: el usuario ya eligió recurso y
+            # tiempo (ResourceSelectScreen → DurationSelectScreen) — aquí, ya
+            # identificado, se valida autorización y se reclama/activa de
+            # verdad (antes esto vivía en DurationSelectScreen._confirm(),
+            # ANTES de autenticar; se movió aquí a pedido explícito del
+            # usuario, 2026-09-30, para que la autenticación sea lo último).
+            self._camera_running = False
+            recurso = self._flow_resource or {}
+            recurso_id = recurso.get("idRecurso")
+            user_id = user_data.get("idUsuario")
+            total_seconds = self._flow_duration_seconds
+
+            def _deny(motivo: str) -> None:
+                access_log_service.register_access(
+                    None, permitted=False, motivo=motivo,
+                    user_id=user_id, tipo_acceso="recurso",
+                )
+                self._show_denied_to_standby()
+
+            if recurso_id is None or user_id is None or not total_seconds:
+                _deny("sin_asignacion")
+                return
+            if not resource_service.is_user_authorized(recurso_id, user_id):
+                _deny("sin_asignacion")
+                return
+            session = resource_service.claim_session(recurso_id, user_id, total_seconds)
+            if session is None:
+                # Se ocupó justo antes de terminar de autenticar (otro
+                # kiosco) — el candado real vive en claim_session().
+                _deny("recurso_en_uso")
+                return
+
+            self._success_shown = True
+            tool_name = tool_name_for_resource(recurso)
+            if tool_name:
+                threading.Thread(
+                    target=get_tool_gpio_controller().activate_tool_by_id,
+                    args=(tool_name, total_seconds),
+                    daemon=True,
+                ).start()
+            else:
+                logger.info("Recurso '%s' sin relé físico asociado — solo registro",
+                            recurso.get("nombre"))
+            access_log_service.register_access(
+                None, permitted=True, motivo=user_data.get("metodo", "facial"),
+                user_id=user_id, tipo_acceso="recurso", resource_use_id=session["idRecursoUso"],
+            )
+            from ui.locker_screen.mode_select_screen import ModeSelectScreen
+            self.controller.show_frame(ModeSelectScreen)
+            return
+
+        if self._flow_mode == self.FLOW_RESOURCE_END_AUTH:
+            # Regla de negocio: solo el DUEÑO real de la sesión activa (según
+            # recurso_uso.idUsuario, consultado fresco aquí — no nos fiamos de
+            # quién estaba autenticado al entrar al catálogo) puede ver el
+            # progreso y terminar el uso. Cualquier otra identidad se deniega,
+            # igual que un PIN agotado.
+            self._camera_running = False
+            recurso = self._flow_resource or {}
+            recurso_id = recurso.get("idRecurso")
+            session = resource_service.get_active_session(recurso_id) if recurso_id else None
+            identified_user_id = user_data.get("idUsuario")
+            if (session and identified_user_id is not None
+                    and int(session.get("idUsuario")) == int(identified_user_id)):
+                self._success_shown = True
+                self._show_resource_progress(session)
+            else:
+                access_log_service.register_access(
+                    None, permitted=False, motivo="recurso_en_uso",
+                    user_id=identified_user_id, tipo_acceso="recurso",
+                )
+                self._show_denied_to_standby()
+            return
+
         self._success_shown = True
         self._camera_running = False
         self._user_data = user_data
@@ -1137,21 +1262,7 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.lbl_success_matricula.pack(pady=(0, 16))
 
-        if self._flow_mode == self.FLOW_RESOURCE:
-            from ui.locker_screen.resource_select_screen import resource_display_name
-            from ui.locker_screen.duration_select_screen import duration_display_label
-
-            self.overlay_bg.configure(fg_color=PALETTE["SUCCESS"])  # verde: recurso activado
-            self.lbl_status.configure(text=t("scan.access_granted"), text_color=PALETTE["SUCCESS_SOFT"])
-            self.lbl_success_main.configure(text=t("scan.resource_activated"))
-            self.lbl_success_main.pack(pady=(0, 6))
-            self.lbl_success_resource_name.configure(text=resource_display_name(self._flow_resource))
-            self.lbl_success_resource_name.pack(pady=(0, 6))
-            self.lbl_success_resource_duration.configure(
-                text=t("scan.resource_duration", d=duration_display_label(self._flow_duration_minutes))
-            )
-            self.lbl_success_resource_duration.pack(pady=(0, 8))
-        elif locker_num:
+        if locker_num:
             self.overlay_bg.configure(fg_color=PALETTE["SUCCESS"])  # verde: locker desbloqueado
             self.lbl_status.configure(text=t("scan.access_granted"), text_color=PALETTE["SUCCESS_SOFT"])
             self.lbl_success_main.configure(text=t("scan.unlocked"))
@@ -1173,14 +1284,8 @@ class ScanningScreen(ctk.CTkFrame):
         self.lbl_attempts.configure(text="")
         self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
         self.btn_admin.place_forget()
-        # El door-wait solo aplica al locker físico — en modo "recurso" nunca
-        # hay puerta que esperar, aunque el usuario reconocido tenga un
-        # locker asignado.
-        if (
-            self._flow_mode != self.FLOW_RESOURCE
-            and locker_num
-            and self._should_wait_for_door(int(locker_num))
-        ):
+        self.btn_back.place_forget()
+        if locker_num and self._should_wait_for_door(int(locker_num)):
             self._start_door_close_wait(int(locker_num), user_data.get("locker_assignment_id"))
         else:
             self._start_countdown(self.DISPLAY_SECONDS)
@@ -1217,6 +1322,7 @@ class ScanningScreen(ctk.CTkFrame):
             # Mostrar overlay rojo 3 segundos, luego el PIN
             self.lbl_attempts.configure(text="")
             self.btn_admin.place_forget()
+            self.btn_back.place_forget()
             self.denied_overlay.place(x=0, y=0, relwidth=1, relheight=1)
             self.denied_overlay.lift()
             self.after(3000, self._dismiss_denied_overlay)
@@ -1238,6 +1344,7 @@ class ScanningScreen(ctk.CTkFrame):
     def _show_denied_to_standby(self) -> None:
         """Muestra overlay de acceso denegado 3 segundos y regresa al inicio."""
         self.btn_admin.place_forget()
+        self.btn_back.place_forget()
         self.denied_overlay.place(x=0, y=0, relwidth=1, relheight=1)
         self.denied_overlay.lift()
         self.after(3000, self._dismiss_denied_to_standby)
@@ -1247,7 +1354,7 @@ class ScanningScreen(ctk.CTkFrame):
         if not self._success_shown:
             self._go_standby()
 
-    # ── Progreso de un recurso ya en uso (FLOW_RESOURCE_STATUS) ──────────────
+    # ── Progreso de un recurso ya en uso (FLOW_RESOURCE_END_AUTH) ─────────────
 
     def _show_resource_progress(self, session: dict) -> None:
         """Dueño de la sesión activa: muestra tiempo transcurrido/restante y el
@@ -1260,34 +1367,54 @@ class ScanningScreen(ctk.CTkFrame):
             text=resource_display_name(self._flow_resource)
         )
 
-        total_minutes = int(session.get("duracionMinutos") or 0)
-        self._resource_progress_total_s = max(float(total_minutes * 60), 1.0)
+        self._resource_progress_total_s = max(float(session.get("duracionSegundos") or 0), 1.0)
 
-        remaining_s = self._resource_progress_total_s
-        fin_prevista = session.get("fechaFinPrevista")
-        if isinstance(fin_prevista, datetime):
-            now_dt = datetime.now(fin_prevista.tzinfo) if fin_prevista.tzinfo else datetime.now()
-            remaining_s = max(0.0, (fin_prevista - now_dt).total_seconds())
-        # Se lee la hora del servidor UNA sola vez; de ahí en adelante se cuenta
-        # localmente con monotonic() — no golpear la BD cada segundo.
+        # remainingSeconds ya viene calculado por Postgres (now() del SERVIDOR
+        # contra fechaFinPrevista) — evita depender de que el reloj de la Pi
+        # esté sincronizado con el de la BD (ver resource_service.get_active_
+        # session). Se lee una sola vez; de ahí en adelante se cuenta
+        # localmente con monotonic(), sin golpear la BD cada segundo.
+        remaining_s = float(session.get("remainingSeconds") if session.get("remainingSeconds") is not None
+                             else self._resource_progress_total_s)
         self._resource_progress_deadline_mono = time.monotonic() + remaining_s
 
         self.btn_admin.place_forget()
+        self.btn_back.place_forget()
         self.resource_progress_overlay.place(x=0, y=0, relwidth=1, relheight=1)
         self.resource_progress_overlay.lift()
         self._tick_resource_progress()
 
+    @staticmethod
+    def _format_hms(total_seconds: float) -> str:
+        h, rem = divmod(int(max(0.0, total_seconds)), 3600)
+        m, s = divmod(rem, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+
     def _tick_resource_progress(self) -> None:
-        if not self.resource_progress_overlay.winfo_ismapped():
+        # OJO: no usar winfo_ismapped() como guarda acá — justo después de
+        # place() en _show_resource_progress(), Tk puede no haber procesado
+        # todavía el mapeo (idle tasks), así que este primer tick devolvía
+        # False y el bucle moría sin programar el siguiente `after`: el
+        # cronómetro se quedaba congelado en el valor inicial ("00:00:00").
+        # `_resource_progress_session` es la bandera confiable: la ponemos
+        # nosotros mismos en _show_resource_progress() / la limpiamos en
+        # on_hide() y _finish_resource_session().
+        if self._resource_progress_session is None:
             return
+        # Real time: recalculado cada segundo a partir de time.monotonic(), no
+        # de un contador que se incrementa a mano (por eso avanza aunque el
+        # tick se retrase un poco — siempre refleja el tiempo real transcurrido).
         remaining = max(0.0, self._resource_progress_deadline_mono - time.monotonic())
-        mins, secs = divmod(int(remaining), 60)
-        elapsed_frac = 1.0 - (remaining / self._resource_progress_total_s)
+        elapsed = max(0.0, self._resource_progress_total_s - remaining)
+        elapsed_frac = elapsed / self._resource_progress_total_s
         self.progress_resource_bar.set(max(0.0, min(1.0, elapsed_frac)))
+        self.lbl_progress_elapsed.configure(
+            text=t("resource.elapsed_label", t=self._format_hms(elapsed))
+        )
         if remaining <= 0:
             self.lbl_progress_time.configure(text=t("resource.progress_expired"))
         else:
-            self.lbl_progress_time.configure(text=f"{mins:02d}:{secs:02d}")
+            self.lbl_progress_time.configure(text=self._format_hms(remaining))
         self._resource_progress_job = self.after(1000, self._tick_resource_progress)
 
     def _finish_resource_session(self) -> None:
@@ -1349,7 +1476,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._door_wait_locker_id = int(locker_id)
         self._door_wait_assignment_id = assignment_id
         self._door_wait_started_at = time.time()
-        self.lbl_countdown.configure(text=t("door.waiting_close"))
+        self.lbl_countdown.configure(text=t("door.waiting_close", s=int(self.DOOR_ALERT_DELAY_S)))
         self._poll_door_close()
 
     def _poll_door_close(self) -> None:
@@ -1407,6 +1534,9 @@ class ScanningScreen(ctk.CTkFrame):
         if self._door_wait_phase == "waiting" and elapsed >= self.DOOR_ALERT_DELAY_S:
             self._door_wait_phase = "alerting"
             self._show_door_alert()
+        elif self._door_wait_phase == "waiting":
+            remaining_s = max(0, int(self.DOOR_ALERT_DELAY_S - elapsed))
+            self.lbl_countdown.configure(text=t("door.waiting_close", s=remaining_s))
 
         # Phase end: alerting expires → mark locker open and go to standby
         if self._door_wait_phase == "alerting" and elapsed >= self.DOOR_ALERT_DELAY_S + self.DOOR_ALERT_DURATION_S:
@@ -1438,16 +1568,13 @@ class ScanningScreen(ctk.CTkFrame):
     # ── Métodos internos ──────────────────────────────────────────────────────
 
     def _go_standby(self) -> None:
-        # Modo "recurso" no tiene una StandbyScreen propia — su "inicio" es
-        # ModeSelectScreen, el mismo lugar del que salió (ver ResourceSelectScreen/
-        # DurationSelectScreen). El modo "locker" no cambia: sigue volviendo a
-        # StandbyScreen exactamente como antes.
-        if self._flow_mode in (self.FLOW_RESOURCE, self.FLOW_RESOURCE_STATUS):
-            from ui.locker_screen.mode_select_screen import ModeSelectScreen
-            self.controller.show_frame(ModeSelectScreen)
-        else:
-            from ui.locker_screen.standby_screen import StandbyScreen
-            self.controller.show_frame(StandbyScreen)
+        # ModeSelectScreen es el único "inicio" ahora para TODOS los flujos
+        # (locker y recurso) — StandbyScreen (la pantalla intermedia de
+        # "acércate a la cámara") ya no es parte de la navegación: se llega a
+        # esta pantalla directo desde el menú, y se vuelve directo a él
+        # (a pedido explícito del usuario, 2026-09-30).
+        from ui.locker_screen.mode_select_screen import ModeSelectScreen
+        self.controller.show_frame(ModeSelectScreen)
 
     def _finalize_auto_return(self) -> None:
         if self._camera_thread and self._camera_thread.is_alive():
@@ -1465,10 +1592,45 @@ class ScanningScreen(ctk.CTkFrame):
         self._auto_return_started_ts = None
         self._go_standby()
 
-    def _go_admin_login(self) -> None:
-        # Detener reconocimiento ANTES de construir los frames de admin
-        # para evitar que una detección en vuelo abra el locker.
+    def _stop_camera_then(self, callback) -> None:
+        """Detiene el hilo de cámara de forma segura antes de navegar.
+
+        Usado por los botones "Atrás" y el ícono de admin, que a diferencia
+        de las demás salidas de esta pantalla (overlay de éxito/denegado con
+        varios segundos de countdown, PIN ya con la cámara detenida antes)
+        pueden presionarse con `_camera_loop` todavía activo, en plena
+        captura. Navegar directo (como hacía antes `command=self._go_standby`)
+        dispara show_frame() → on_hide(), que llama a face_manager.release()
+        de forma SÍNCRONA sin esperar a que el hilo note `_camera_running =
+        False` y salga de su `get_frame()` bloqueante — liberar la cámara con
+        ese hilo todavía leyendo de ella dejaba el siguiente initialize() con
+        un frame viejo atascado (bug reportado 2026-09-30: cámara "congelada"
+        tras usar el botón de regreso y volver a escanear). Reusa el mismo
+        mecanismo de espera con reintento que ya usaba `_finalize_auto_return`
+        para el regreso automático por inactividad.
+        """
         self._camera_running = False
+        if self._manual_stop_started_ts is None:
+            self._manual_stop_started_ts = time.time()
+        if self._camera_thread and self._camera_thread.is_alive():
+            elapsed = time.time() - self._manual_stop_started_ts
+            if elapsed >= 1.5 and self.face_manager and self.face_manager.initialized:
+                try:
+                    self.face_manager.release()
+                except Exception as e:
+                    logger.debug("Detención segura: fallo al liberar cámara: %s", e)
+            self.after(120, lambda: self._stop_camera_then(callback))
+            return
+        self._manual_stop_started_ts = None
+        callback()
+
+    def _go_standby_safe(self) -> None:
+        self._stop_camera_then(self._go_standby)
+
+    def _go_admin_login(self) -> None:
+        self._stop_camera_then(self._go_admin_login_now)
+
+    def _go_admin_login_now(self) -> None:
         from ui.admin.login_screen import LoginScreen
         if hasattr(self.controller, "ensure_admin_frames"):
             self.controller.ensure_admin_frames()
@@ -1998,74 +2160,36 @@ class ScanningScreen(ctk.CTkFrame):
         locker_id = result.get("idLocker")
         user_id = result.get("idUsuario")
 
-        if self._flow_mode == self.FLOW_RESOURCE_STATUS:
-            resource = self._flow_resource or {}
-            recurso_id = resource.get("idRecurso")
-            session = resource_service.get_active_session(recurso_id) if recurso_id else None
-            self._hide_pin_overlay()
-            if session and int(session.get("idUsuario") or -1) == int(user_id):
-                self._success_shown = True
-                self._show_resource_progress(session)
-            else:
-                access_log_service.register_access(
-                    None, permitted=False, motivo="recurso_en_uso",
-                    user_id=user_id, tipo_acceso="recurso",
-                )
-                self._show_denied_to_standby()
-            return
-
-        is_resource_flow = self._flow_mode == self.FLOW_RESOURCE
-        resource_session_id: Optional[int] = None
-
-        if is_resource_flow:
-            resource = self._flow_resource or {}
-            recurso_id = resource.get("idRecurso")
-            duration_minutes = self._flow_duration_minutes or 30
-            session = (
-                resource_service.claim_session(recurso_id, user_id, duration_minutes)
-                if recurso_id else None
-            )
-            if session is None:
-                access_log_service.register_access(
-                    None, permitted=False, motivo="recurso_en_uso",
-                    user_id=user_id, tipo_acceso="recurso",
-                )
-                self._hide_pin_overlay()
-                self._show_denied_to_standby()
-                return
-
-            resource_session_id = session["idRecursoUso"]
-            tool_name = tool_name_for_resource(resource)
-            if tool_name:
-                threading.Thread(
-                    target=get_tool_gpio_controller().activate_tool_by_id,
-                    args=(tool_name, duration_minutes * 60),
-                    daemon=True,
-                ).start()
-            else:
-                logger.info(
-                    "Recurso '%s' sin relé físico asociado — solo registro",
-                    resource.get("nombre"),
-                )
-        elif locker_id:
-            threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
-        else:
-            logger.info("PIN auth: usuario id=%s sin locker asignado", user_id)
-
-        if is_resource_flow:
-            access_log_service.register_access(
-                None, permitted=True, motivo="pin", user_id=user_id,
-                tipo_acceso="recurso", resource_use_id=resource_session_id,
-            )
-        else:
-            access_log_service.register_access(
-                result.get("idLockerAsignado"), permitted=True, motivo="pin"
-            )
-
         full_name = " ".join(
             p for p in [result.get("nombre"), result.get("apPaterno"), result.get("apMaterno")]
             if p
         ).strip()
+
+        if self._flow_mode in (self.FLOW_RESOURCE_CLAIM_AUTH, self.FLOW_RESOURCE_END_AUTH):
+            # Solo identificar — on_face_match() decide qué hacer con este
+            # usuario según el flujo (validar autorización y reclamar, o
+            # verificar que sea el dueño de una sesión activa para terminarla).
+            user_data = {
+                "nombre": full_name or "Usuario",
+                "matricula": result.get("matricula") or "—",
+                "idUsuario": user_id,
+                "metodo": "pin",
+                "locker_numero": None,
+                "locker_assignment_id": None,
+                "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
+            }
+            self._hide_pin_overlay()
+            self.on_face_match(user_data)
+            return
+
+        if locker_id:
+            threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
+        else:
+            logger.info("PIN auth: usuario id=%s sin locker asignado", user_id)
+
+        access_log_service.register_access(
+            result.get("idLockerAsignado"), permitted=True, motivo="pin"
+        )
 
         user_data = {
             "nombre": full_name or "Usuario",
@@ -2145,25 +2269,6 @@ class ScanningScreen(ctk.CTkFrame):
         )
         self.after(1000, self._lock_countdown, seconds - 1)
 
-    def _handle_resource_status_match(self, user_id: int) -> str:
-        """FLOW_RESOURCE_STATUS: el usuario reconocido consulta el estado de un
-        recurso ya marcado "EN USO". Si es el dueño de la sesión activa se le
-        muestra el progreso; si no, se le niega (otro usuario lo está usando)."""
-        resource = self._flow_resource or {}
-        recurso_id = resource.get("idRecurso")
-        session = resource_service.get_active_session(recurso_id) if recurso_id else None
-
-        if session and int(session.get("idUsuario") or -1) == int(user_id):
-            self._success_shown = True
-            self.after(0, self._show_resource_progress, session)
-        else:
-            access_log_service.register_access(
-                None, permitted=False, motivo="recurso_en_uso",
-                user_id=user_id, tipo_acceso="recurso",
-            )
-            self.after(0, self._show_denied_to_standby)
-        return self._RESOURCE_HANDLED
-
     def _recognize_current_face(self, frame: np.ndarray, faces: list) -> Optional[dict]:
         if not faces or not self.face_manager:
             return None
@@ -2196,56 +2301,32 @@ class ScanningScreen(ctk.CTkFrame):
         locker_id = matched.get("idLocker")
         user_id   = matched.get("idUsuario")
 
-        if self._flow_mode == self.FLOW_RESOURCE_STATUS:
-            return self._handle_resource_status_match(user_id)
+        if self._flow_mode in (self.FLOW_RESOURCE_CLAIM_AUTH, self.FLOW_RESOURCE_END_AUTH):
+            # Solo identificar — on_face_match() decide qué hacer con este
+            # usuario según el flujo (validar autorización y reclamar, o
+            # verificar que sea el dueño de una sesión activa para terminarla).
+            full_name = " ".join(
+                p for p in [matched.get("nombre"), matched.get("apPaterno"), matched.get("apMaterno")]
+                if p
+            ).strip()
+            return {
+                "nombre": full_name or "Usuario",
+                "matricula": matched.get("matricula") or "—",
+                "idUsuario": user_id,
+                "metodo": "facial",
+                "locker_numero": None,
+                "locker_assignment_id": None,
+                "fecha": datetime.now().strftime("%d/%m/%Y  %H:%M"),
+            }
 
-        is_resource_flow = self._flow_mode == self.FLOW_RESOURCE
-        resource_session_id: Optional[int] = None
-
-        if is_resource_flow:
-            resource = self._flow_resource or {}
-            recurso_id = resource.get("idRecurso")
-            duration_minutes = self._flow_duration_minutes or 30
-            session = (
-                resource_service.claim_session(recurso_id, user_id, duration_minutes)
-                if recurso_id else None
-            )
-            if session is None:
-                # Recurso ocupado (carrera rarísima con otro kiosco) o sin id
-                # válido: negar en vez de mostrar el overlay de éxito.
-                access_log_service.register_access(
-                    None, permitted=False, motivo="recurso_en_uso",
-                    user_id=user_id, tipo_acceso="recurso",
-                )
-                self.after(0, self._show_denied_to_standby)
-                return self._RESOURCE_HANDLED
-
-            resource_session_id = session["idRecursoUso"]
-            tool_name = tool_name_for_resource(resource)
-            if tool_name:
-                threading.Thread(
-                    target=get_tool_gpio_controller().activate_tool_by_id,
-                    args=(tool_name, duration_minutes * 60),
-                    daemon=True,
-                ).start()
-            else:
-                logger.info(
-                    "Recurso '%s' sin relé físico asociado — solo registro",
-                    resource.get("nombre"),
-                )
-        elif locker_id and self._camera_running:
+        if locker_id and self._camera_running:
             threading.Thread(target=locker_service.open_locker, args=(locker_id,), daemon=True).start()
         elif locker_id:
             logger.info("Reconocimiento completado pero cámara detenida — locker no abierto")
         else:
             logger.info("Usuario id=%s autenticado pero sin locker asignado", user_id)
 
-        if is_resource_flow:
-            access_log_service.register_access(
-                None, permitted=True, motivo="facial", user_id=user_id,
-                tipo_acceso="recurso", resource_use_id=resource_session_id,
-            )
-        elif locker_id:
+        if locker_id:
             access_log_service.register_access(
                 matched.get("idLockerAsignado"),
                 permitted=True,

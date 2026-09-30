@@ -76,9 +76,21 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Ver estado",
         "en": "View status",
     },
+    "resource.none_available": {
+        "es": "No hay recursos disponibles en este momento.",
+        "en": "There are no resources available right now.",
+    },
     "resource.progress_title": {
         "es": "Recurso en uso",
         "en": "Resource in use",
+    },
+    "resource.remaining_label": {
+        "es": "TIEMPO RESTANTE",
+        "en": "TIME REMAINING",
+    },
+    "resource.elapsed_label": {
+        "es": "Transcurrido: {t}",
+        "en": "Elapsed: {t}",
     },
     "resource.progress_expired": {
         "es": "Tiempo cumplido",
@@ -110,8 +122,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "duration.3h":    {"es": "3 horas", "en": "3 hours"},
     "duration.hours":   {"es": "Horas", "en": "Hours"},
     "duration.minutes": {"es": "Minutos", "en": "Minutes"},
+    "duration.seconds": {"es": "Segundos", "en": "Seconds"},
     "duration.confirm": {"es": "Confirmar duración", "en": "Confirm duration"},
-    "duration.busy":    {"es": "Este recurso se acaba de ocupar", "en": "This resource just became busy"},
+    "duration.too_short": {"es": "Define al menos 1 minuto", "en": "Set at least 1 minute"},
 
     # ── Locker: ScanningScreen (estados) ─────────────────────────────────────
     "scan.position_face": {
@@ -219,14 +232,6 @@ STRINGS: dict[str, dict[str, str]] = {
     "scan.success_no_locker": {
         "es": "Sin locker asignado",
         "en": "No locker assigned",
-    },
-    "scan.resource_activated": {
-        "es": "RECURSO ACTIVADO",
-        "en": "RESOURCE ACTIVATED",
-    },
-    "scan.resource_duration": {
-        "es": "Tiempo asignado: {d}",
-        "en": "Assigned time: {d}",
     },
     "scan.not_recognized_use_pin": {
         "es": "✗ No reconocido — usa tu PIN",
@@ -365,8 +370,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "The door is still open",
     },
     "door.waiting_close": {
-        "es": "Esperando cierre de puerta…",
-        "en": "Waiting for door to close…",
+        "es": "Tienes {s} segundos para ingresar o retirar tus pertenencias",
+        "en": "You have {s} seconds to put in or take out your belongings",
     },
     "door.banner_prefix": {
         "es": "⚠  Favor de cerrar el locker:",

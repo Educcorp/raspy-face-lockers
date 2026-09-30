@@ -266,7 +266,9 @@ CREATE TABLE IF NOT EXISTS recurso_uso (
     estado TEXT NOT NULL DEFAULT 'en_uso'
         CHECK (estado IN ('en_uso', 'finalizado', 'expirado')),
     fechaHoraInicio TIMESTAMPTZ NOT NULL DEFAULT now(),
-    duracionMinutos INTEGER NOT NULL CHECK (duracionMinutos > 0 AND duracionMinutos <= 180),
+    -- Segundos totales de la sesión (tope 3h = 10800s). El kiosco elige el
+    -- tiempo con precisión de segundos (3 bandas HH:MM:SS), no solo minutos.
+    duracionSegundos INTEGER NOT NULL CHECK (duracionSegundos > 0 AND duracionSegundos <= 10800),
     fechaFinPrevista TIMESTAMPTZ NOT NULL,
     fechaFinReal TIMESTAMPTZ,
     finalizadoPor TEXT CHECK (finalizadoPor IN ('usuario', 'sistema') OR finalizadoPor IS NULL),

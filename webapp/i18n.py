@@ -31,7 +31,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "nav.asignaciones":     {"es": "Asignaciones", "en": "Assignments"},
     "nav.historial":        {"es": "Historial", "en": "History"},
     "nav.recursos":         {"es": "Recursos", "en": "Resources"},
-    "nav.recursos_catalogo": {"es": "Registro de recursos", "en": "Resource registry"},
+    "nav.recursos_catalogo": {"es": "Recursos", "en": "Resources"},
     "nav.recursos_autorizaciones": {"es": "Autorizaciones", "en": "Authorizations"},
     "nav.catalogos":        {"es": "Catálogos", "en": "Catalogs"},
     "nav.unidades":         {"es": "Unidades académicas", "en": "Academic units"},
@@ -264,9 +264,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "assign.none":          {"es": "No hay asignaciones activas.", "en": "No active assignments."},
 
     # ── Recursos: catálogo (Superadmin) ──────────────────────────────────────
-    "res.catalog_page_title":   {"es": "Registro de Recursos", "en": "Resource Registry"},
+    "res.catalog_page_title":   {"es": "Recursos", "en": "Resources"},
     "res.catalog_eyebrow":      {"es": "CATÁLOGO", "en": "CATALOG"},
-    "res.catalog_page_heading": {"es": "Registro de Recursos", "en": "Resource Registry"},
+    "res.catalog_page_heading": {"es": "Recursos", "en": "Resources"},
     "res.catalog_intro":        {"es": "Crea, edita o elimina los recursos compartidos disponibles.",
                                  "en": "Create, edit or delete the available shared resources."},
     "res.new_recurso":          {"es": "+ Nuevo recurso", "en": "+ New resource"},

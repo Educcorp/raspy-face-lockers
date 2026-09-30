@@ -153,5 +153,16 @@ def count_lockers_by_area(area_id: int) -> int:
     return row["n"] if row else 0
 
 
+def area_belongs_to_unidad(area_id: int, unidad_id: int) -> bool:
+    """True si el área realmente pertenece a esa unidad académica (ver
+    area_lockers.idUnidadAcademica) — evita que el formulario de lockers arme
+    una combinación unidad/área que no existe en el catálogo."""
+    row = fetch_one(
+        "SELECT 1 FROM area_lockers WHERE idArea=%s AND idUnidadAcademica=%s LIMIT 1",
+        (area_id, unidad_id),
+    )
+    return row is not None
+
+
 def delete_area(area_id: int) -> None:
     execute("DELETE FROM area_lockers WHERE idArea=%s", (area_id,))

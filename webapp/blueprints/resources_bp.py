@@ -29,7 +29,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from utils.validators import validate_recurso_descripcion, validate_recurso_nombre
 from webapp.auth import can_edit_catalogs, is_superadmin, login_required
-from webapp.services import resource_service
+from webapp.services import catalog_service, resource_service
 
 bp = Blueprint("resources", __name__, url_prefix="/recursos")
 
@@ -53,7 +53,22 @@ def index():
 @bp.route("/catalogo")
 @login_required
 def catalog():
-    return render_template("resources/catalog.html", recursos=resource_service.get_all_recursos())
+    return render_template(
+        "resources/catalog.html",
+        recursos=resource_service.get_all_recursos(),
+        unidades=catalog_service.get_active_unidades(),
+        areas=catalog_service.get_active_areas(),
+    )
+
+
+def _validate_unidad_area(unidad_id: int | None, area_id: int | None) -> str | None:
+    """Misma validación que lockers_bp.py: el área elegida debe pertenecer de
+    verdad a la unidad académica elegida (catalog_service.area_belongs_to_unidad)."""
+    if not unidad_id or not area_id:
+        return "Selecciona unidad académica y área."
+    if not catalog_service.area_belongs_to_unidad(area_id, unidad_id):
+        return "Esa área no pertenece a la unidad académica seleccionada."
+    return None
 
 
 @bp.route("/nuevo", methods=["POST"])
@@ -65,14 +80,20 @@ def new_recurso():
 
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip() or None
+    unidad_id = request.form.get("idUnidadAcademica", type=int)
+    area_id = request.form.get("idArea", type=int)
 
-    err = validate_recurso_nombre(nombre) or validate_recurso_descripcion(descripcion or "")
+    err = (
+        validate_recurso_nombre(nombre)
+        or validate_recurso_descripcion(descripcion or "")
+        or _validate_unidad_area(unidad_id, area_id)
+    )
     if err:
         flash(err, "danger")
     elif resource_service.recurso_nombre_exists(nombre):
         flash(f"Ya existe un recurso llamado '{nombre}'.", "danger")
     else:
-        resource_service.create_recurso(nombre, descripcion, _actor_id())
+        resource_service.create_recurso(nombre, descripcion, unidad_id, area_id, _actor_id())
         flash("Recurso creado.", "success")
     return redirect(url_for("resources.catalog"))
 
@@ -86,14 +107,20 @@ def edit_recurso(recurso_id: int):
 
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip() or None
+    unidad_id = request.form.get("idUnidadAcademica", type=int)
+    area_id = request.form.get("idArea", type=int)
 
-    err = validate_recurso_nombre(nombre) or validate_recurso_descripcion(descripcion or "")
+    err = (
+        validate_recurso_nombre(nombre)
+        or validate_recurso_descripcion(descripcion or "")
+        or _validate_unidad_area(unidad_id, area_id)
+    )
     if err:
         flash(err, "danger")
     elif resource_service.recurso_nombre_exists(nombre, exclude_id=recurso_id):
         flash(f"Ya existe un recurso llamado '{nombre}'.", "danger")
     else:
-        resource_service.update_recurso(recurso_id, nombre, descripcion, _actor_id())
+        resource_service.update_recurso(recurso_id, nombre, descripcion, unidad_id, area_id, _actor_id())
         flash("Recurso actualizado.", "success")
     return redirect(url_for("resources.catalog"))
 

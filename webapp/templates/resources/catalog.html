@@ -22,18 +22,38 @@
       <label>{{ tr('res.desc_label') }}</label>
       <input type="text" name="descripcion" maxlength="300">
     </div>
+    <div class="form-grid" data-unidad-area-group>
+      <div class="form-row">
+        <label>{{ tr('common.academic_unit') }}</label>
+        <select name="idUnidadAcademica" data-role="unidad" required>
+          {% for u in unidades %}
+          <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>{{ tr('common.area') }}</label>
+        <select name="idArea" data-role="area" required>
+          {% for a in areas %}
+          <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}">{{ a.nombrearea }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
     <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
 </div>
 
 <div class="card">
   <table>
-    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('res.desc_label') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
+    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('res.desc_label') }}</th><th>{{ tr('common.unit') }}</th><th>{{ tr('common.area') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
     <tbody>
       {% for r in recursos %}
       <tr>
         <td>{{ r.nombre }}</td>
         <td>{{ r.descripcion or '—' }}</td>
+        <td>{{ r.nombreunidadacademica or '—' }}</td>
+        <td>{{ r.nombrearea or '—' }}</td>
         <td><span class="badge {{ r.estado }}">{{ r.estado|tr_status }}</span></td>
         <td>
           <form method="post" action="{{ url_for('resources.set_recurso_estado', recurso_id=r.idrecurso) }}" style="display:inline">
@@ -45,7 +65,7 @@
           <details class="row-edit">
             <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
             <div class="row-edit-panel">
-              <form method="post" action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}">
+              <form method="post" action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}" data-unidad-area-group>
                 <div class="form-row">
                   <label>{{ tr('res.name_label') }}</label>
                   <input type="text" name="nombre" value="{{ r.nombre }}" required maxlength="60">
@@ -53,6 +73,22 @@
                 <div class="form-row">
                   <label>{{ tr('res.desc_label') }}</label>
                   <input type="text" name="descripcion" value="{{ r.descripcion or '' }}" maxlength="300">
+                </div>
+                <div class="form-row">
+                  <label>{{ tr('common.academic_unit') }}</label>
+                  <select name="idUnidadAcademica" data-role="unidad" required>
+                    {% for u in unidades %}
+                    <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==r.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label>{{ tr('common.area') }}</label>
+                  <select name="idArea" data-role="area" required>
+                    {% for a in areas %}
+                    <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==r.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
                 <button class="btn btn-sm" type="submit">{{ tr('common.save_changes') }}</button>
               </form>
@@ -67,7 +103,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4">{{ tr('res.no_recursos') }}</td></tr>
+      <tr><td colspan="6">{{ tr('res.no_recursos') }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

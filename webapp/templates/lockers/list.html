@@ -7,10 +7,10 @@
 <div class="card">
   <h3>{{ tr('lockers.new') }}</h3>
   <form method="post">
-    <div class="form-grid">
+    <div class="form-grid" data-unidad-area-group>
       <div class="form-row">
         <label>{{ tr('common.academic_unit') }}</label>
-        <select name="idUnidadAcademica" required>
+        <select name="idUnidadAcademica" data-role="unidad" required>
           {% for u in unidades %}
           <option value="{{ u.idunidadacademica }}">{{ u.nombreunidadacademica }}</option>
           {% endfor %}
@@ -18,9 +18,9 @@
       </div>
       <div class="form-row">
         <label>{{ tr('common.area') }}</label>
-        <select name="idArea" required>
+        <select name="idArea" data-role="area" required>
           {% for a in areas %}
-          <option value="{{ a.idarea }}">{{ a.nombrearea }}</option>
+          <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}">{{ a.nombrearea }}</option>
           {% endfor %}
         </select>
       </div>
@@ -52,10 +52,10 @@
           <details class="row-edit">
             <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
             <div class="row-edit-panel">
-              <form method="post" action="{{ url_for('lockers.set_location', locker_id=l.idlocker) }}">
+              <form method="post" action="{{ url_for('lockers.set_location', locker_id=l.idlocker) }}" data-unidad-area-group>
                 <div class="form-row">
                   <label>{{ tr('common.academic_unit') }}</label>
-                  <select name="idUnidadAcademica" required>
+                  <select name="idUnidadAcademica" data-role="unidad" required>
                     {% for u in unidades %}
                     <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==l.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
                     {% endfor %}
@@ -63,9 +63,9 @@
                 </div>
                 <div class="form-row">
                   <label>{{ tr('common.area') }}</label>
-                  <select name="idArea" required>
+                  <select name="idArea" data-role="area" required>
                     {% for a in areas %}
-                    <option value="{{ a.idarea }}" {% if a.idarea==l.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
+                    <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==l.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
                     {% endfor %}
                   </select>
                 </div>

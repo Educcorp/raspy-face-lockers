@@ -256,6 +256,40 @@
         lastScroll = current;
       }, { passive: true });
     })();
+
+    /* Filtra el <select> de Área según la Unidad académica elegida: cada
+       <option> de área trae su idUnidadAcademica en data-unidad, y solo se
+       muestran las que coinciden — antes cualquier área podía asociarse a
+       cualquier unidad aunque la relación real (definida en Catálogos →
+       Áreas) no fuera esa. Cualquier formulario con un contenedor
+       [data-unidad-area-group] y dos <select> [data-role="unidad"] /
+       [data-role="area"] adentro queda filtrado automáticamente (hoy:
+       Lockers y Recursos). */
+    (() => {
+      const wire = (group) => {
+        const unidadSel = group.querySelector('[data-role="unidad"]');
+        const areaSel = group.querySelector('[data-role="area"]');
+        if (!unidadSel || !areaSel) return;
+        const options = [...areaSel.options];
+        const apply = () => {
+          const uid = unidadSel.value;
+          let firstVisible = null;
+          options.forEach((opt) => {
+            const match = opt.dataset.unidad === uid;
+            opt.hidden = !match;
+            opt.disabled = !match;
+            if (match && firstVisible === null) firstVisible = opt;
+          });
+          const current = areaSel.options[areaSel.selectedIndex];
+          if (!current || current.disabled) {
+            areaSel.value = firstVisible ? firstVisible.value : '';
+          }
+        };
+        unidadSel.addEventListener('change', apply);
+        apply();
+      };
+      document.querySelectorAll('[data-unidad-area-group]').forEach(wire);
+    })();
   </script>
   {% else %}
   <div class="container-plain">

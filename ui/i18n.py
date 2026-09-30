@@ -68,6 +68,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Taladro eléctrico de uso compartido",
         "en": "Shared electric drill",
     },
+    "resource.in_use": {
+        "es": "EN USO",
+        "en": "IN USE",
+    },
+    "resource.view_status": {
+        "es": "Ver estado",
+        "en": "View status",
+    },
+    "resource.progress_title": {
+        "es": "Recurso en uso",
+        "en": "Resource in use",
+    },
+    "resource.progress_expired": {
+        "es": "Tiempo cumplido",
+        "en": "Time's up",
+    },
+    "resource.finish_use": {
+        "es": "Terminar de usar",
+        "en": "Finish using",
+    },
 
     # ── Locker: DurationSelectScreen ───────────────────────────────────────────
     "duration.page_title": {
@@ -88,6 +108,10 @@ STRINGS: dict[str, dict[str, str]] = {
     "duration.2h":    {"es": "2 horas", "en": "2 hours"},
     "duration.2h30":  {"es": "2 h 30 min", "en": "2 h 30 min"},
     "duration.3h":    {"es": "3 horas", "en": "3 hours"},
+    "duration.hours":   {"es": "Horas", "en": "Hours"},
+    "duration.minutes": {"es": "Minutos", "en": "Minutes"},
+    "duration.confirm": {"es": "Confirmar duración", "en": "Confirm duration"},
+    "duration.busy":    {"es": "Este recurso se acaba de ocupar", "en": "This resource just became busy"},
 
     # ── Locker: ScanningScreen (estados) ─────────────────────────────────────
     "scan.position_face": {
@@ -567,6 +591,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "users.field_phone":       {"es": "Teléfono  (opcional, 10-15 dígitos)", "en": "Phone  (optional, 10-15 digits)"},
     "users.field_type":        {"es": "Tipo de usuario",         "en": "User type"},
     "users.field_unit":        {"es": "Unidad académica",        "en": "Academic unit"},
+    "users.field_permiso":     {"es": "Permiso de acceso",       "en": "Access permission"},
     "users.no_face":           {"es": "Sin rostro registrado",   "en": "No face registered"},
     "users.no_face_warning":   {"es": "(!) Sin rostro registrado", "en": "(!) No face registered"},
     "users.face_count":        {"es": "✓ {n} perfil(es) facial(es) registrado(s)", "en": "✓ {n} facial profile(s) registered"},

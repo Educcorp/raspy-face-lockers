@@ -17,6 +17,9 @@ MOTIVO_LABELS: dict[str, str] = {
     "pin_cancelado": "PIN cancelado",
     "puerta_cerrada": "Puerta cerrada",
     "puerta_no_cerrada": "Puerta no cerrada",
+    "recurso_en_uso": "Recurso en uso",
+    "recurso_finalizado": "Uso finalizado",
+    "recurso_expirado": "Uso expirado (automático)",
 }
 
 
@@ -33,6 +36,10 @@ def _base_query():
             ON al.idLocker = l.idLocker
         LEFT JOIN area_lockers a
             ON l.idArea = a.idArea
+        LEFT JOIN recurso_uso ru
+            ON h.idRecursoUso = ru.idRecursoUso
+        LEFT JOIN recursos r
+            ON ru.idRecurso = r.idRecurso
     """
 
 
@@ -41,6 +48,7 @@ def get_access_history(
     per_page: int = 15,
     search: str = "",
     resultado: str = "",
+    tipo: str = "",
 ) -> tuple[list[dict], int]:
     """
     Obtiene el historial de accesos paginado.
@@ -91,6 +99,10 @@ def get_access_history(
             "(h.accesoPermitido IS NULL OR h.accesoPermitido <> 'si')"
         )
 
+    if tipo in ("locker", "recurso"):
+        conditions.append("h.tipoAcceso = %s")
+        params.append(tipo)
+
     where_clause = ""
 
     if conditions:
@@ -118,6 +130,7 @@ def get_access_history(
     query = f"""
         SELECT
             h.idAcceso,
+            h.tipoAcceso,
             COALESCE(
                 u1.nombre || ' ' || u1.apPaterno,
                 u2.nombre || ' ' || u2.apPaterno,
@@ -126,6 +139,7 @@ def get_access_history(
             COALESCE(u1.matricula, u2.matricula) AS matricula,
             l.idLocker,
             a.nombreArea,
+            r.nombre AS nombreRecurso,
             h.fechaHoraAcceso,
             h.accesoPermitido,
             h.motivo,

@@ -23,6 +23,9 @@ _MOTIVO_LABELS: dict[str, str] = {
     "sin_asignacion":       "Sin asignación",
     "puerta_cerrada":        "Puerta cerrada",
     "puerta_no_cerrada":     "Puerta no cerrada",
+    "recurso_en_uso":        "Recurso en uso",
+    "recurso_finalizado":    "Uso finalizado",
+    "recurso_expirado":      "Uso expirado (automático)",
 }
 
 def _split_datetime(value) -> tuple[str, str]:
@@ -46,6 +49,10 @@ def _split_datetime(value) -> tuple[str, str]:
 _ALL      = "Todos"
 _GRANTED  = "Concedidos"
 _DENIED   = "Denegados"
+
+_ALL_TIPO   = "Todos"
+_TIPO_LOCKER   = "Locker"
+_TIPO_RECURSO  = "Recurso"
 
 
 class AccessHistoryScreen(ctk.CTkFrame):
@@ -138,6 +145,32 @@ class AccessHistoryScreen(ctk.CTkFrame):
             if isinstance(btn, ctk.CTkButton)
         }
 
+        # ── Filtro tipo (locker / recurso) ──────────────────────────────────────
+        tipo_row = ctk.CTkFrame(self, fg_color=PALETTE["BG"], height=44, corner_radius=0)
+        tipo_row.pack(fill="x", padx=10)
+        tipo_row.pack_propagate(False)
+
+        self._tipo_var = ctk.StringVar(value=_ALL_TIPO)
+
+        for label in (_ALL_TIPO, _TIPO_LOCKER, _TIPO_RECURSO):
+            ctk.CTkButton(
+                tipo_row,
+                text=label,
+                width=90, height=30,
+                font=ctk.CTkFont(size=12),
+                fg_color=PALETTE["ACCENT"] if label == _ALL_TIPO else PALETTE["CARD"],
+                hover_color=PALETTE["ACCENT"],
+                text_color=PALETTE["WHITE"] if label == _ALL_TIPO else PALETTE["TEXT"],
+                corner_radius=15,
+                command=lambda lbl=label: self._set_tipo(lbl),
+            ).pack(side="left", padx=4, pady=7)
+
+        self._chip_tipo_buttons: dict[str, ctk.CTkButton] = {
+            btn.cget("text"): btn
+            for btn in tipo_row.winfo_children()
+            if isinstance(btn, ctk.CTkButton)
+        }
+
         # ── Filtro motivo ──────────────────────────────────────────────────────
         motivo_row = ctk.CTkFrame(self, fg_color=PALETTE["BG"], height=40, corner_radius=0)
         motivo_row.pack(fill="x", padx=10)
@@ -216,6 +249,16 @@ class AccessHistoryScreen(ctk.CTkFrame):
             )
         self._apply_filters()
 
+    def _set_tipo(self, tipo: str) -> None:
+        self._tipo_var.set(tipo)
+        for label, btn in self._chip_tipo_buttons.items():
+            active = label == tipo
+            btn.configure(
+                fg_color=PALETTE["ACCENT"] if active else PALETTE["CARD"],
+                text_color=PALETTE["WHITE"] if active else PALETTE["TEXT"],
+            )
+        self._apply_filters()
+
     def _is_concedido(self, row: dict) -> bool:
         raw = row.get("accesoPermitido") or ""
         if raw:
@@ -226,6 +269,7 @@ class AccessHistoryScreen(ctk.CTkFrame):
         query  = self._search_var.get().strip().lower()
         estado = self._estado_var.get()
         motivo_sel = self._motivo_var.get()
+        tipo_sel = self._tipo_var.get()
 
         # Invertir label → clave interna
         label_to_key = {v: k for k, v in _MOTIVO_LABELS.items()}
@@ -246,10 +290,17 @@ class AccessHistoryScreen(ctk.CTkFrame):
                 if (row.get("motivo") or "") != motivo_key:
                     continue
 
+            # Filtro tipo (locker / recurso)
+            if tipo_sel == _TIPO_LOCKER and row.get("tipoAcceso") == "recurso":
+                continue
+            if tipo_sel == _TIPO_RECURSO and row.get("tipoAcceso") != "recurso":
+                continue
+
             # Búsqueda de texto libre
             if query:
                 haystack = " ".join([
                     str(row.get("idLocker") or ""),
+                    str(row.get("nombreRecurso") or ""),
                     str(row.get("nombreCompleto") or ""),
                     str(row.get("motivo") or ""),
                     " ".join(_split_datetime(row.get("fechaHoraAcceso"))),
@@ -278,7 +329,11 @@ class AccessHistoryScreen(ctk.CTkFrame):
             return
 
         for row in rows:
-            locker_num  = row.get("idLocker") or "—"
+            is_recurso  = row.get("tipoAcceso") == "recurso"
+            if is_recurso:
+                item_label = f"Recurso: {row.get('nombreRecurso') or '—'}"
+            else:
+                item_label = f"Locker {row.get('idLocker') or '—'}"
             owner       = row.get("nombreCompleto") or t("hist.unknown_user")
             motivo_raw  = row.get("motivo") or ""
             date_part, time_part = _split_datetime(row.get("fechaHoraAcceso"))
@@ -303,7 +358,7 @@ class AccessHistoryScreen(ctk.CTkFrame):
 
             ctk.CTkLabel(
                 top,
-                text=f"Locker {locker_num}",
+                text=item_label,
                 font=ctk.CTkFont(size=15, weight="bold"),
                 text_color=PALETTE["TEXT"],
                 fg_color="transparent",

@@ -56,7 +56,9 @@ def get_active_assignments() -> list[dict]:
 # ── Control de hardware ────────────────────────────────────────────────────────
 
 # Segundos que el relé queda activo en aperturas manuales (panel admin y web).
-MANUAL_OPEN_SECONDS = 3.0
+# Igualado a GPIO_CONFIG["locker_open_seconds"] — misma ventana real que el
+# reconocimiento facial para jalar la puerta.
+MANUAL_OPEN_SECONDS = 10.0
 
 def open_locker(locker_id: int, seconds: float | None = None) -> bool:
     """

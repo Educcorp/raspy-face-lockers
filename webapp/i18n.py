@@ -227,6 +227,10 @@ STRINGS: dict[str, dict[str, str]] = {
     "hist.granted":         {"es": "Permitido", "en": "Granted"},
     "hist.denied":          {"es": "Denegado", "en": "Denied"},
     "hist.reason":          {"es": "Motivo", "en": "Reason"},
+    "hist.type":            {"es": "Tipo", "en": "Type"},
+    "hist.type_locker":     {"es": "Locker", "en": "Locker"},
+    "hist.type_resource":   {"es": "Recurso", "en": "Resource"},
+    "hist.item":            {"es": "Locker / Recurso", "en": "Locker / Resource"},
     "hist.showing":         {"es": "Mostrando <strong>{a}</strong> – <strong>{b}</strong> de <strong>{total}</strong> registros",
                              "en": "Showing <strong>{a}</strong> – <strong>{b}</strong> of <strong>{total}</strong> records"},
     "hist.none":            {"es": "No se encontraron registros", "en": "No records found"},
@@ -244,6 +248,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "motivo.pin_cancelado":       {"es": "PIN cancelado", "en": "PIN cancelled"},
     "motivo.puerta_cerrada":      {"es": "Puerta cerrada", "en": "Door closed"},
     "motivo.puerta_no_cerrada":   {"es": "Puerta no cerrada", "en": "Door not closed"},
+    "motivo.recurso_en_uso":      {"es": "Recurso en uso", "en": "Resource in use"},
+    "motivo.recurso_finalizado":  {"es": "Uso finalizado", "en": "Use finished"},
+    "motivo.recurso_expirado":    {"es": "Uso expirado (automático)", "en": "Use expired (automatic)"},
 
     # ── Lockers ──────────────────────────────────────────────────────────────
     "lockers.heading":      {"es": "Gestión de Casilleros", "en": "Locker Management"},

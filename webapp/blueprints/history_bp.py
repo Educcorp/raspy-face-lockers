@@ -28,6 +28,12 @@ def list_history():
         type=str
     ).strip()
 
+    tipo = request.args.get(
+        "tipo",
+        default="",
+        type=str
+    ).strip()
+
     # Siempre 15 registros por página
     per_page = 15
 
@@ -42,6 +48,7 @@ def list_history():
         per_page=per_page,
         search=search,
         resultado=resultado,
+        tipo=tipo,
     )
 
     # -----------------------------
@@ -62,6 +69,7 @@ def list_history():
             per_page=per_page,
             search=search,
             resultado=resultado,
+            tipo=tipo,
         )
 
     inicio = ((page - 1) * per_page) + 1 if total > 0 else 0
@@ -83,4 +91,5 @@ def list_history():
         # Filtros
         buscar=search,
         resultado=resultado,
+        tipo=tipo,
     )

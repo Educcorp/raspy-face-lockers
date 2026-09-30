@@ -93,6 +93,7 @@ def get_users_without_locker() -> list[dict]:
         SELECT u.idUsuario, u.nombre, u.apPaterno, u.matricula
         FROM usuarios u
         WHERE u.estado = 'activo'
+          AND u.permisoActivacion IN ('locker', 'ambos')
           AND u.idUsuario NOT IN (
               SELECT idUsuario FROM asignacion_locker WHERE estado = 'activo'
           )

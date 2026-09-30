@@ -246,7 +246,8 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 		return f"No se pudo {action}."
 
 	def _load_catalogs(self) -> None:
-		# Todos los usuarios activos (sin filtro de tipo — admin también puede tener locker)
+		# Usuarios activos con permiso de locker (los admins ya tienen 'ambos'
+		# forzado desde la web, así que este filtro no los excluye).
 		self._students = fetch_all(
 			"""
 			SELECT
@@ -259,6 +260,7 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			FROM usuarios u
 			LEFT JOIN tipo_usuarios t ON t.idTipoUsuario = u.idTipoUsuario
 			WHERE u.estado = 'activo'
+			  AND u.permisoActivacion IN ('locker', 'ambos')
 			ORDER BY u.nombre, u.apPaterno
 			"""
 		)
@@ -584,9 +586,11 @@ class LockerAssignmentScreen(ctk.CTkFrame):
 			self._set_manual_btn(lid, btn, self._mode_for(state))
 
 			def _open(l=lid, b=btn) -> None:
-				# Gris + "Abriendo…" y cooldown de 3s mientras el solenoide está activo
+				# Gris + "Abriendo…" y cooldown mientras el solenoide está activo —
+				# atado a la misma constante que la duración real de apertura para
+				# que no se desincronicen otra vez (ver services/locker_service.py).
 				self._set_manual_btn(l, b, "opening")
-				self._sensor_cooldown_until[l] = time.time() + 3.0
+				self._sensor_cooldown_until[l] = time.time() + locker_service.MANUAL_OPEN_SECONDS
 
 				def _task(l=l, b=b):
 					ok = locker_service.open_locker(l, seconds=locker_service.MANUAL_OPEN_SECONDS)

@@ -71,20 +71,29 @@ def register_access(
     permitted: bool,
     motivo: str = "facial",
     user_id: Optional[int] = None,
+    *,
+    tipo_acceso: str = "locker",
+    resource_use_id: Optional[int] = None,
 ) -> None:
     """
     Registra un intento de acceso en historial_accesos.
 
-    locker_assignment_id: FK a asignacion_locker (None si sin asignación o rechazo sin match).
+    locker_assignment_id: FK a asignacion_locker (None si sin asignación, rechazo
+        sin match, o tipo_acceso="recurso").
     permitted: True si el acceso fue concedido, False si fue denegado.
     motivo: 'facial' | 'no_reconocido' | 'pin' | 'pin_incorrecto' |
             'limite_intentos_pin' | 'matricula_incorrecta' | 'sin_asignacion' |
-            'puerta_cerrada' | 'puerta_no_cerrada'
+            'puerta_cerrada' | 'puerta_no_cerrada' | 'recurso_en_uso' |
+            'recurso_finalizado' | 'recurso_expirado'
     user_id: idUsuario directo (usado cuando no hay idLockerAsignado disponible).
+    tipo_acceso: 'locker' (default, sin cambios de comportamiento) | 'recurso'.
+    resource_use_id: FK a recurso_uso — obligatorio si tipo_acceso='recurso'.
     """
     _ensure_worker()
     try:
-        _write_queue.put_nowait((locker_assignment_id, permitted, motivo, user_id))
+        _write_queue.put_nowait(
+            (locker_assignment_id, permitted, motivo, user_id, tipo_acceso, resource_use_id)
+        )
     except queue.Full:
         logger.warning("Cola de historial llena; se descarta un registro de acceso")
 
@@ -94,6 +103,8 @@ def _insert_access(
     permitted: bool,
     motivo: str,
     user_id: Optional[int],
+    tipo_acceso: str = "locker",
+    resource_use_id: Optional[int] = None,
 ) -> None:
     """Escritura real del registro. Corre en el hilo trabajador."""
     try:
@@ -104,8 +115,9 @@ def _insert_access(
         execute(
             """
             INSERT INTO historial_accesos
-                (idLockerAsignado, idUsuario, accesoPermitido, motivo, fechaExpiracion)
-            VALUES (%s, %s, %s, %s, now() + make_interval(mins => %s))
+                (idLockerAsignado, idUsuario, accesoPermitido, motivo, fechaExpiracion,
+                 tipoAcceso, idRecursoUso)
+            VALUES (%s, %s, %s, %s, now() + make_interval(mins => %s), %s, %s)
             """,
             (
                 locker_assignment_id,
@@ -113,6 +125,8 @@ def _insert_access(
                 "si" if permitted else "no",
                 motivo,
                 expires_minutes,
+                tipo_acceso,
+                resource_use_id,
             ),
         )
     except Exception as exc:
@@ -125,6 +139,7 @@ def get_access_history(limit: int = 200) -> list[dict]:
         """
         SELECT
             h.idAcceso AS "idAcceso",
+            h.tipoAcceso AS "tipoAcceso",
             COALESCE(
                 u1.nombre || ' ' || u1.apPaterno,
                 u2.nombre || ' ' || u2.apPaterno,
@@ -133,6 +148,7 @@ def get_access_history(limit: int = 200) -> list[dict]:
             COALESCE(u1.matricula, u2.matricula) AS matricula,
             l.idLocker AS "idLocker",
             a.nombreArea AS "nombreArea",
+            r.nombre AS "nombreRecurso",
             h.fechaHoraAcceso AS "fechaHoraAcceso",
             h.accesoPermitido AS "accesoPermitido",
             h.motivo,
@@ -143,6 +159,8 @@ def get_access_history(limit: int = 200) -> list[dict]:
         LEFT JOIN usuarios u2 ON h.idUsuario = u2.idUsuario
         LEFT JOIN lockers l ON al.idLocker = l.idLocker
         LEFT JOIN area_lockers a ON l.idArea = a.idArea
+        LEFT JOIN recurso_uso ru ON h.idRecursoUso = ru.idRecursoUso
+        LEFT JOIN recursos r ON ru.idRecurso = r.idRecurso
         ORDER BY h.fechaHoraAcceso DESC
         LIMIT %s
         """,

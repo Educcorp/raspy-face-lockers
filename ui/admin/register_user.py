@@ -333,11 +333,21 @@ class _Step1BasicData(ctk.CTkFrame):
 
 class _Step2TypeUnit(ctk.CTkFrame):
 
+    # Opciones visibles del selector de permiso → valor real del CHECK de la BD.
+    _PERMISO_LABELS = ["Locker", "Recurso", "Ambos"]
+    _PERMISO_VALUES = {
+        "Locker": "locker",
+        "Recurso": "recurso_compartido",
+        "Ambos": "ambos",
+    }
+    _PERMISO_LABELS_BY_VALUE = {v: k for k, v in _PERMISO_VALUES.items()}
+
     def __init__(self, parent, wizard: RegisterUserScreen):
         super().__init__(parent, fg_color=PALETTE["BG"], corner_radius=0)
         self.wizard = wizard
         self._tipo_var   = tk.StringVar()
         self._unidad_var = tk.StringVar()
+        self._permiso_var = tk.StringVar(value=self._PERMISO_LABELS[0])
         self._tipos:    list[dict] = []
         self._unidades: list[dict] = []
         self._build()
@@ -366,6 +376,17 @@ class _Step2TypeUnit(ctk.CTkFrame):
         )
         self._unidad_menu.pack(fill="x", padx=4, pady=(0, 10))
 
+        _field_label(scroll, "Permiso de acceso *")
+        self._permiso_seg = ctk.CTkSegmentedButton(
+            scroll, variable=self._permiso_var, values=self._PERMISO_LABELS,
+            fg_color=PALETTE["CARD"], selected_color=PALETTE["ACCENT"],
+            selected_hover_color=PALETTE["ACCENT_HOVER"],
+            unselected_color=PALETTE["CARD"],
+            text_color=PALETTE["TEXT"],
+            font=ctk.CTkFont(size=14, weight="bold"), height=44,
+        )
+        self._permiso_seg.pack(fill="x", padx=4, pady=(0, 10))
+
         self.lbl_err = ctk.CTkLabel(scroll, text="", font=ctk.CTkFont(size=13),
                                     text_color=PALETTE["DANGER"],
                                     fg_color="transparent")
@@ -393,14 +414,21 @@ class _Step2TypeUnit(ctk.CTkFrame):
             self._tipo_var.set(data.get("tipo_nombre") or tipo_names[0])
         if unidad_names:
             self._unidad_var.set(data.get("unidad_nombre") or unidad_names[0])
+        self._permiso_var.set(
+            self._PERMISO_LABELS_BY_VALUE.get(
+                data.get("permisoActivacion", ""), self._PERMISO_LABELS[0]
+            )
+        )
         if not can_create_users():
             self.lbl_err.configure(text="Tu rol es de solo lectura")
             self._tipo_menu.configure(state="disabled")
             self._unidad_menu.configure(state="disabled")
+            self._permiso_seg.configure(state="disabled")
             return
 
         self._tipo_menu.configure(state="normal")
         self._unidad_menu.configure(state="normal")
+        self._permiso_seg.configure(state="normal")
         self.lbl_err.configure(text="")
 
     def _next(self) -> None:
@@ -413,11 +441,13 @@ class _Step2TypeUnit(ctk.CTkFrame):
             self.lbl_err.configure(text="Selecciona tipo y unidad válidos")
             return
         self.lbl_err.configure(text="")
+        permiso_valor = self._PERMISO_VALUES.get(self._permiso_var.get(), "locker")
         self.wizard.next_step({
             "idTipoUsuario":      tipo_id,
             "idUnidadAcademica":  unidad_id,
             "tipo_nombre":        tipo_n,
             "unidad_nombre":      unidad_n,
+            "permisoActivacion":  permiso_valor,
         })
 
 

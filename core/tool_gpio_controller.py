@@ -51,6 +51,11 @@ class ToolGPIOController:
         self._tool_locks: dict[str, threading.Lock] = {
             name: threading.Lock() for name in self._pins
         }
+        # Un Event por herramienta para poder cortar la activación antes de que
+        # se cumpla `hold_seconds` (botón "Terminar de usar el recurso").
+        self._stop_events: dict[str, threading.Event] = {
+            name: threading.Event() for name in self._pins
+        }
 
     def _pinctrl_level_token(self, active: bool) -> str:
         if self._active_low:
@@ -116,9 +121,10 @@ class ToolGPIOController:
     def activate_tool_by_id(self, tool_name: str | None, seconds: float | None = None) -> bool:
         """Activa el relay/contactor de la herramienta indicada durante `seconds`.
 
-        Llamada BLOQUEANTE (duerme `seconds`) — igual que open_locker_by_id.
-        Ejecútala en un thread aparte si no quieres bloquear el hilo que llama
-        (así se usa en scanning_screen.py para los lockers).
+        Llamada BLOQUEANTE (espera hasta `seconds`, o hasta que stop_tool_by_id()
+        la interrumpa) — igual que open_locker_by_id. Ejecútala en un thread aparte
+        si no quieres bloquear el hilo que llama (así se usa en scanning_screen.py
+        para los lockers, y aquí para el flujo de "Terminar de usar el recurso").
         """
         hold_seconds = float(seconds if seconds is not None else self._default_seconds)
         if hold_seconds <= 0:
@@ -148,19 +154,29 @@ class ToolGPIOController:
             logger.info("Herramienta '%s' ya está activa, ignorando solicitud", tool_name)
             return False
 
+        stop_event = self._stop_events.get(tool_name)
+        if stop_event is not None:
+            stop_event.clear()
+
         try:
             if self._backend == "rpi_gpio":
                 active_value = GPIO.LOW if self._active_low else GPIO.HIGH
                 inactive_value = GPIO.HIGH if self._active_low else GPIO.LOW
                 GPIO.output(pin, active_value)
                 logger.info("Herramienta '%s' activada (pin=%s) por %.2fs", tool_name, pin, hold_seconds)
-                time.sleep(hold_seconds)
+                if stop_event is not None:
+                    stop_event.wait(timeout=hold_seconds)
+                else:
+                    time.sleep(hold_seconds)
                 GPIO.output(pin, inactive_value)
             elif self._backend == "pinctrl":
                 if not self._pinctrl_write_pin(pin, active=True):
                     return False
                 logger.info("Herramienta '%s' activada (pin=%s) por %.2fs", tool_name, pin, hold_seconds)
-                time.sleep(hold_seconds)
+                if stop_event is not None:
+                    stop_event.wait(timeout=hold_seconds)
+                else:
+                    time.sleep(hold_seconds)
                 if not self._pinctrl_write_pin(pin, active=False):
                     return False
             else:
@@ -174,6 +190,13 @@ class ToolGPIOController:
 
         logger.info("Herramienta '%s' desactivada (pin=%s)", tool_name, pin)
         return True
+
+    def stop_tool_by_id(self, tool_name: str) -> None:
+        """Señala corte anticipado de una activación en curso (botón "Terminar de
+        usar el recurso"). Si no hay ninguna activación corriendo, no hace nada."""
+        stop_event = self._stop_events.get(tool_name)
+        if stop_event is not None:
+            stop_event.set()
 
     def cleanup(self) -> None:
         """Libera todos los pines para evitar estados flotantes."""
@@ -195,6 +218,18 @@ class ToolGPIOController:
             finally:
                 self._setup_done = False
                 self._backend = "none"
+
+
+def tool_name_for_resource(resource: dict | None) -> str | None:
+    """Mapea un recurso de la tabla `recursos` (nombre libre, admin-managed) a
+    una clave de TOOL_GPIO_CONFIG["pins"], si existe una herramienta física
+    para él. Match por nombre en minúsculas — hoy solo "taladro" tiene relé;
+    un recurso sin relé asociado devuelve None y queda como registro sin
+    control físico (igual que el comportamiento previo a conectar hardware)."""
+    if not resource:
+        return None
+    name = (resource.get("nombre") or "").strip().lower()
+    return name if name in TOOL_PIN_MAP else None
 
 
 _controller_instance: ToolGPIOController | None = None

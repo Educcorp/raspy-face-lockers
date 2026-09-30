@@ -1,42 +1,36 @@
 """
 ResourceSelectScreen – catálogo de recursos compartidos activables (480×800 px).
 
-Se llega aquí desde ModeSelectScreen al elegir "Activar recurso". Muestra
-tarjetas seleccionables; hoy solo existe el Taladro (TOOL_GPIO_CONFIG en
-config.py solo tiene ese canal), pero la lista está pensada para crecer sin
-tocar el layout — agregar una entrada a AVAILABLE_RESOURCES basta.
-
-Solo interfaz: no consulta la BD ni valida permisos todavía (eso llega junto
-con la conexión real del relay del taladro).
+Se llega aquí desde ModeSelectScreen al elegir "Activar recurso". Muestra el
+catálogo real de la tabla `recursos` (antes era una lista hardcodeada) y, por
+cada uno, si ya hay una sesión de uso activa (`recurso_uso`) — en ese caso la
+tarjeta se marca "EN USO" y navega directo al estado de progreso en vez de
+dejar configurar un tiempo nuevo.
 """
 
 import customtkinter as ctk
 import logging
 
+from services import resource_service
 from ui.i18n import t
 from ui import theme
 from ui.theme import PALETTE
 
 logger = logging.getLogger(__name__)
 
-# Catálogo de recursos activables. Cada entrada: id interno (para más adelante
-# mapear con TOOL_GPIO_CONFIG["pins"]), ícono (emoji, sin depender de glifos
-# de Font Awesome no definidos en ui/theme.py), y claves i18n de nombre/desc.
-AVAILABLE_RESOURCES: list[dict] = [
-    {
-        "id": "taladro",
-        "icon": "🛠️",
-        "name_key": "resource.taladro.name",
-        "desc_key": "resource.taladro.desc",
-    },
-]
+# Mapeo nombre de recurso (columna `recursos.nombre`) → ícono + claves i18n de
+# descripción. Un recurso sin entrada aquí usa el ícono/descripción genéricos.
+_RESOURCE_DISPLAY: dict[str, dict] = {
+    "taladro": {"icon": "🛠️", "desc_key": "resource.taladro.desc"},
+}
+_DEFAULT_ICON = "🔧"
 
 
 def resource_display_name(resource: dict | None) -> str:
-    """Nombre localizado de un recurso (usado también por ScanningScreen)."""
-    if resource and resource.get("name_key"):
-        return t(resource["name_key"])
-    return t("resource.taladro.name")
+    """Nombre a mostrar de un recurso (usado también por ScanningScreen)."""
+    if not resource:
+        return t("resource.taladro.name")
+    return resource.get("nombre") or t("resource.taladro.name")
 
 
 class ResourceSelectScreen(ctk.CTkFrame):
@@ -98,13 +92,31 @@ class ResourceSelectScreen(ctk.CTkFrame):
         ).pack(anchor="w", pady=(4, 0))
 
         # ── Lista de recursos ────────────────────────────────────────────────
-        body = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+        self._body = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self._body.pack(fill="both", expand=True, padx=18, pady=(0, 18))
 
-        for resource in AVAILABLE_RESOURCES:
-            self._build_resource_card(body, resource)
+    def _load_resources(self) -> None:
+        """Recarga el catálogo real y el estado de uso de cada recurso — se
+        llama en cada on_show() para no mostrar "EN USO" obsoleto."""
+        for w in self._body.winfo_children():
+            w.destroy()
 
-    def _build_resource_card(self, parent, resource: dict) -> None:
+        try:
+            resources = resource_service.get_active_resources()
+        except Exception as exc:
+            logger.warning("No se pudo cargar el catálogo de recursos: %s", exc)
+            resources = []
+
+        for resource in resources:
+            session = None
+            try:
+                session = resource_service.get_active_session(resource["idRecurso"])
+            except Exception as exc:
+                logger.warning("No se pudo consultar sesión de recurso %s: %s",
+                                resource.get("idRecurso"), exc)
+            self._build_resource_card(self._body, resource, in_use=session is not None)
+
+    def _build_resource_card(self, parent, resource: dict, in_use: bool = False) -> None:
         card = ctk.CTkFrame(
             parent,
             fg_color=PALETTE["CARD"],
@@ -117,9 +129,11 @@ class ResourceSelectScreen(ctk.CTkFrame):
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="x", padx=18, pady=18)
 
+        display = _RESOURCE_DISPLAY.get((resource.get("nombre") or "").strip().lower(), {})
+
         ctk.CTkLabel(
             inner,
-            text=resource.get("icon", "🔧"),
+            text=display.get("icon", _DEFAULT_ICON),
             font=ctk.CTkFont(size=34),
             fg_color="transparent",
         ).pack(side="left", padx=(0, 16))
@@ -127,36 +141,55 @@ class ResourceSelectScreen(ctk.CTkFrame):
         text_col = ctk.CTkFrame(inner, fg_color="transparent")
         text_col.pack(side="left", fill="x", expand=True)
 
+        name_row = ctk.CTkFrame(text_col, fg_color="transparent")
+        name_row.pack(fill="x")
+
         ctk.CTkLabel(
-            text_col,
+            name_row,
             text=resource_display_name(resource),
             font=theme.font_display(18, "bold"),
             text_color=PALETTE["TEXT"],
             fg_color="transparent",
             anchor="w",
-        ).pack(fill="x")
+        ).pack(side="left")
 
-        ctk.CTkLabel(
-            text_col,
-            text=t(resource.get("desc_key", "")),
-            font=theme.font_body(12),
-            text_color=PALETTE["MUTED"],
-            fg_color="transparent",
-            anchor="w",
-            wraplength=220,
-            justify="left",
-        ).pack(fill="x", pady=(2, 0))
+        if in_use:
+            ctk.CTkLabel(
+                name_row,
+                text=t("resource.in_use"),
+                font=theme.font_body(11, "bold"),
+                text_color=PALETTE["WHITE"],
+                fg_color=PALETTE["WARN"],
+                corner_radius=8,
+                width=70, height=22,
+            ).pack(side="left", padx=(10, 0))
+
+        desc_key = display.get("desc_key", "")
+        if desc_key:
+            ctk.CTkLabel(
+                text_col,
+                text=t(desc_key),
+                font=theme.font_body(12),
+                text_color=PALETTE["MUTED"],
+                fg_color="transparent",
+                anchor="w",
+                wraplength=220,
+                justify="left",
+            ).pack(fill="x", pady=(2, 0))
 
         ctk.CTkButton(
             card,
-            text=t("resource.select"),
+            text=t("resource.view_status") if in_use else t("resource.select"),
             font=theme.font_body(15, "bold"),
-            fg_color=PALETTE["ACCENT"],
-            hover_color=PALETTE["ACCENT_HOVER"],
+            fg_color=PALETTE["WARN"] if in_use else PALETTE["ACCENT"],
+            hover_color=PALETTE["WARN"] if in_use else PALETTE["ACCENT_HOVER"],
             text_color=PALETTE["WHITE"],
             height=48,
             corner_radius=theme.RADIUS_PILL,
-            command=lambda r=resource: self._select_resource(r),
+            command=(
+                (lambda r=resource: self._view_status(r)) if in_use
+                else (lambda r=resource: self._select_resource(r))
+            ),
         ).pack(fill="x", padx=18, pady=(0, 18))
 
     # ── Navegación ────────────────────────────────────────────────────────────
@@ -165,6 +198,14 @@ class ResourceSelectScreen(ctk.CTkFrame):
         from ui.locker_screen.duration_select_screen import DurationSelectScreen
         self.controller.show_frame(DurationSelectScreen, resource=resource)
 
+    def _view_status(self, resource: dict) -> None:
+        from ui.locker_screen.scanning_screen import ScanningScreen
+        self.controller.show_frame(
+            ScanningScreen,
+            mode=ScanningScreen.FLOW_RESOURCE_STATUS,
+            resource=resource,
+        )
+
     def _go_back(self) -> None:
         from ui.locker_screen.mode_select_screen import ModeSelectScreen
         self.controller.show_frame(ModeSelectScreen)
@@ -172,4 +213,4 @@ class ResourceSelectScreen(ctk.CTkFrame):
     # ── API pública ───────────────────────────────────────────────────────────
 
     def on_show(self) -> None:
-        pass
+        self._load_resources()

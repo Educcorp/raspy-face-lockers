@@ -77,6 +77,25 @@ class StandbyScreen(ctk.CTkFrame):
         # ── Espacio superior ──────────────────────────────────────────────────
         ctk.CTkLabel(self, text="", fg_color="transparent").grid(row=0, column=0)
 
+        # ── Botón de regreso a la selección de locker/recurso ──────────────────
+        # place() en vez de insertarlo en el grid de 6 filas: evita renumerar
+        # las filas existentes (mismo enfoque de bajo riesgo, patrón visual
+        # calcado de resource_select_screen.py / duration_select_screen.py).
+        header = ctk.CTkFrame(self, fg_color="transparent", height=64)
+        header.place(x=18, y=18)
+
+        ctk.CTkButton(
+            header,
+            text=t("common.back"),
+            font=theme.font_body(14, "bold"),
+            fg_color="transparent",
+            hover_color=PALETTE["ACCENT_SOFT_STRONG"],
+            text_color=self.TEXT_COLOR,
+            width=110, height=40,
+            corner_radius=14,
+            command=self._go_back,
+        ).pack(side="left")
+
         # ── Logo / ícono ──────────────────────────────────────────────────────
         logo_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -258,6 +277,10 @@ class StandbyScreen(ctk.CTkFrame):
         self._transitioning = True
         from ui.locker_screen.scanning_screen import ScanningScreen
         self.controller.show_frame(ScanningScreen)
+
+    def _go_back(self) -> None:
+        from ui.locker_screen.mode_select_screen import ModeSelectScreen
+        self.controller.show_frame(ModeSelectScreen)
 
     # ── Animación de puntos ───────────────────────────────────────────────────
 

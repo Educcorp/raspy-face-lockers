@@ -75,6 +75,14 @@ def main() -> None:
     except Exception as exc:
         logger.warning("No se pudo iniciar el servicio de comandos remotos: %s", exc)
 
+    # Libera automáticamente un recurso compartido cuyo tiempo se cumplió sin
+    # que nadie presionara "Terminar de usar". Nunca debe impedir el arranque.
+    try:
+        from services.resource_session_worker import start_worker as _start_resource_worker
+        _start_resource_worker()
+    except Exception as exc:
+        logger.warning("No se pudo iniciar el worker de expiración de recursos: %s", exc)
+
     if args.mode == "locker":
         from ui.app import LockerApp
         LockerApp().mainloop()

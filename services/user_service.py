@@ -25,7 +25,7 @@ def get_all_users() -> list[dict]:
     return fetch_all("""
         SELECT u.idUsuario AS "idUsuario", u.nombre, u.apPaterno AS "apPaterno",
                u.apMaterno AS "apMaterno", u.matricula, u.emailInst AS "emailInst",
-               u.tel, u.estado,
+               u.tel, u.estado, u.permisoActivacion AS "permisoActivacion",
                t.nombreTipoUsuario AS tipo,
                ua.nombreUnidadAcademica AS unidad
         FROM usuarios u
@@ -42,6 +42,7 @@ def get_user_by_id(user_id: int) -> dict | None:
                u.apMaterno AS "apMaterno", u.idTipoUsuario AS "idTipoUsuario",
                u.idUnidadAcademica AS "idUnidadAcademica", u.estado,
                u.emailInst AS "emailInst", u.tel, u.matricula, u.pin,
+               u.permisoActivacion AS "permisoActivacion",
                u.fechaHoraReg AS "fechaHoraReg", u.fechaHoraAct AS "fechaHoraAct",
                u.creadoPor AS "creadoPor", u.modificadoPor AS "modificadoPor",
                t.nombreTipoUsuario AS tipo,
@@ -67,14 +68,14 @@ def update_user(user_id: int, data: dict) -> None:
     Actualiza los datos de un usuario existente.
 
     data debe contener: nombre, apPaterno, apMaterno, matricula,
-    emailInst, tel, idTipoUsuario, idUnidadAcademica, estado.
+    emailInst, tel, idTipoUsuario, idUnidadAcademica, estado, permisoActivacion.
     """
     execute("""
         UPDATE usuarios SET
             nombre=%s, apPaterno=%s, apMaterno=%s,
             matricula=%s, emailInst=%s, tel=%s,
             idTipoUsuario=%s, idUnidadAcademica=%s,
-            estado=%s,
+            estado=%s, permisoActivacion=%s,
             modificadoPor=1
         WHERE idUsuario=%s
     """, (
@@ -82,6 +83,7 @@ def update_user(user_id: int, data: dict) -> None:
         data["matricula"], data["emailInst"], data.get("tel"),
         data["idTipoUsuario"], data["idUnidadAcademica"],
         data.get("estado", "activo"),
+        data.get("permisoActivacion", "locker"),
         user_id,
     ))
 
@@ -161,14 +163,15 @@ def create_user_with_encodings(data: dict, poses: list[dict]) -> int:
         cur = conn.execute("""
             INSERT INTO usuarios
                 (nombre, apPaterno, apMaterno, idTipoUsuario, idUnidadAcademica,
-                 emailInst, tel, matricula, pin, creadoPor)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                 emailInst, tel, matricula, pin, permisoActivacion, creadoPor)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
             RETURNING idUsuario AS "idUsuario"
         """, (
             data["nombre"], data["apPaterno"], data.get("apMaterno"),
             data["idTipoUsuario"], data["idUnidadAcademica"],
             data["emailInst"], data.get("tel"),
             data["matricula"], data["pin_hash"],
+            data.get("permisoActivacion", "locker"),
         ))
         user_id = cur.fetchone()["idUsuario"]
 

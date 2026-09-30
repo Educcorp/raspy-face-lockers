@@ -66,6 +66,25 @@
       </select>
     </div>
 
+    <!-- Filtro por tipo (locker / recurso) -->
+    <div class="access-filter">
+      <label for="tipo">{{ tr('hist.type') }}</label>
+
+      <select id="tipo" name="tipo">
+        <option value="" {% if not tipo %}selected{% endif %}>
+          {{ tr('common.all') }}
+        </option>
+
+        <option value="locker" {% if tipo == 'locker' %}selected{% endif %}>
+          {{ tr('hist.type_locker') }}
+        </option>
+
+        <option value="recurso" {% if tipo == 'recurso' %}selected{% endif %}>
+          {{ tr('hist.type_resource') }}
+        </option>
+      </select>
+    </div>
+
     <!-- Botones -->
     <div class="access-filter-actions">
 
@@ -86,7 +105,7 @@
         {{ tr('common.search') }}
       </button>
 
-      {% if buscar or resultado %}
+      {% if buscar or resultado or tipo %}
         <a
           href="{{ url_for('history.list_history') }}"
           class="btn btn-muted"
@@ -128,6 +147,7 @@
           <th>{{ tr('common.time') }}</th>
           <th>{{ tr('common.user') }}</th>
           <th>{{ tr('common.matricula') }}</th>
+          <th>{{ tr('hist.item') }}</th>
           <th>{{ tr('hist.result') }}</th>
           <th>{{ tr('hist.reason') }}</th>
         </tr>
@@ -156,6 +176,14 @@
           </td>
 
           <td>
+            {% if r.tipoacceso == 'recurso' %}
+              {{ tr('hist.type_resource') }}: {{ r.nombrerecurso or '—' }}
+            {% else %}
+              {{ tr('hist.type_locker') }} {{ r.idlocker if r.idlocker is not none else '—' }}
+            {% endif %}
+          </td>
+
+          <td>
             {% if r.accesopermitido == 'si' %}
 
               <span class="badge activo">
@@ -180,7 +208,7 @@
         {% else %}
 
         <tr>
-          <td colspan="6" class="empty-access">
+          <td colspan="7" class="empty-access">
             <div class="empty-access-icon">
               <svg
                 width="22"
@@ -229,7 +257,8 @@
         'history.list_history',
         pagina=pagina-1,
         buscar=buscar,
-        resultado=resultado
+        resultado=resultado,
+        tipo=tipo
       ) }}"
       aria-label="{{ tr('common.prev_page') }}"
     >
@@ -290,7 +319,8 @@
             'history.list_history',
             pagina=p,
             buscar=buscar,
-            resultado=resultado
+            resultado=resultado,
+            tipo=tipo
           ) }}"
         >
           {{ p }}
@@ -312,7 +342,8 @@
         'history.list_history',
         pagina=pagina+1,
         buscar=buscar,
-        resultado=resultado
+        resultado=resultado,
+        tipo=tipo
       ) }}"
       aria-label="{{ tr('common.next_page') }}"
     >

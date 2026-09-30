@@ -41,6 +41,17 @@ def _estado_color(estado: str) -> str:
     }.get(estado, PALETTE["MUTED"])
 
 
+# Permiso de acceso (usuarios.permisoActivacion): valor real de la BD → etiqueta
+# visible en el selector, y su inverso para guardar. Mismos valores del CHECK
+# que ui/admin/register_user.py::_Step2TypeUnit.
+_PERMISO_LABELS_BY_VALUE: dict[str, str] = {
+    "locker": "Locker",
+    "recurso_compartido": "Recurso compartido",
+    "ambos": "Ambos",
+}
+_PERMISO_VALUES_BY_LABEL: dict[str, str] = {v: k for k, v in _PERMISO_LABELS_BY_VALUE.items()}
+
+
 # ── Pantalla lista ────────────────────────────────────────────────────────────
 
 class UsersCatalogScreen(ctk.CTkFrame):
@@ -375,6 +386,12 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._make_selector(t("common.status"), "estado",
                             ["activo", "inactivo", "suspendido"])
 
+        self._vars["permiso"] = tk.StringVar()
+        self._make_selector(
+            t("users.field_permiso"), "permiso",
+            list(_PERMISO_LABELS_BY_VALUE.values()),
+        )
+
         self.face_badge = ctk.CTkLabel(
             self._scroll, text=t("users.no_face"),
             font=ctk.CTkFont(size=13),
@@ -517,6 +534,9 @@ class UserDetailOverlay(ctk.CTkFrame):
         self._vars["tipo"].set(tipo_name)
         self._vars["unidad"].set(row.get("unidad", ""))
         self._vars["estado"].set(row.get("estado", "activo"))
+        self._vars["permiso"].set(
+            _PERMISO_LABELS_BY_VALUE.get(row.get("permisoActivacion", "locker"), "Locker")
+        )
 
         current_state = (row.get("estado") or "activo").strip().lower()
         is_inactive = current_state == "inactivo"
@@ -666,6 +686,9 @@ class UserDetailOverlay(ctk.CTkFrame):
                 "idTipoUsuario":     tipo_id,
                 "idUnidadAcademica": unidad_id,
                 "estado":            self._vars["estado"].get(),
+                "permisoActivacion": _PERMISO_VALUES_BY_LABEL.get(
+                    self._vars["permiso"].get(), "locker"
+                ),
             })
         except Exception as exc:
             self.lbl_err.configure(

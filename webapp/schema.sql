@@ -149,20 +149,32 @@ CREATE TABLE IF NOT EXISTS historial_accesos (
             'facial', 'pin', 'sin_asignacion', 'limite_intentos',
             'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
             'matricula_incorrecta', 'pin_cancelado',
-            'puerta_cerrada', 'puerta_no_cerrada'
+            'puerta_cerrada', 'puerta_no_cerrada',
+            'recurso_en_uso', 'recurso_finalizado', 'recurso_expirado'
         ) OR motivo IS NULL
     ),
     fechaExpiracion TIMESTAMPTZ NOT NULL,
+    -- Arco exclusivo: 'locker' usa idLockerAsignado, 'recurso' usa idRecursoUso
+    -- (agregado por add_historial_tipo_recurso.sql, ver ese archivo para el porqué).
+    tipoAcceso TEXT NOT NULL DEFAULT 'locker' CHECK (tipoAcceso IN ('locker', 'recurso')),
+    idRecursoUso INTEGER,
+    CONSTRAINT chk_historial_tipo_consistente CHECK (
+        (tipoAcceso = 'locker'  AND idRecursoUso IS NULL) OR
+        (tipoAcceso = 'recurso' AND idLockerAsignado IS NULL)
+    ),
     CONSTRAINT fk_historial_asignacion
         FOREIGN KEY (idLockerAsignado) REFERENCES asignacion_locker (idLockerAsignado)
         ON UPDATE CASCADE ON DELETE SET NULL,
     CONSTRAINT fk_historial_usuario
         FOREIGN KEY (idUsuario) REFERENCES usuarios (idUsuario)
         ON UPDATE CASCADE ON DELETE SET NULL
+    -- fk_historial_recurso_uso se agrega más abajo con ALTER TABLE, después de
+    -- CREATE TABLE recurso_uso (definida más adelante en este archivo).
 );
 
 CREATE INDEX IF NOT EXISTS idx_historial_expiracion ON historial_accesos (fechaExpiracion, accesoPermitido);
 CREATE INDEX IF NOT EXISTS idx_historial_locker ON historial_accesos (idLockerAsignado, fechaHoraAcceso);
+CREATE INDEX IF NOT EXISTS idx_historial_tipo ON historial_accesos (tipoAcceso, fechaHoraAcceso);
 
 -- ── Apertura remota (web → Pi): cola de comandos + estado de puertas ─────────
 -- Ver webapp/migrations/add_comandos_locker.sql para el porqué.
@@ -244,6 +256,38 @@ CREATE TABLE IF NOT EXISTS recurso_autorizados (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_recurso_autorizado_activo
     ON recurso_autorizados (idRecurso, idUsuario) WHERE estado = 'activo';
 
+-- Sesiones de uso de recursos (ver webapp/migrations/add_recurso_uso.sql para
+-- el porqué). El candado de concurrencia es uq_recurso_uso_activo: solo puede
+-- haber una fila 'en_uso' por recurso.
+CREATE TABLE IF NOT EXISTS recurso_uso (
+    idRecursoUso SERIAL PRIMARY KEY,
+    idRecurso INTEGER NOT NULL,
+    idUsuario INTEGER NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'en_uso'
+        CHECK (estado IN ('en_uso', 'finalizado', 'expirado')),
+    fechaHoraInicio TIMESTAMPTZ NOT NULL DEFAULT now(),
+    duracionMinutos INTEGER NOT NULL CHECK (duracionMinutos > 0 AND duracionMinutos <= 180),
+    fechaFinPrevista TIMESTAMPTZ NOT NULL,
+    fechaFinReal TIMESTAMPTZ,
+    finalizadoPor TEXT CHECK (finalizadoPor IN ('usuario', 'sistema') OR finalizadoPor IS NULL),
+    CONSTRAINT fk_recurso_uso_recurso
+        FOREIGN KEY (idRecurso) REFERENCES recursos (idRecurso)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_recurso_uso_usuario
+        FOREIGN KEY (idUsuario) REFERENCES usuarios (idUsuario)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_recurso_uso_activo
+    ON recurso_uso (idRecurso) WHERE estado = 'en_uso';
+CREATE INDEX IF NOT EXISTS idx_recurso_uso_usuario ON recurso_uso (idUsuario, estado);
+CREATE INDEX IF NOT EXISTS idx_recurso_uso_fin_previsto ON recurso_uso (fechaFinPrevista) WHERE estado = 'en_uso';
+
+-- Diferida hasta aquí porque historial_accesos se define antes que recurso_uso.
+ALTER TABLE historial_accesos ADD CONSTRAINT fk_historial_recurso_uso
+    FOREIGN KEY (idRecursoUso) REFERENCES recurso_uso (idRecursoUso)
+    ON UPDATE CASCADE ON DELETE SET NULL;
+
 -- ── Triggers: equivalentes en Postgres a los AFTER UPDATE de SQLite ─────────
 -- (en Postgres se implementan como BEFORE UPDATE que ajustan NEW antes de escribir)
 
@@ -294,13 +338,17 @@ CREATE TRIGGER trg_recursos_act BEFORE UPDATE ON recursos
 
 -- ── Vistas ───────────────────────────────────────────────────────────────
 
-CREATE OR REPLACE VIEW v_historial_detalle AS
+DROP VIEW IF EXISTS v_historial_detalle;
+CREATE VIEW v_historial_detalle AS
 SELECT
     h.idAcceso,
+    h.tipoAcceso,
     COALESCE(u1.nombre || ' ' || u1.apPaterno, u2.nombre || ' ' || u2.apPaterno) AS nombreCompleto,
     COALESCE(u1.matricula, u2.matricula) AS matricula,
     l.idLocker,
     a.nombreArea,
+    r.idRecurso,
+    r.nombre AS nombreRecurso,
     h.fechaHoraAcceso,
     h.accesoPermitido,
     h.motivo,
@@ -311,6 +359,8 @@ LEFT JOIN usuarios u1 ON al.idUsuario = u1.idUsuario
 LEFT JOIN usuarios u2 ON h.idUsuario = u2.idUsuario
 LEFT JOIN lockers l ON al.idLocker = l.idLocker
 LEFT JOIN area_lockers a ON l.idArea = a.idArea
+LEFT JOIN recurso_uso ru ON h.idRecursoUso = ru.idRecursoUso
+LEFT JOIN recursos r ON ru.idRecurso = r.idRecurso
 ORDER BY h.fechaHoraAcceso DESC;
 
 CREATE OR REPLACE VIEW v_lockers_disponibles AS

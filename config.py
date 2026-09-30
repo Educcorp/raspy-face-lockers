@@ -95,7 +95,7 @@ HEAD_POSE_CONFIG = {
 # video reproducido ni una máscara 3D. Poner "enabled": False lo desactiva.
 LIVENESS_CHALLENGE_CONFIG = {
     "enabled": True,
-    "steps": 2,                              # poses distintas que se piden
+    "steps": 1,                              # poses distintas que se piden (tras el frente inicial)
     "pool": ["derecha", "izquierda", "arriba"],
     "step_timeout_s": 8.0,                   # tiempo para cumplir cada pose
     "max_timeouts": 2,                       # retos vencidos → intento fallido

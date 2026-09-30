@@ -56,10 +56,12 @@
                 </div>
                 <button class="btn btn-sm" type="submit">{{ tr('common.save_changes') }}</button>
               </form>
+              {% if g.user.role == 'superadmin' %}
               <form method="post" action="{{ url_for('resources.delete_recurso', recurso_id=r.idrecurso) }}"
                     data-confirm="{{ tr('res.delete_confirm') }}" style="margin-top:10px;">
                 <button class="btn btn-sm btn-danger" type="submit" style="width:100%;">{{ tr('common.delete') }}</button>
               </form>
+              {% endif %}
             </div>
           </details>
         </td>

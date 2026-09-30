@@ -73,9 +73,7 @@
             <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
           </summary>
           <div class="dropdown-panel">
-            {% if g.user.role == 'superadmin' %}
             <a href="{{ url_for('resources.catalog') }}">{{ tr('nav.recursos_catalogo') }}</a>
-            {% endif %}
             <a href="{{ url_for('resources.authorizations') }}">{{ tr('nav.recursos_autorizaciones') }}</a>
           </div>
         </details>
@@ -130,9 +128,7 @@
       <details class="nav-dropdown {{ 'active' if request.blueprint == 'resources' else '' }}">
         <summary>{{ tr('nav.recursos') }} <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></summary>
         <div class="dropdown-panel">
-          {% if g.user.role == 'superadmin' %}
           <a href="{{ url_for('resources.catalog') }}">{{ tr('nav.recursos_catalogo') }}</a>
-          {% endif %}
           <a href="{{ url_for('resources.authorizations') }}">{{ tr('nav.recursos_autorizaciones') }}</a>
         </div>
       </details>

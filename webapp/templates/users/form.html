@@ -50,7 +50,7 @@
           {% for t in tipos %}
           <option value="{{ t.idtipousuario }}"
                   {% if t.idtipousuario in privileged_tipo_ids %}data-privileged="1"{% endif %}
-                  {% if row and row.idtipousuario==t.idtipousuario %}selected{% endif %}>
+                  {% if (row and row.idtipousuario==t.idtipousuario) or (not row and t.idtipousuario==default_tipo_id) %}selected{% endif %}>
             {{ t.nombretipousuario }}
           </option>
           {% endfor %}
@@ -68,7 +68,7 @@
         </select>
       </div>
       {# Admin/Superadmin siempre tienen "ambos": el campo se oculta (ver script abajo). #}
-      {% set sel_tipo = row.idtipousuario if row else (tipos[0].idtipousuario if tipos else none) %}
+      {% set sel_tipo = row.idtipousuario if row else (default_tipo_id if default_tipo_id is not none else (tipos[0].idtipousuario if tipos else none)) %}
       {% set perm_hidden = target_is_superadmin or ((sel_tipo in privileged_tipo_ids) if g.user.role == 'superadmin' else row_privileged) %}
       <div class="form-row" id="perm-row" {% if perm_hidden %}hidden{% endif %}>
         <label>{{ tr('form.perms') }}</label>

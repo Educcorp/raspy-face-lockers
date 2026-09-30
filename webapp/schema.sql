@@ -199,12 +199,18 @@ CREATE TABLE IF NOT EXISTS estado_puerta (
 );
 
 -- ── Recursos compartidos + autorizaciones por usuario ───────────────────────
--- Ver webapp/migrations/add_recursos.sql para el porqué.
+-- Ver webapp/migrations/add_recursos.sql y add_recurso_area.sql para el porqué.
 
 CREATE TABLE IF NOT EXISTS recursos (
     idRecurso SERIAL PRIMARY KEY,
     nombre TEXT NOT NULL CHECK (length(nombre) <= 60),
     descripcion TEXT CHECK (length(descripcion) <= 300),
+    -- Nullable: recursos creados antes de add_recurso_area.sql pueden no tener
+    -- unidad/área todavía; el formulario del panel web las exige de aquí en
+    -- adelante, validando que el área pertenezca a la unidad (mismo catálogo
+    -- que usan los lockers).
+    idUnidadAcademica INTEGER REFERENCES unidad_academica (idUnidadAcademica) ON UPDATE CASCADE ON DELETE RESTRICT,
+    idArea INTEGER REFERENCES area_lockers (idArea) ON UPDATE CASCADE ON DELETE RESTRICT,
     estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'inactivo')),
     fechaHoraReg TIMESTAMPTZ NOT NULL DEFAULT now(),
     fechaHoraAct TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -212,6 +218,9 @@ CREATE TABLE IF NOT EXISTS recursos (
     modificadoPor INTEGER,
     CONSTRAINT uq_recurso_nombre UNIQUE (nombre)
 );
+
+CREATE INDEX IF NOT EXISTS idx_recursos_unidad ON recursos (idUnidadAcademica);
+CREATE INDEX IF NOT EXISTS idx_recursos_area ON recursos (idArea);
 
 -- Usuarios autorizados a activar un recurso. A diferencia de asignacion_locker
 -- (1 asignación activa por locker/usuario), aquí un recurso puede tener varios

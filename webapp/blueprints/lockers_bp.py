@@ -23,6 +23,8 @@ def list_lockers():
         area_id = request.form.get("idArea", type=int)
         if not unidad_id or not area_id:
             flash("Selecciona unidad académica y área.", "danger")
+        elif not catalog_service.area_belongs_to_unidad(area_id, unidad_id):
+            flash("Esa área no pertenece a la unidad académica seleccionada.", "danger")
         else:
             locker_service.create_locker(unidad_id, area_id, _actor_id())
             flash("Locker creado.", "success")
@@ -58,6 +60,8 @@ def set_location(locker_id: int):
     area_id = request.form.get("idArea", type=int)
     if not unidad_id or not area_id:
         flash("Selecciona unidad académica y área.", "danger")
+    elif not catalog_service.area_belongs_to_unidad(area_id, unidad_id):
+        flash("Esa área no pertenece a la unidad académica seleccionada.", "danger")
     else:
         locker_service.update_locker_location(locker_id, unidad_id, area_id, _actor_id())
         flash("Locker actualizado.", "success")

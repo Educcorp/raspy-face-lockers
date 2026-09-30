@@ -7,16 +7,27 @@ from webapp.db import execute, execute_returning, fetch_all, fetch_one
 
 # ── Catálogo de recursos ────────────────────────────────────────────────────
 
+def _recursos_select_query() -> str:
+    return """
+        SELECT r.idRecurso, r.nombre, r.descripcion, r.idUnidadAcademica, r.idArea,
+               r.estado, r.fechaHoraReg, r.fechaHoraAct, r.creadoPor, r.modificadoPor,
+               ua.nombreUnidadAcademica, a.nombreArea
+        FROM recursos r
+        LEFT JOIN unidad_academica ua ON ua.idUnidadAcademica = r.idUnidadAcademica
+        LEFT JOIN area_lockers a ON a.idArea = r.idArea
+    """
+
+
 def get_all_recursos() -> list[dict]:
-    return fetch_all("SELECT * FROM recursos ORDER BY nombre")
+    return fetch_all(_recursos_select_query() + " ORDER BY r.nombre")
 
 
 def get_active_recursos() -> list[dict]:
-    return fetch_all("SELECT * FROM recursos WHERE estado='activo' ORDER BY nombre")
+    return fetch_all(_recursos_select_query() + " WHERE r.estado='activo' ORDER BY r.nombre")
 
 
 def get_recurso_by_id(recurso_id: int) -> dict | None:
-    return fetch_one("SELECT * FROM recursos WHERE idRecurso=%s", (recurso_id,))
+    return fetch_one(_recursos_select_query() + " WHERE r.idRecurso=%s", (recurso_id,))
 
 
 def recurso_nombre_exists(nombre: str, exclude_id: int | None = None) -> bool:
@@ -30,19 +41,29 @@ def recurso_nombre_exists(nombre: str, exclude_id: int | None = None) -> bool:
     return row is not None
 
 
-def create_recurso(nombre: str, descripcion: str | None, creado_por: int) -> int:
+def create_recurso(
+    nombre: str, descripcion: str | None, unidad_id: int, area_id: int, creado_por: int
+) -> int:
     row = execute_returning(
-        "INSERT INTO recursos (nombre, descripcion, creadoPor) VALUES (%s, %s, %s) "
-        "RETURNING idRecurso",
-        (nombre, descripcion, creado_por),
+        "INSERT INTO recursos (nombre, descripcion, idUnidadAcademica, idArea, creadoPor) "
+        "VALUES (%s, %s, %s, %s, %s) RETURNING idRecurso",
+        (nombre, descripcion, unidad_id, area_id, creado_por),
     )
     return row["idrecurso"]
 
 
-def update_recurso(recurso_id: int, nombre: str, descripcion: str | None, modificado_por: int) -> None:
+def update_recurso(
+    recurso_id: int,
+    nombre: str,
+    descripcion: str | None,
+    unidad_id: int,
+    area_id: int,
+    modificado_por: int,
+) -> None:
     execute(
-        "UPDATE recursos SET nombre=%s, descripcion=%s, modificadoPor=%s WHERE idRecurso=%s",
-        (nombre, descripcion, modificado_por, recurso_id),
+        "UPDATE recursos SET nombre=%s, descripcion=%s, idUnidadAcademica=%s, idArea=%s, "
+        "modificadoPor=%s WHERE idRecurso=%s",
+        (nombre, descripcion, unidad_id, area_id, modificado_por, recurso_id),
     )
 
 

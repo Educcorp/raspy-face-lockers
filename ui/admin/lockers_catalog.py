@@ -13,6 +13,23 @@ from ui.admin_app import PALETTE, get_icon
 from ui.i18n import t
 from auth.session import can_edit_catalogs, is_superadmin
 
+# Numeración consecutiva de lockers: mismo SQL y mismo candado consultivo que
+# webapp/services/locker_service.py (web y Pi comparten la BD). Al crear se usa
+# MAX+1; al eliminar se recorren los posteriores para que no queden huecos
+# (todas las FK hacia lockers son ON UPDATE CASCADE).
+_LOCKER_NUMBERING_LOCK = 742601
+_RENUMBER_LOCKERS_SQL = (
+    "UPDATE lockers l SET idLocker = -m.nuevo "
+    "FROM (SELECT idLocker AS viejo, (row_number() OVER (ORDER BY idLocker))::int AS nuevo "
+    "      FROM lockers) m "
+    "WHERE l.idLocker = m.viejo AND m.viejo <> m.nuevo",
+    "UPDATE lockers SET idLocker = -idLocker WHERE idLocker < 0",
+)
+_SYNC_LOCKER_SEQ_SQL = (
+    "SELECT setval(pg_get_serial_sequence('lockers', 'idlocker'), "
+    "GREATEST((SELECT MAX(idLocker) FROM lockers), 1))"
+)
+
 # Lockers 1-4 son predeterminados del sistema — área/unidad no editables, solo estado
 _DEFAULT_LOCKER_IDS = frozenset({1, 2, 3, 4})
 
@@ -592,6 +609,7 @@ class LockerDetailOverlay(ctk.CTkFrame):
             return
         from database.connection import db_session
         with db_session() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(%s)", (_LOCKER_NUMBERING_LOCK,))
             # asignacion_locker.idLocker es ON DELETE RESTRICT: hay que borrar el
             # historial (asignaciones + sus accesos) antes de poder borrar el locker.
             conn.execute(
@@ -601,6 +619,9 @@ class LockerDetailOverlay(ctk.CTkFrame):
             )
             conn.execute("DELETE FROM asignacion_locker WHERE idLocker=%s", (self.locker_id,))
             conn.execute("DELETE FROM lockers WHERE idLocker=%s", (self.locker_id,))
+            for sql in _RENUMBER_LOCKERS_SQL:
+                conn.execute(sql)
+            conn.execute(_SYNC_LOCKER_SEQ_SQL)
         self._close()
 
     def _close(self) -> None:
@@ -737,13 +758,15 @@ class LockerCreateOverlay(ctk.CTkFrame):
             return
 
         try:
-            row = fetch_one("SELECT COALESCE(MAX(idLocker), 0) + 1 AS next_id FROM lockers")
-            next_id = row["next_id"] if row else 1
-            execute(
-                "INSERT INTO lockers (idLocker, idUnidadAcademica, idArea, estado, creadoPor) "
-                "VALUES (%s, %s, %s, %s, 1)",
-                (next_id, unit["idUnidadAcademica"], area["idArea"], estado),
-            )
+            from database.connection import db_session
+            with db_session() as conn:
+                conn.execute("SELECT pg_advisory_xact_lock(%s)", (_LOCKER_NUMBERING_LOCK,))
+                conn.execute(
+                    "INSERT INTO lockers (idLocker, idUnidadAcademica, idArea, estado, creadoPor) "
+                    "VALUES ((SELECT COALESCE(MAX(idLocker), 0) + 1 FROM lockers), %s, %s, %s, 1)",
+                    (unit["idUnidadAcademica"], area["idArea"], estado),
+                )
+                conn.execute(_SYNC_LOCKER_SEQ_SQL)
         except Exception as exc:
             self._lbl_err.configure(text=f"Error al crear: {str(exc)[:80]}")
             return

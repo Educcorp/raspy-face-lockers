@@ -26,13 +26,45 @@ def get_all_lockers() -> list[dict]:
     )
 
 
+# ── Numeración consecutiva de lockers ────────────────────────────────────────
+# idLocker es el número que ve la gente, así que debe quedar 1..N sin huecos:
+# al crear se toma MAX+1 (no la secuencia SERIAL, que sigue contando los
+# borrados) y al eliminar se recorren los posteriores. Todas las FK hacia
+# lockers son ON UPDATE CASCADE, así que asignaciones, comandos y estado de
+# puerta siguen al locker renumerado. Los lockers 1-4 (relé físico) nunca se
+# borran, así que nunca se renumeran. La Pi usa exactamente el mismo SQL
+# (ui/admin/lockers_catalog.py) y el mismo candado consultivo, para que web y
+# Pi no choquen al crear/eliminar a la vez.
+LOCKER_NUMBERING_LOCK = 742601
+
+_RENUMBER_LOCKERS_SQL = (
+    # Paso 1: a negativo (evita choques de PK a mitad del recorrido).
+    "UPDATE lockers l SET idLocker = -m.nuevo "
+    "FROM (SELECT idLocker AS viejo, (row_number() OVER (ORDER BY idLocker))::int AS nuevo "
+    "      FROM lockers) m "
+    "WHERE l.idLocker = m.viejo AND m.viejo <> m.nuevo",
+    # Paso 2: de vuelta a positivo, ya consecutivos.
+    "UPDATE lockers SET idLocker = -idLocker WHERE idLocker < 0",
+)
+
+_SYNC_LOCKER_SEQ_SQL = (
+    "SELECT setval(pg_get_serial_sequence('lockers', 'idlocker'), "
+    "GREATEST((SELECT MAX(idLocker) FROM lockers), 1))"
+)
+
+
 def create_locker(unidad_id: int, area_id: int, creado_por: int) -> int:
-    row = execute_returning(
-        "INSERT INTO lockers (idUnidadAcademica, idArea, creadoPor) VALUES (%s, %s, %s) "
-        "RETURNING idLocker",
-        (unidad_id, area_id, creado_por),
-    )
-    return row["idlocker"]
+    with cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (LOCKER_NUMBERING_LOCK,))
+        cur.execute(
+            "INSERT INTO lockers (idLocker, idUnidadAcademica, idArea, creadoPor) "
+            "VALUES ((SELECT COALESCE(MAX(idLocker), 0) + 1 FROM lockers), %s, %s, %s) "
+            "RETURNING idLocker",
+            (unidad_id, area_id, creado_por),
+        )
+        new_id = cur.fetchone()["idlocker"]
+        cur.execute(_SYNC_LOCKER_SEQ_SQL)
+    return new_id
 
 
 def set_locker_status(locker_id: int, estado: str, modificado_por: int) -> None:
@@ -69,9 +101,11 @@ def delete_locker(locker_id: int) -> None:
     """Elimina el locker junto con TODO su historial (asignaciones y accesos).
 
     asignacion_locker.idLocker es ON DELETE RESTRICT, así que el historial debe
-    borrarse antes que el locker; todo en una sola transacción.
+    borrarse antes que el locker; todo en una sola transacción. Después se
+    renumeran los lockers posteriores para que sigan siendo consecutivos.
     """
     with cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (LOCKER_NUMBERING_LOCK,))
         cur.execute(
             "DELETE FROM historial_accesos WHERE idLockerAsignado IN "
             "(SELECT idLockerAsignado FROM asignacion_locker WHERE idLocker=%s)",
@@ -79,6 +113,9 @@ def delete_locker(locker_id: int) -> None:
         )
         cur.execute("DELETE FROM asignacion_locker WHERE idLocker=%s", (locker_id,))
         cur.execute("DELETE FROM lockers WHERE idLocker=%s", (locker_id,))
+        for sql in _RENUMBER_LOCKERS_SQL:
+            cur.execute(sql)
+        cur.execute(_SYNC_LOCKER_SEQ_SQL)
 
 
 def get_available_lockers() -> list[dict]:

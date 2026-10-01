@@ -785,6 +785,78 @@ tbody tr:hover { background: var(--surface-alt); }
 .row-edit { position: relative; }
 .row-edit-panel .form-row:last-of-type { margin-bottom: 0; }
 
+/* Botones de acción por fila (activar/desactivar + editar) lado a lado */
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.row-actions form { margin: 0; }
+.row-actions .btn { white-space: nowrap; }
+.row-actions .row-edit-panel { right: 0; }
+
+/* Estado "abierto" del botón Editar */
+.row-edit[open] > summary { background: var(--accent-soft); color: var(--accent); }
+
+/* Variante amplia del panel de edición, con cabecera y pie */
+.row-edit-panel--wide {
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  padding: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: row-edit-in 0.14s ease-out;
+}
+.row-edit-panel--wide > form { padding: 16px 18px 4px; }
+.row-edit-panel--wide .form-row { margin-bottom: 12px; }
+.row-edit-panel--wide .form-row label { font-size: 0.76rem; margin-bottom: 4px; }
+.row-edit-panel--wide .form-row input,
+.row-edit-panel--wide .form-row select { padding: 9px 12px; font-size: 0.88rem; }
+.row-edit-panel--wide .form-row select { padding-right: 32px; }
+
+.row-edit-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 18px 12px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+.row-edit-title { font-weight: 800; font-size: 0.92rem; color: var(--text); }
+.row-edit-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.row-edit-grid .form-row { min-width: 0; }
+
+.row-edit-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--border);
+}
+.row-edit-foot form { margin: 0 auto 0 0; }
+
+.btn.btn-danger-ghost {
+  background: transparent;
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+.btn.btn-danger-ghost:hover { background: var(--danger-soft); }
+
+@keyframes row-edit-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
 .btn:disabled, .btn[disabled] {
   opacity: 0.45;
   cursor: not-allowed;

@@ -500,11 +500,26 @@ class AreaFormOverlay(_BaseFormOverlay):
         unidad_id = self._unidad_map.get(self._unidad_var.get())
         self._clear_err()
         if self._row:
-            execute(
-                "UPDATE area_lockers SET nombreArea=%s, idUnidadAcademica=%s, estado=%s, "
-                "modificadoPor=1 WHERE idArea=%s",
-                (nombre, unidad_id, self._estado_var.get(), self._row["idArea"])
-            )
+            # Si el área cambia de unidad, sus lockers y recursos se mueven con
+            # ella (misma regla que webapp/services/catalog_service.update_area).
+            from database.connection import db_session
+            with db_session() as conn:
+                conn.execute(
+                    "UPDATE area_lockers SET nombreArea=%s, idUnidadAcademica=%s, estado=%s, "
+                    "modificadoPor=1 WHERE idArea=%s",
+                    (nombre, unidad_id, self._estado_var.get(), self._row["idArea"])
+                )
+                if unidad_id:
+                    conn.execute(
+                        "UPDATE lockers SET idUnidadAcademica=%s, modificadoPor=1 "
+                        "WHERE idArea=%s AND idUnidadAcademica<>%s",
+                        (unidad_id, self._row["idArea"], unidad_id)
+                    )
+                    conn.execute(
+                        "UPDATE recursos SET idUnidadAcademica=%s, modificadoPor=1 "
+                        "WHERE idArea=%s AND idUnidadAcademica IS DISTINCT FROM %s",
+                        (unidad_id, self._row["idArea"], unidad_id)
+                    )
         else:
             execute(
                 "INSERT INTO area_lockers (nombreArea, idUnidadAcademica, estado, creadoPor) "

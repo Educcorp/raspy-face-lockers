@@ -1,0 +1,31 @@
+{# Paginación compartida. Uso:
+     {% from "_pagination.html" import pagination %}
+     {{ pagination('lockers.list_lockers', pagina, total_paginas) }}
+   Parámetros extra (filtros) se pasan como kwargs y se conservan en los enlaces. #}
+{% macro pagination(endpoint, pagina, total_paginas) %}
+{% if total_paginas > 1 %}
+<nav class="access-pagination" aria-label="{{ tr('common.pagination') }}">
+  {% if pagina > 1 %}
+    <a class="pagination-btn" href="{{ url_for(endpoint, pagina=pagina - 1, **kwargs) }}">← {{ tr('common.prev') }}</a>
+  {% else %}
+    <span class="pagination-btn disabled">← {{ tr('common.prev') }}</span>
+  {% endif %}
+
+  <div class="pagination-pages">
+    {% for p in range(1, total_paginas + 1) %}
+      {% if p == pagina %}
+        <span class="pagination-number active">{{ p }}</span>
+      {% else %}
+        <a class="pagination-number" href="{{ url_for(endpoint, pagina=p, **kwargs) }}">{{ p }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  {% if pagina < total_paginas %}
+    <a class="pagination-btn" href="{{ url_for(endpoint, pagina=pagina + 1, **kwargs) }}">{{ tr('common.next') }} →</a>
+  {% else %}
+    <span class="pagination-btn disabled">{{ tr('common.next') }} →</span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endmacro %}

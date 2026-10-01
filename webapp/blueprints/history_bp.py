@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request
 
 from webapp.auth import login_required
+from webapp.pagination import PER_PAGE
 from webapp.services import access_log_service
 
 
@@ -34,8 +35,7 @@ def list_history():
         type=str
     ).strip()
 
-    # Siempre 15 registros por página
-    per_page = 15
+    per_page = PER_PAGE
 
     if page < 1:
         page = 1

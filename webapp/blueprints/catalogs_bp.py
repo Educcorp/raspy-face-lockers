@@ -4,6 +4,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from utils.validators import validate_area_nombre, validate_tipo_nombre, validate_unidad_nombre
 from webapp.auth import is_superadmin, superadmin_required
+from webapp.pagination import paginate_list
 from webapp.services import catalog_service
 
 bp = Blueprint("catalogs", __name__, url_prefix="/catalogos")
@@ -49,6 +50,8 @@ def unidades():
         zona = request.form.get("zona", "").strip() or None
         edit_id = request.form.get("idUnidadAcademica", type=int)
         estado = request.form.get("estado", "activo")
+        if estado not in ("activo", "inactivo"):
+            estado = "activo"
 
         err = validate_unidad_nombre(nombre)
         if err:
@@ -61,9 +64,13 @@ def unidades():
         else:
             catalog_service.create_unidad(nombre, zona, _actor_id())
             flash("Unidad académica creada.", "success")
-        return redirect(url_for("catalogs.unidades"))
+        return redirect(url_for("catalogs.unidades", pagina=request.args.get("pagina", 1, type=int)))
 
-    return render_template("catalogs/unidades.html", unidades=catalog_service.get_all_unidades())
+    unidades, page = paginate_list(
+        catalog_service.get_all_unidades(),
+        request.args.get("pagina", default=1, type=int),
+    )
+    return render_template("catalogs/unidades.html", unidades=unidades, **page)
 
 
 @bp.route("/unidades/<int:unidad_id>/eliminar", methods=["POST"])
@@ -91,6 +98,8 @@ def areas():
         unidad_id = request.form.get("idUnidadAcademica", type=int) or None
         edit_id = request.form.get("idArea", type=int)
         estado = request.form.get("estado", "activo")
+        if estado not in ("activo", "inactivo"):
+            estado = "activo"
 
         err = validate_area_nombre(nombre)
         if err:
@@ -103,12 +112,20 @@ def areas():
         else:
             catalog_service.create_area(nombre, unidad_id, _actor_id())
             flash("Área creada.", "success")
-        return redirect(url_for("catalogs.areas"))
+        return redirect(url_for("catalogs.areas", pagina=request.args.get("pagina", 1, type=int)))
 
+    areas, page = paginate_list(
+        catalog_service.get_all_areas(),
+        request.args.get("pagina", default=1, type=int),
+    )
     return render_template(
         "catalogs/areas.html",
-        areas=catalog_service.get_all_areas(),
+        areas=areas,
         unidades=catalog_service.get_active_unidades(),
+        # Para editar: todas, para no perder la unidad de un área cuya unidad
+        # se desactivó (el <select> la soltaría y se guardaría otra).
+        unidades_all=catalog_service.get_all_unidades(),
+        **page,
     )
 
 

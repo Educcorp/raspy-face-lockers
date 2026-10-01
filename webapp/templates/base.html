@@ -172,7 +172,7 @@
 
   <script>
     document.addEventListener('click', (e) => {
-      document.querySelectorAll('.nav-dropdown[open], .row-edit[open]').forEach((el) => {
+      document.querySelectorAll('.nav-dropdown[open]').forEach((el) => {
         if (!el.contains(e.target)) el.removeAttribute('open');
       });
     });
@@ -193,6 +193,10 @@
         form.addEventListener('submit', (e) => {
           if (form.dataset.confirmed === 'true') return;
           e.preventDefault();
+          // Un <dialog> modal vuelve inerte el resto de la página (incluido
+          // este modal de confirmación): se cierra antes de preguntar.
+          const dlg = form.closest('dialog[open]');
+          if (dlg) dlg.close();
           pendingForm = form;
           msgEl.textContent = form.dataset.confirm;
           overlay.hidden = false;
@@ -216,6 +220,23 @@
           if (form.requestSubmit) form.requestSubmit();
           else form.submit();
         }
+      });
+    })();
+
+    /* Diálogos de alta/edición de los CRUD (.crud-dialog): un botón con
+       data-open-dialog="id" lo abre; data-close-dialog o clic en el fondo lo
+       cierra (Esc lo cierra de forma nativa). */
+    (() => {
+      document.querySelectorAll('[data-open-dialog]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const dlg = document.getElementById(btn.dataset.openDialog);
+          if (dlg && dlg.showModal) dlg.showModal();
+        });
+      });
+      document.querySelectorAll('dialog.crud-dialog').forEach((dlg) => {
+        dlg.addEventListener('click', (e) => {
+          if (e.target === dlg || e.target.closest('[data-close-dialog]')) dlg.close();
+        });
       });
     })();
 

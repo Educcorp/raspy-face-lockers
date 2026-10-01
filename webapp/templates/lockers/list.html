@@ -1,13 +1,77 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pagination %}
 {% block title %}{{ tr('lockers.heading') }} · Smart Lockers{% endblock %}
 {% block content %}
-<h2>{{ tr('nav.lockers') }}</h2>
-<h2>{{ tr('lockers.heading') }}</h2>
 
-<div class="card">
-  <h3>{{ tr('lockers.new') }}</h3>
-  <form method="post">
-    <div class="form-grid" data-unidad-area-group>
+<div class="access-header">
+  <div>
+    <span class="dashboard-eyebrow">{{ tr('lockers.eyebrow') }}</span>
+    <h2>{{ tr('lockers.heading') }}</h2>
+    <p>{{ tr('lockers.intro') }}</p>
+  </div>
+  <button type="button" class="btn btn-primary" data-open-dialog="dlg-locker-new">
+    {{ tr('lockers.new') }}
+  </button>
+</div>
+
+<div class="access-results-info">
+  <span>{{ tr('lockers.showing', a=inicio, b=fin, total=total) | safe if total else tr('lockers.none') }}</span>
+</div>
+
+<div class="card access-table-card">
+  <div class="access-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>{{ tr('common.unit') }}</th>
+          <th>{{ tr('common.area') }}</th>
+          <th>{{ tr('common.status') }}</th>
+          <th class="crud-actions-col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lockers %}
+        <tr>
+          <td class="crud-id">#{{ l.idlocker }}</td>
+          <td>{{ l.unidad }}</td>
+          <td>{{ l.area }}</td>
+          <td>
+            <form method="post" action="{{ url_for('lockers.set_status', locker_id=l.idlocker) }}">
+              <select name="estado" class="status-select st-{{ l.estado }}"
+                      onchange="this.className='status-select st-'+this.value; this.form.submit()">
+                {% for opt in ['activo', 'inactivo', 'mantenimiento'] %}
+                <option value="{{ opt }}" {% if l.estado==opt %}selected{% endif %}>{{ opt|tr_status }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+          <td>
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-muted" data-open-dialog="dlg-locker-{{ l.idlocker }}">
+                {{ tr('common.edit') }}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-access">{{ tr('lockers.none') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{ pagination('lockers.list_lockers', pagina, total_paginas) }}
+
+{# ── Diálogo: nuevo locker ── #}
+<dialog id="dlg-locker-new" class="crud-dialog">
+  <div class="crud-dialog-head">
+    <span class="crud-dialog-title">{{ tr('lockers.new_title') }}</span>
+    <button type="button" class="crud-dialog-close" data-close-dialog aria-label="{{ tr('common.cancel') }}">&times;</button>
+  </div>
+  <form id="form-locker-new" method="post" class="crud-dialog-body" data-unidad-area-group>
+    <div class="crud-dialog-grid">
       <div class="form-row">
         <label>{{ tr('common.academic_unit') }}</label>
         <select name="idUnidadAcademica" data-role="unidad" required>
@@ -25,67 +89,58 @@
         </select>
       </div>
     </div>
-    <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
-</div>
+  <div class="crud-dialog-foot">
+    <button type="button" class="btn btn-sm btn-muted" data-close-dialog>{{ tr('common.cancel') }}</button>
+    <button type="submit" class="btn btn-sm" form="form-locker-new">{{ tr('common.create') }}</button>
+  </div>
+</dialog>
 
-<div class="card">
-  <table>
-    <thead><tr><th>ID</th><th>{{ tr('common.unit') }}</th><th>{{ tr('common.area') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
-    <tbody>
-      {% for l in lockers %}
-      <tr>
-        <td>{{ l.idlocker }}</td>
-        <td>{{ l.unidad }}</td>
-        <td>{{ l.area }}</td>
-        <td>
-          <form method="post" action="{{ url_for('lockers.set_status', locker_id=l.idlocker) }}" style="display:inline">
-            <select name="estado" class="status-select st-{{ l.estado }}"
-                    onchange="this.className='status-select st-'+this.value; this.form.submit()">
-              {% for opt in ['activo', 'inactivo', 'mantenimiento'] %}
-              <option value="{{ opt }}" {% if l.estado==opt %}selected{% endif %}>{{ opt|tr_status }}</option>
-              {% endfor %}
-            </select>
-          </form>
-        </td>
-        <td>
-          <details class="row-edit">
-            <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
-            <div class="row-edit-panel">
-              <form method="post" action="{{ url_for('lockers.set_location', locker_id=l.idlocker) }}" data-unidad-area-group>
-                <div class="form-row">
-                  <label>{{ tr('common.academic_unit') }}</label>
-                  <select name="idUnidadAcademica" data-role="unidad" required>
-                    {% for u in unidades %}
-                    <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==l.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <div class="form-row">
-                  <label>{{ tr('common.area') }}</label>
-                  <select name="idArea" data-role="area" required>
-                    {% for a in areas %}
-                    <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==l.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <button class="btn btn-sm" type="submit">{{ tr('common.save_changes') }}</button>
-              </form>
-              {% if g.user.role == 'superadmin' %}
-              <form method="post" action="{{ url_for('lockers.delete_locker', locker_id=l.idlocker) }}"
-                    data-confirm="{{ tr('lockers.delete_confirm') }}" style="margin-top:10px;">
-                <button class="btn btn-sm btn-danger" type="submit" style="width:100%;"
-                        {% if loop.index0 < 4 %}disabled title="{{ tr('lockers.protected') }}"{% endif %}>
-                  {{ tr('lockers.delete') }}
-                </button>
-              </form>
-              {% endif %}
-            </div>
-          </details>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+{# ── Diálogos: editar locker ── #}
+{% for l in lockers %}
+<dialog id="dlg-locker-{{ l.idlocker }}" class="crud-dialog">
+  <div class="crud-dialog-head">
+    <div>
+      <span class="crud-dialog-title">{{ tr('lockers.edit_title') }}</span>
+      <span class="crud-dialog-sub">#{{ l.idlocker }} · {{ l.unidad }}</span>
+    </div>
+    <button type="button" class="crud-dialog-close" data-close-dialog aria-label="{{ tr('common.cancel') }}">&times;</button>
+  </div>
+  <form id="form-locker-{{ l.idlocker }}" method="post" class="crud-dialog-body"
+        action="{{ url_for('lockers.set_location', locker_id=l.idlocker) }}" data-unidad-area-group>
+    <div class="crud-dialog-grid">
+      <div class="form-row">
+        <label>{{ tr('common.academic_unit') }}</label>
+        <select name="idUnidadAcademica" data-role="unidad" required>
+          {% for u in unidades %}
+          <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==l.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>{{ tr('common.area') }}</label>
+        <select name="idArea" data-role="area" required>
+          {% for a in areas %}
+          <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==l.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+  <div class="crud-dialog-foot">
+    {% if g.user.role == 'superadmin' %}
+    <form method="post" action="{{ url_for('lockers.delete_locker', locker_id=l.idlocker) }}"
+          data-confirm="{{ tr('lockers.delete_confirm') }}">
+      <button type="submit" class="btn btn-sm btn-danger-ghost"
+              {% if l.idlocker in protected_ids %}disabled title="{{ tr('lockers.protected') }}"{% endif %}>
+        {{ tr('common.delete') }}
+      </button>
+    </form>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-muted" data-close-dialog>{{ tr('common.cancel') }}</button>
+    <button type="submit" class="btn btn-sm" form="form-locker-{{ l.idlocker }}">{{ tr('common.save_changes') }}</button>
+  </div>
+</dialog>
+{% endfor %}
+
 {% endblock %}

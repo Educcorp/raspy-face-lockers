@@ -6,6 +6,7 @@
 
 <div class="access-header">
   <div>
+    <span class="dashboard-eyebrow">{{ tr('users.eyebrow') }}</span>
     <h2>{{ tr('users.heading') }}</h2>
     <p class="muted">
       {{ tr('users.intro') }}
@@ -145,7 +146,7 @@
           <th>{{ tr('common.status') }}</th>
           <th>{{ tr('users.col.perms') }}</th>
           <th>{{ tr('users.col.face') }}</th>
-          <th></th>
+          <th class="crud-actions-col"></th>
         </tr>
       </thead>
 
@@ -252,12 +253,14 @@
 
           <!-- Editar -->
           <td>
-            <a
-              class="btn btn-sm"
-              href="{{ url_for('users.edit_user', user_id=u.idusuario) }}"
-            >
-              {{ tr('common.edit') }}
-            </a>
+            <div class="row-actions">
+              <a
+                class="btn btn-sm btn-muted"
+                href="{{ url_for('users.edit_user', user_id=u.idusuario) }}"
+              >
+                {{ tr('common.edit') }}
+              </a>
+            </div>
           </td>
 
         </tr>

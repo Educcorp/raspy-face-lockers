@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 
 from webapp.auth import can_edit_catalogs, is_superadmin, login_required
+from webapp.pagination import paginate_list
 from webapp.services import catalog_service, locker_service
 
 bp = Blueprint("lockers", __name__, url_prefix="/lockers")
@@ -30,11 +31,17 @@ def list_lockers():
             flash("Locker creado.", "success")
         return redirect(url_for("lockers.list_lockers"))
 
+    lockers, page = paginate_list(
+        locker_service.get_all_lockers(),
+        request.args.get("pagina", default=1, type=int),
+    )
     return render_template(
         "lockers/list.html",
-        lockers=locker_service.get_all_lockers(),
+        lockers=lockers,
+        protected_ids=locker_service.get_protected_locker_ids(),
         unidades=catalog_service.get_active_unidades(),
         areas=catalog_service.get_active_areas(),
+        **page,
     )
 
 

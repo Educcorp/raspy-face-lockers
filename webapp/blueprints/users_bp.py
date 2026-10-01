@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import secrets
-
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from utils.validators import (
     MAX_APELLIDO, MAX_NOMBRE, validate_email, validate_matricula,
-    validate_name, validate_tel,
+    validate_name, validate_pin, validate_tel,
 )
 from webapp.auth import (
     ROLE_SUPERADMIN, ROLE_USER, can_assign_privileged_user_types, can_edit_catalogs,
@@ -248,10 +246,9 @@ def _validate_and_save(user_id: int | None) -> str | None:
 
     if user_id is None:
         pin = request.form.get("pin", "").strip()
-        if len(pin) < 4:
-            return "El PIN inicial debe tener al menos 4 dígitos."
-        if len(set(pin)) == 1:
-            return "El PIN no puede tener todos los dígitos iguales (ej: 1111, 2222)."
+        err = validate_pin(pin)
+        if err:
+            return err
         import hashlib
         pin_hash = hashlib.sha256(pin.encode()).hexdigest()
         user_service.create_user_pending_encoding({
@@ -299,16 +296,20 @@ def reset_pin(user_id: int):
     if target and not _can_manage(target):
         flash("No tienes permiso para esta acción.", "danger")
         return redirect(url_for("users.list_users"))
-    
-    # Generar un PIN válido (sin todos los dígitos iguales)
-    while True:
-        new_pin = secrets.choice(range(1000, 9999))
-        if len(set(str(new_pin))) > 1:  # Si no todos los dígitos son iguales
-            break
-    
+
+    # El PIN lo escribe el administrador (antes se generaba uno al azar).
+    new_pin = request.form.get("pin", "").strip()
+    confirm = request.form.get("pin_confirm", "").strip()
+    err = validate_pin(new_pin)
+    if not err and new_pin != confirm:
+        err = "Los PIN no coinciden."
+    if err:
+        flash(err, "danger")
+        return redirect(url_for("users.edit_user", user_id=user_id))
+
     actor_id = g.user["idusuario"] or 1
-    user_service.update_pin(user_id, str(new_pin), actor_id)
-    flash(f"Nuevo PIN generado: {new_pin} (comunícalo al usuario de forma segura).", "success")
+    user_service.update_pin(user_id, new_pin, actor_id)
+    flash("PIN actualizado. Comunícalo al usuario de forma segura.", "success")
     return redirect(url_for("users.edit_user", user_id=user_id))
 
 

@@ -91,7 +91,8 @@
       {% else %}
       <div class="form-row">
         <label>{{ tr('form.pin') }}</label>
-        <input type="password" name="pin" required minlength="4" maxlength="8">
+        <input type="password" name="pin" required inputmode="numeric" autocomplete="new-password"
+               pattern="[0-9]{4}" minlength="4" maxlength="4" title="{{ tr('form.pin_hint') }}">
       </div>
       {% endif %}
     </div>
@@ -132,9 +133,6 @@
     <a class="btn" href="{{ url_for('face.capture_page', user_id=row.idusuario) }}">
       {{ tr('form.recapture') if not pending else tr('form.capture') }}
     </a>
-    <form method="post" action="{{ url_for('users.reset_pin', user_id=row.idusuario) }}">
-      <button class="btn btn-muted" type="submit">{{ tr('form.new_pin') }}</button>
-    </form>
     {% if g.user.role == 'superadmin' %}
     <form method="post" action="{{ url_for('users.delete_user', user_id=row.idusuario) }}"
           data-confirm="{{ tr('form.delete_confirm') }}">
@@ -142,6 +140,26 @@
     </form>
     {% endif %}
   </div>
+</div>
+
+<div class="card">
+  <h3>{{ tr('form.change_pin') }}</h3>
+  <p class="muted" style="margin-top:0;">{{ tr('form.change_pin_intro') }}</p>
+  <form method="post" action="{{ url_for('users.reset_pin', user_id=row.idusuario) }}" autocomplete="off">
+    <div class="form-grid">
+      <div class="form-row">
+        <label>{{ tr('form.new_pin_label') }}</label>
+        <input type="password" name="pin" required inputmode="numeric" autocomplete="new-password"
+               pattern="[0-9]{4}" minlength="4" maxlength="4" title="{{ tr('form.pin_hint') }}">
+      </div>
+      <div class="form-row">
+        <label>{{ tr('form.confirm_pin_label') }}</label>
+        <input type="password" name="pin_confirm" required inputmode="numeric" autocomplete="new-password"
+               pattern="[0-9]{4}" minlength="4" maxlength="4" title="{{ tr('form.pin_hint') }}">
+      </div>
+    </div>
+    <button class="btn" type="submit">{{ tr('form.save_pin') }}</button>
+  </form>
 </div>
 {% endif %}
 {% endblock %}

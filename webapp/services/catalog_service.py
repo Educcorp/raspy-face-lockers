@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from webapp.db import execute, execute_returning, fetch_all, fetch_one
+from webapp.db import cursor, execute, execute_returning, fetch_all, fetch_one
 
 
 # ── Tipos de usuario ─────────────────────────────────────────────────────────
@@ -130,11 +130,27 @@ def create_area(nombre: str, unidad_id: int | None, creado_por: int) -> int:
 
 
 def update_area(area_id: int, nombre: str, unidad_id: int | None, estado: str, modificado_por: int) -> None:
-    execute(
-        "UPDATE area_lockers SET nombreArea=%s, idUnidadAcademica=%s, estado=%s, "
-        "modificadoPor=%s WHERE idArea=%s",
-        (nombre, unidad_id, estado, modificado_por, area_id),
-    )
+    """Actualiza el área. Si cambia de unidad académica, los lockers y recursos
+    de esa área se mueven a la nueva unidad en la misma transacción: si no,
+    quedarían con una combinación unidad/área que area_belongs_to_unidad()
+    rechaza y no se podrían volver a guardar desde sus formularios."""
+    with cursor() as cur:
+        cur.execute(
+            "UPDATE area_lockers SET nombreArea=%s, idUnidadAcademica=%s, estado=%s, "
+            "modificadoPor=%s WHERE idArea=%s",
+            (nombre, unidad_id, estado, modificado_por, area_id),
+        )
+        if unidad_id:
+            cur.execute(
+                "UPDATE lockers SET idUnidadAcademica=%s, modificadoPor=%s "
+                "WHERE idArea=%s AND idUnidadAcademica<>%s",
+                (unidad_id, modificado_por, area_id, unidad_id),
+            )
+            cur.execute(
+                "UPDATE recursos SET idUnidadAcademica=%s, modificadoPor=%s "
+                "WHERE idArea=%s AND idUnidadAcademica IS DISTINCT FROM %s",
+                (unidad_id, modificado_por, area_id, unidad_id),
+            )
 
 
 def area_nombre_exists(nombre: str, exclude_id: int | None = None) -> bool:

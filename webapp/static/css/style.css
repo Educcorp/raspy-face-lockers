@@ -764,28 +764,10 @@ tbody tr:hover { background: var(--surface-alt); }
 .modal-actions { display: flex; gap: 10px; }
 .modal-actions .btn { flex: 1; justify-content: center; }
 
-/* ── Inline row-edit panel (tables) ───────────────────────────────────── */
-.row-edit summary {
-  list-style: none;
-  display: inline-flex;
-}
-.row-edit summary::-webkit-details-marker { display: none; }
-
-.row-edit-panel {
-  position: absolute;
-  z-index: 25;
-  margin-top: 8px;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  box-shadow: var(--shadow);
-  min-width: 240px;
-}
-.row-edit { position: relative; }
-.row-edit-panel .form-row:last-of-type { margin-bottom: 0; }
-
-/* Botones de acción por fila (activar/desactivar + editar) lado a lado */
+/* ── CRUD compartido (Usuarios, Lockers, Recursos) ───────────────────────
+   Mismo patrón en las tres pantallas: cabecera .access-header con botón
+   "+ Nuevo", tabla en .access-table-card, acciones por fila en .row-actions
+   y formularios de alta/edición en un <dialog class="crud-dialog">. */
 .row-actions {
   display: flex;
   align-items: center;
@@ -795,55 +777,64 @@ tbody tr:hover { background: var(--surface-alt); }
 }
 .row-actions form { margin: 0; }
 .row-actions .btn { white-space: nowrap; }
-.row-actions .row-edit-panel { right: 0; }
+.crud-actions-col { width: 1%; }
+.crud-id { font-weight: 800; }
 
-/* Estado "abierto" del botón Editar */
-.row-edit[open] > summary { background: var(--accent-soft); color: var(--accent); }
-
-/* Variante amplia del panel de edición, con cabecera y pie */
-.row-edit-panel--wide {
-  width: 360px;
+.crud-dialog {
+  width: 420px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
   padding: 0;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
-  animation: row-edit-in 0.14s ease-out;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  overflow: auto;
 }
-.row-edit-panel--wide > form { padding: 16px 18px 4px; }
-.row-edit-panel--wide .form-row { margin-bottom: 12px; }
-.row-edit-panel--wide .form-row label { font-size: 0.76rem; margin-bottom: 4px; }
-.row-edit-panel--wide .form-row input,
-.row-edit-panel--wide .form-row select { padding: 9px 12px; font-size: 0.88rem; }
-.row-edit-panel--wide .form-row select { padding-right: 32px; }
+.crud-dialog[open] { animation: crud-dialog-in 0.16s ease-out; }
+.crud-dialog::backdrop { background: rgba(44, 36, 29, 0.45); }
+:root[data-theme="dark"] .crud-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 
-.row-edit-head {
+.crud-dialog-head {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 18px 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 14px;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border);
 }
-.row-edit-title { font-weight: 800; font-size: 0.92rem; color: var(--text); }
-.row-edit-sub {
-  font-size: 0.78rem;
+.crud-dialog-title { display: block; font-weight: 800; font-size: 1rem; }
+.crud-dialog-sub { display: block; margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
+.crud-dialog-close {
+  border: none;
+  background: transparent;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 8px;
 }
-.row-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
-.row-edit-grid .form-row { min-width: 0; }
+.crud-dialog-close:hover { color: var(--text); background: var(--border); }
 
-.row-edit-foot {
+.crud-dialog-body { padding: 18px 20px 6px; }
+.crud-dialog-body .form-row { margin-bottom: 14px; }
+.crud-dialog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.crud-dialog-grid .form-row { min-width: 0; }
+.crud-dialog-note { margin: 0 0 14px; font-size: 0.76rem; color: var(--muted); line-height: 1.45; }
+@media (max-width: 480px) { .crud-dialog-grid { grid-template-columns: 1fr; } }
+
+.crud-dialog-foot {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 12px 18px 14px;
+  padding: 14px 20px 16px;
   border-top: 1px solid var(--border);
 }
-.row-edit-foot form { margin: 0 auto 0 0; }
+.crud-dialog-foot form { margin: 0 auto 0 0; }
 
 .btn.btn-danger-ghost {
   background: transparent;
@@ -851,9 +842,10 @@ tbody tr:hover { background: var(--surface-alt); }
   box-shadow: inset 0 0 0 1px var(--danger);
 }
 .btn.btn-danger-ghost:hover { background: var(--danger-soft); }
+.btn.btn-danger-ghost:disabled { background: transparent; }
 
-@keyframes row-edit-in {
-  from { opacity: 0; transform: translateY(-4px); }
+@keyframes crud-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
   to   { opacity: 1; transform: none; }
 }
 

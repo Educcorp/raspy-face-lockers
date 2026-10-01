@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import pagination %}
 {% block title %}{{ tr('res.catalog_page_title') }} · Smart Lockers{% endblock %}
 
 {% block content %}
@@ -9,11 +10,71 @@
     <h2>{{ tr('res.catalog_page_heading') }}</h2>
     <p>{{ tr('res.catalog_intro') }}</p>
   </div>
+  <button type="button" class="btn btn-primary" data-open-dialog="dlg-recurso-new">
+    {{ tr('res.new_recurso') }}
+  </button>
 </div>
 
-<div class="card" style="max-width:560px;">
-  <h3 style="margin-top:0;">{{ tr('res.new_recurso') }}</h3>
-  <form method="post" action="{{ url_for('resources.new_recurso') }}">
+<div class="access-results-info">
+  <span>{{ tr('res.showing', a=inicio, b=fin, total=total) | safe if total else tr('res.no_recursos') }}</span>
+</div>
+
+<div class="card access-table-card">
+  <div class="access-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>{{ tr('common.name') }}</th>
+          <th>{{ tr('res.desc_label') }}</th>
+          <th>{{ tr('common.unit') }}</th>
+          <th>{{ tr('common.area') }}</th>
+          <th>{{ tr('common.status') }}</th>
+          <th class="crud-actions-col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recursos %}
+        <tr>
+          <td><strong>{{ r.nombre }}</strong></td>
+          <td>{{ r.descripcion or '—' }}</td>
+          <td>{{ r.nombreunidadacademica or '—' }}</td>
+          <td>{{ r.nombrearea or '—' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('resources.set_recurso_estado', recurso_id=r.idrecurso) }}">
+              <select name="estado" class="status-select st-{{ r.estado }}"
+                      onchange="this.className='status-select st-'+this.value; this.form.submit()">
+                {% for opt in ['activo', 'inactivo'] %}
+                <option value="{{ opt }}" {% if r.estado==opt %}selected{% endif %}>{{ opt|tr_status }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+          <td>
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-muted" data-open-dialog="dlg-recurso-{{ r.idrecurso }}">
+                {{ tr('common.edit') }}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-access">{{ tr('res.no_recursos') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{ pagination('resources.catalog', pagina, total_paginas) }}
+
+{# ── Diálogo: nuevo recurso ── #}
+<dialog id="dlg-recurso-new" class="crud-dialog">
+  <div class="crud-dialog-head">
+    <span class="crud-dialog-title">{{ tr('res.new_title') }}</span>
+    <button type="button" class="crud-dialog-close" data-close-dialog aria-label="{{ tr('common.cancel') }}">&times;</button>
+  </div>
+  <form id="form-recurso-new" method="post" class="crud-dialog-body"
+        action="{{ url_for('resources.new_recurso') }}" data-unidad-area-group>
     <div class="form-row">
       <label>{{ tr('res.name_label') }}</label>
       <input type="text" name="nombre" required maxlength="60">
@@ -22,7 +83,7 @@
       <label>{{ tr('res.desc_label') }}</label>
       <input type="text" name="descripcion" maxlength="300">
     </div>
-    <div class="form-grid" data-unidad-area-group>
+    <div class="crud-dialog-grid">
       <div class="form-row">
         <label>{{ tr('common.academic_unit') }}</label>
         <select name="idUnidadAcademica" data-role="unidad" required>
@@ -40,84 +101,63 @@
         </select>
       </div>
     </div>
-    <button class="btn" type="submit">{{ tr('common.create') }}</button>
   </form>
-</div>
+  <div class="crud-dialog-foot">
+    <button type="button" class="btn btn-sm btn-muted" data-close-dialog>{{ tr('common.cancel') }}</button>
+    <button type="submit" class="btn btn-sm" form="form-recurso-new">{{ tr('common.create') }}</button>
+  </div>
+</dialog>
 
-<div class="card">
-  <table>
-    <thead><tr><th>{{ tr('common.name') }}</th><th>{{ tr('res.desc_label') }}</th><th>{{ tr('common.unit') }}</th><th>{{ tr('common.area') }}</th><th>{{ tr('common.status') }}</th><th></th></tr></thead>
-    <tbody>
-      {% for r in recursos %}
-      <tr>
-        <td>{{ r.nombre }}</td>
-        <td>{{ r.descripcion or '—' }}</td>
-        <td>{{ r.nombreunidadacademica or '—' }}</td>
-        <td>{{ r.nombrearea or '—' }}</td>
-        <td><span class="badge {{ r.estado }}">{{ r.estado|tr_status }}</span></td>
-        <td>
-          <div class="row-actions">
-          <form method="post" action="{{ url_for('resources.set_recurso_estado', recurso_id=r.idrecurso) }}">
-            <input type="hidden" name="estado" value="{{ 'inactivo' if r.estado=='activo' else 'activo' }}">
-            <button class="btn btn-sm btn-muted" type="submit">
-              {{ tr('common.deactivate') if r.estado=='activo' else tr('common.activate') }}
-            </button>
-          </form>
-          <details class="row-edit">
-            <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
-            <div class="row-edit-panel row-edit-panel--wide">
-              <div class="row-edit-head">
-                <span class="row-edit-title">{{ tr('res.edit_title') }}</span>
-                <span class="row-edit-sub">{{ r.nombre }}</span>
-              </div>
-              <form id="edit-recurso-{{ r.idrecurso }}" method="post"
-                    action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}" data-unidad-area-group>
-                <div class="form-row">
-                  <label>{{ tr('res.name_label') }}</label>
-                  <input type="text" name="nombre" value="{{ r.nombre }}" required maxlength="60">
-                </div>
-                <div class="form-row">
-                  <label>{{ tr('res.desc_label') }}</label>
-                  <input type="text" name="descripcion" value="{{ r.descripcion or '' }}" maxlength="300">
-                </div>
-                <div class="row-edit-grid">
-                  <div class="form-row">
-                    <label>{{ tr('common.academic_unit') }}</label>
-                    <select name="idUnidadAcademica" data-role="unidad" required>
-                      {% for u in unidades %}
-                      <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==r.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div class="form-row">
-                    <label>{{ tr('common.area') }}</label>
-                    <select name="idArea" data-role="area" required>
-                      {% for a in areas %}
-                      <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==r.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                </div>
-              </form>
-              <div class="row-edit-foot">
-                {% if g.user.role == 'superadmin' %}
-                <form method="post" action="{{ url_for('resources.delete_recurso', recurso_id=r.idrecurso) }}"
-                      data-confirm="{{ tr('res.delete_confirm') }}">
-                  <button class="btn btn-sm btn-danger-ghost" type="submit">{{ tr('common.delete') }}</button>
-                </form>
-                {% endif %}
-                <button class="btn btn-sm" type="submit" form="edit-recurso-{{ r.idrecurso }}">{{ tr('common.save_changes') }}</button>
-              </div>
-            </div>
-          </details>
-          </div>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6">{{ tr('res.no_recursos') }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+{# ── Diálogos: editar recurso ── #}
+{% for r in recursos %}
+<dialog id="dlg-recurso-{{ r.idrecurso }}" class="crud-dialog">
+  <div class="crud-dialog-head">
+    <div>
+      <span class="crud-dialog-title">{{ tr('res.edit_title') }}</span>
+      <span class="crud-dialog-sub">{{ r.nombre }}</span>
+    </div>
+    <button type="button" class="crud-dialog-close" data-close-dialog aria-label="{{ tr('common.cancel') }}">&times;</button>
+  </div>
+  <form id="form-recurso-{{ r.idrecurso }}" method="post" class="crud-dialog-body"
+        action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}" data-unidad-area-group>
+    <div class="form-row">
+      <label>{{ tr('res.name_label') }}</label>
+      <input type="text" name="nombre" value="{{ r.nombre }}" required maxlength="60">
+    </div>
+    <div class="form-row">
+      <label>{{ tr('res.desc_label') }}</label>
+      <input type="text" name="descripcion" value="{{ r.descripcion or '' }}" maxlength="300">
+    </div>
+    <div class="crud-dialog-grid">
+      <div class="form-row">
+        <label>{{ tr('common.academic_unit') }}</label>
+        <select name="idUnidadAcademica" data-role="unidad" required>
+          {% for u in unidades %}
+          <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==r.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label>{{ tr('common.area') }}</label>
+        <select name="idArea" data-role="area" required>
+          {% for a in areas %}
+          <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==r.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+  <div class="crud-dialog-foot">
+    {% if g.user.role == 'superadmin' %}
+    <form method="post" action="{{ url_for('resources.delete_recurso', recurso_id=r.idrecurso) }}"
+          data-confirm="{{ tr('res.delete_confirm') }}">
+      <button type="submit" class="btn btn-sm btn-danger-ghost">{{ tr('common.delete') }}</button>
+    </form>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-muted" data-close-dialog>{{ tr('common.cancel') }}</button>
+    <button type="submit" class="btn btn-sm" form="form-recurso-{{ r.idrecurso }}">{{ tr('common.save_changes') }}</button>
+  </div>
+</dialog>
+{% endfor %}
 
 {% endblock %}

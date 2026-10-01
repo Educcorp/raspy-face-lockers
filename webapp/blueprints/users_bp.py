@@ -12,6 +12,7 @@ from webapp.auth import (
     ROLE_SUPERADMIN, ROLE_USER, can_assign_privileged_user_types, can_edit_catalogs,
     filter_assignable_user_types, is_superadmin, login_required, normalize_role,
 )
+from webapp.pagination import PER_PAGE
 from webapp.services import catalog_service, user_service
 
 bp = Blueprint("users", __name__, url_prefix="/usuarios")
@@ -45,7 +46,7 @@ def list_users():
         type=str,
     ).strip().lower()
 
-    per_page = 15
+    per_page = PER_PAGE
 
     if page < 1:
         page = 1

@@ -29,6 +29,7 @@ from flask import Blueprint, flash, g, redirect, render_template, request, url_f
 
 from utils.validators import validate_recurso_descripcion, validate_recurso_nombre
 from webapp.auth import can_edit_catalogs, is_superadmin, login_required
+from webapp.pagination import paginate_list
 from webapp.services import catalog_service, resource_service
 
 bp = Blueprint("resources", __name__, url_prefix="/recursos")
@@ -53,11 +54,16 @@ def index():
 @bp.route("/catalogo")
 @login_required
 def catalog():
+    recursos, page = paginate_list(
+        resource_service.get_all_recursos(),
+        request.args.get("pagina", default=1, type=int),
+    )
     return render_template(
         "resources/catalog.html",
-        recursos=resource_service.get_all_recursos(),
+        recursos=recursos,
         unidades=catalog_service.get_active_unidades(),
         areas=catalog_service.get_active_areas(),
+        **page,
     )
 
 

@@ -109,11 +109,20 @@ def set_user_status(user_id: int, estado: str) -> None:
 
 def delete_user_permanent(user_id: int) -> None:
     """
-    Elimina un usuario de forma definitiva.
-    Borra asignaciones (historial queda con FK NULL por ON DELETE SET NULL),
-    borra encodings, y finalmente borra el usuario.
+    Elimina un usuario de forma definitiva, dentro de una sola transacción
+    (db_session ya hace COMMIT/ROLLBACK atómico — un fallo a mitad de camino
+    no deja borrados parciales).
+
+    Antes solo borraba asignacion_locker y encoding: si el usuario tenía una
+    sesión de recurso "en_uso" sin terminar, el DELETE final fallaba por
+    fk_recurso_uso_usuario (ON DELETE RESTRICT) — el error reportado como "no
+    deja eliminar" en el panel de la Pi. Ahora también borra recurso_uso.
+    historial_accesos y comandos_locker NO se tocan a propósito: sus FKs son
+    ON DELETE SET NULL, así que el registro de auditoría sobrevive huérfano en
+    vez de borrarse.
     """
     with db_session() as conn:
+        conn.execute("DELETE FROM recurso_uso WHERE idUsuario=%s", (user_id,))
         conn.execute("DELETE FROM asignacion_locker WHERE idUsuario=%s", (user_id,))
         conn.execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
         conn.execute("DELETE FROM usuarios WHERE idUsuario=%s", (user_id,))

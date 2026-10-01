@@ -236,6 +236,7 @@ _FA_GLYPHS = {
     "plus":         "",
     "check-circle": "",
     "warning":      "",
+    "wrench":       "",
 }
 _FA_ICON_SCALE = {
     "sun": 0.90, "moon": 0.90, "user": 0.78, "lock": 0.86, "logout": 0.86,
@@ -243,7 +244,7 @@ _FA_ICON_SCALE = {
     "home": 0.84, "box": 0.82, "link": 0.82, "clock": 0.84, "layers": 0.82,
     "chevron-down": 0.78, "chevron-right": 0.78, "bars": 0.86,
     "pencil": 0.80, "trash": 0.82, "plus": 0.86,
-    "check-circle": 0.86, "warning": 0.86,
+    "check-circle": 0.86, "warning": 0.86, "wrench": 0.82,
 }
 _FA_ICON_Y_OFFSET = {"user": 1}
 

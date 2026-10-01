@@ -100,6 +100,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "es": "Terminar de usar",
         "en": "Finish using",
     },
+    "resource.activated_status": {
+        "es": "Recurso activado",
+        "en": "Resource activated",
+    },
+    "resource.activated_main": {
+        "es": "¡Listo!",
+        "en": "All set!",
+    },
 
     # ── Locker: DurationSelectScreen ───────────────────────────────────────────
     "duration.page_title": {
@@ -585,6 +593,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "common.inactive_badge": {"es": "[INACTIVO]",                "en": "[INACTIVE]"},
     "common.matr_prefix":    {"es": "Matr.",                     "en": "ID"},
     "common.since":          {"es": "Desde",                     "en": "Since"},
+    "common.error_generic":  {"es": "Error",                     "en": "Error"},
 
     # ── Admin: UserDetailOverlay ─────────────────────────────────────────────
     "users.detail_title":      {"es": "Detalle de Usuario",      "en": "User Detail"},
@@ -622,6 +631,39 @@ STRINGS: dict[str, dict[str, str]] = {
     "lockers.save_status":       {"es": "Guardar estado",        "en": "Save status"},
     "lockers.delete_btn":        {"es": "Eliminar locker",       "en": "Delete locker"},
     "lockers.inactive_badge":    {"es": "[INACTIVO]",            "en": "[INACTIVE]"},
+
+    # ── Admin: ResourcesCatalogScreen (catálogo de recursos compartidos) ─────
+    "resources.title":              {"es": "Recursos Compartidos", "en": "Shared Resources"},
+    "resources.search_placeholder": {"es": "Buscar recurso...",    "en": "Search resource..."},
+    "resources.detail_title":       {"es": "Detalle de Recurso",   "en": "Resource Detail"},
+    "resources.create_title":       {"es": "Nuevo Recurso",        "en": "New Resource"},
+    "resources.create_btn":         {"es": "Crear Recurso",        "en": "Create Resource"},
+    "resources.field_name":         {"es": "Nombre",               "en": "Name"},
+    "resources.field_desc":         {"es": "Descripción (opcional)", "en": "Description (optional)"},
+    "resources.delete_btn":         {"es": "Eliminar recurso",     "en": "Delete resource"},
+    "resources.confirm_delete":     {
+        "es": "¿Eliminar permanentemente el recurso '{nombre}'?\n\nSe borrarán también sus autorizaciones y sesiones de uso.\nEsta acción NO se puede deshacer.",
+        "en": "Permanently delete resource '{nombre}'?\n\nIts authorizations and usage sessions will also be deleted.\nThis action CANNOT be undone.",
+    },
+    "resources.err_unit_area": {"es": "Selecciona unidad académica y área.", "en": "Select an academic unit and area."},
+    "resources.err_duplicate": {"es": "Ya existe un recurso llamado '{nombre}'.", "en": "A resource named '{nombre}' already exists."},
+
+    # ── Admin: ResourceAuthorizationScreen (usuarios autorizados por recurso) ─
+    "resource_auth.title":           {"es": "Autorizaciones de Recursos", "en": "Resource Authorizations"},
+    "resource_auth.resource_label":  {"es": "Recurso",                   "en": "Resource"},
+    "resource_auth.no_resources":    {"es": "No hay recursos registrados.", "en": "No resources registered."},
+    "resource_auth.authorized_section":  {"es": "Usuarios autorizados",  "en": "Authorized users"},
+    "resource_auth.no_authorized":   {"es": "Nadie está autorizado para este recurso todavía.", "en": "No one is authorized for this resource yet."},
+    "resource_auth.authorize_label": {"es": "Autorizar a un usuario",    "en": "Authorize a user"},
+    "resource_auth.no_authorizable": {
+        "es": "No hay más usuarios disponibles (revisa el permiso de activación de cada usuario).",
+        "en": "No more users available (check each user's activation permission).",
+    },
+    "resource_auth.btn_authorize": {"es": "Autorizar", "en": "Authorize"},
+    "resource_auth.btn_revoke":    {"es": "Quitar",    "en": "Revoke"},
+    "resource_auth.ok_authorized": {"es": "Usuario autorizado.",   "en": "User authorized."},
+    "resource_auth.ok_revoked":    {"es": "Autorización retirada.", "en": "Authorization revoked."},
+    "resource_auth.err_select":    {"es": "Selecciona un usuario para autorizar.", "en": "Select a user to authorize."},
 
     # ── Admin: AreasCatalogScreen (empty states) ─────────────────────────────
     "areas.no_area":    {"es": "Sin área",                 "en": "No area"},
@@ -685,6 +727,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "nav.lockers": {"es": "Gestión de Casilleros", "en": "Locker Management"},
     "nav.asignaciones": {"es": "Asignaciones de Casilleros", "en": "Locker Assignments"},
     "nav.historial": {"es": "Registro de Accesos", "en": "Access Logs"},
+    "nav.recursos": {"es": "Recursos Compartidos", "en": "Shared Resources"},
+    "nav.recurso_autorizaciones": {"es": "Autorizaciones de Recursos", "en": "Resource Authorizations"},
     "nav.catalogos": {"es": "Configuración", "en": "Configuration"},
     "nav.unidades": {"es": "Unidades Académicas", "en": "Academic Units"},
     "nav.areas": {"es": "Gestión de Áreas", "en": "Area Management"},

@@ -26,12 +26,14 @@ from ui.theme import PALETTE
 
 logger = logging.getLogger(__name__)
 
-# Mapeo nombre de recurso (columna `recursos.nombre`) → ícono + claves i18n de
-# descripción. Un recurso sin entrada aquí usa el ícono/descripción genéricos.
+# Mapeo nombre de recurso (columna `recursos.nombre`) → clave i18n de
+# descripción. Un recurso sin entrada aquí no muestra descripción extra.
+# (Antes también mapeaba a un emoji como ícono — se quitó: en esta Pi el
+# tkinter/fuente del sistema no renderiza emoji y se veía como un cuadro/"x"
+# antes de cada nombre.)
 _RESOURCE_DISPLAY: dict[str, dict] = {
-    "taladro": {"icon": "🛠️", "desc_key": "resource.taladro.desc"},
+    "taladro": {"desc_key": "resource.taladro.desc"},
 }
-_DEFAULT_ICON = "🔧"
 
 
 def resource_display_name(resource: dict | None) -> str:
@@ -154,13 +156,6 @@ class ResourceSelectScreen(ctk.CTkFrame):
         inner.pack(fill="x", padx=18, pady=18)
 
         display = _RESOURCE_DISPLAY.get((resource.get("nombre") or "").strip().lower(), {})
-
-        ctk.CTkLabel(
-            inner,
-            text=display.get("icon", _DEFAULT_ICON),
-            font=ctk.CTkFont(size=34),
-            fg_color="transparent",
-        ).pack(side="left", padx=(0, 16))
 
         text_col = ctk.CTkFrame(inner, fg_color="transparent")
         text_col.pack(side="left", fill="x", expand=True)

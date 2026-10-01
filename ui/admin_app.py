@@ -321,6 +321,8 @@ class AdminApp(ctk.CTk):
         from ui.admin.access_history  import AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user   import RegisterUserScreen
+        from ui.admin.resources_catalog import ResourcesCatalogScreen
+        from ui.admin.resource_authorization import ResourceAuthorizationScreen
 
         for FrameClass in (
             LoginScreen,
@@ -331,6 +333,8 @@ class AdminApp(ctk.CTk):
             AccessHistoryScreen,
             LockerAssignmentScreen,
             RegisterUserScreen,
+            ResourcesCatalogScreen,
+            ResourceAuthorizationScreen,
         ):
             frame = FrameClass(parent=self, controller=self)
             self._frames[FrameClass] = frame

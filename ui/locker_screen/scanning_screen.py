@@ -1213,8 +1213,7 @@ class ScanningScreen(ctk.CTkFrame):
                 None, permitted=True, motivo=user_data.get("metodo", "facial"),
                 user_id=user_id, tipo_acceso="recurso", resource_use_id=session["idRecursoUso"],
             )
-            from ui.locker_screen.mode_select_screen import ModeSelectScreen
-            self.controller.show_frame(ModeSelectScreen)
+            self._show_resource_activated(user_data, recurso, total_seconds)
             return
 
         if self._flow_mode == self.FLOW_RESOURCE_END_AUTH:
@@ -1353,6 +1352,44 @@ class ScanningScreen(ctk.CTkFrame):
         self.denied_overlay.place_forget()
         if not self._success_shown:
             self._go_standby()
+
+    def _show_resource_activated(self, user_data: dict, recurso: dict, total_seconds: int) -> None:
+        """Overlay verde de confirmación tras reclamar/activar un recurso
+        (FLOW_RESOURCE_CLAIM_AUTH) — reusa el mismo overlay de éxito del
+        flujo de locker, con cuenta regresiva de DISPLAY_SECONDS (5 s) antes
+        de volver a ModeSelectScreen (vía _start_countdown → _go_standby)."""
+        from ui.locker_screen.resource_select_screen import resource_display_name
+        from ui.locker_screen.duration_select_screen import duration_display_label
+
+        for w in self._success_inner.winfo_children():
+            w.pack_forget()
+
+        self.lbl_success_icon.pack(pady=(0, 10))
+
+        self.lbl_success_name.configure(text=user_data.get("nombre", "—"))
+        self.lbl_success_name.pack(pady=(0, 2))
+
+        self.lbl_success_matricula.configure(
+            text=f"{t('scan.matricula_label')}  {user_data.get('matricula', '—')}"
+        )
+        self.lbl_success_matricula.pack(pady=(0, 16))
+
+        self.overlay_bg.configure(fg_color=PALETTE["SUCCESS"])
+        self.lbl_status.configure(text=t("resource.activated_status"), text_color=PALETTE["SUCCESS_SOFT"])
+        self.lbl_success_main.configure(text=t("resource.activated_main"))
+        self.lbl_success_main.pack(pady=(0, 8))
+        self.lbl_success_sub.configure(
+            text=f"{resource_display_name(recurso)}\n{duration_display_label(total_seconds)}"
+        )
+        self.lbl_success_sub.pack(pady=(0, 8))
+
+        self.lbl_countdown.pack(pady=(6, 0))
+
+        self.lbl_attempts.configure(text="")
+        self.overlay_bg.place(x=0, y=0, relwidth=1, relheight=1)
+        self.btn_admin.place_forget()
+        self.btn_back.place_forget()
+        self._start_countdown(self.DISPLAY_SECONDS)
 
     # ── Progreso de un recurso ya en uso (FLOW_RESOURCE_END_AUTH) ─────────────
 

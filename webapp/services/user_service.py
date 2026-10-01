@@ -242,9 +242,28 @@ def set_user_status(user_id: int, estado: str, modificado_por: int) -> None:
 
 
 def delete_user_permanent(user_id: int) -> None:
-    execute("DELETE FROM asignacion_locker WHERE idUsuario=%s", (user_id,))
-    execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
-    execute("DELETE FROM usuarios WHERE idUsuario=%s", (user_id,))
+    """
+    Elimina un usuario de forma definitiva.
+
+    Antes borraba asignacion_locker/encoding y usuarios en 3 llamadas a
+    execute() separadas -cada una su propio commit (ver webapp/db.py::cursor,
+    que hace commit al salir de CADA `with`)-, así que un fallo a mitad de
+    camino dejaba borrados parciales sin deshacer. Se vio en producción: un
+    usuario con una sesión de recurso "en_uso" sin terminar (fk_recurso_uso_
+    usuario, ON DELETE RESTRICT) hacía fallar el DELETE final con un 500 sin
+    manejar, pero sus filas de asignacion_locker/encoding YA se habían borrado
+    y confirmado - dejándolo con el rostro perdido y sin poder completarse la
+    eliminación ni volver a intentarla limpiamente. Ahora todo corre en un
+    solo `with cursor()` (una sola transacción: todo o nada) e incluye
+    recurso_uso, la tabla que faltaba. historial_accesos y comandos_locker NO
+    se tocan a propósito: sus FKs son ON DELETE SET NULL, así que el registro
+    de auditoría sobrevive huérfano en vez de borrarse.
+    """
+    with cursor() as cur:
+        cur.execute("DELETE FROM recurso_uso WHERE idUsuario=%s", (user_id,))
+        cur.execute("DELETE FROM asignacion_locker WHERE idUsuario=%s", (user_id,))
+        cur.execute("DELETE FROM encoding WHERE idUsuario=%s", (user_id,))
+        cur.execute("DELETE FROM usuarios WHERE idUsuario=%s", (user_id,))
 
 
 def email_exists(email: str, exclude_user_id: int | None = None) -> bool:

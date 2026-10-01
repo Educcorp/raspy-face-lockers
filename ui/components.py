@@ -217,6 +217,8 @@ _NAV_ITEMS = [
     ("nav.lockers",      "box",   "ui.admin.lockers_catalog",   "LockersCatalogScreen",  False),
     ("nav.asignaciones", "link",  "ui.admin.locker_assignment", "LockerAssignmentScreen",False),
     ("nav.historial",    "clock", "ui.admin.access_history",    "AccessHistoryScreen",   False),
+    ("nav.recursos",     "wrench","ui.admin.resources_catalog", "ResourcesCatalogScreen",False),
+    ("nav.recurso_autorizaciones", "link", "ui.admin.resource_authorization", "ResourceAuthorizationScreen", False),
 ]
 
 _CATALOG_ITEMS = [

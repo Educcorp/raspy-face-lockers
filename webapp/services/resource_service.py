@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from webapp.db import execute, execute_returning, fetch_all, fetch_one
+from webapp.db import cursor, execute, execute_returning, fetch_all, fetch_one
 
 
 # ── Catálogo de recursos ────────────────────────────────────────────────────
@@ -75,8 +75,18 @@ def set_recurso_estado(recurso_id: int, estado: str, modificado_por: int) -> Non
 
 
 def delete_recurso(recurso_id: int) -> None:
-    """Elimina el recurso; sus autorizaciones se borran en cascada (FK)."""
-    execute("DELETE FROM recursos WHERE idRecurso=%s", (recurso_id,))
+    """Elimina el recurso; sus autorizaciones se borran en cascada (FK).
+
+    recurso_uso.idRecurso es ON DELETE RESTRICT (es el candado de concurrencia
+    de una sesión activa, ver webapp/schema.sql) — un recurso que alguna vez
+    se usó (aunque la sesión ya haya terminado) bloqueaba este DELETE con un
+    error sin manejar. Mismo tipo de bug que bloqueaba eliminar usuarios con
+    una sesión de recurso sin cerrar (ver user_service.py::
+    delete_user_permanent); se corrige igual, en una sola transacción.
+    """
+    with cursor() as cur:
+        cur.execute("DELETE FROM recurso_uso WHERE idRecurso=%s", (recurso_id,))
+        cur.execute("DELETE FROM recursos WHERE idRecurso=%s", (recurso_id,))
 
 
 # ── Autorizaciones por usuario ──────────────────────────────────────────────

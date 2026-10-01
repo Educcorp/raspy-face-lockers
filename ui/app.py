@@ -213,10 +213,13 @@ class LockerApp(ctk.CTk):
         from ui.admin.access_history    import AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user     import RegisterUserScreen
+        from ui.admin.resources_catalog import ResourcesCatalogScreen
+        from ui.admin.resource_authorization import ResourceAuthorizationScreen
         for FrameClass in (
             LoginScreen, DashboardScreen, UsersCatalogScreen,
             LockersCatalogScreen, AreasCatalogScreen,
             AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
+            ResourcesCatalogScreen, ResourceAuthorizationScreen,
         ):
             frame = FrameClass(parent=self, controller=self)
             self._frames[FrameClass] = frame
@@ -298,12 +301,15 @@ class LockerApp(ctk.CTk):
         from ui.admin.access_history    import AccessHistoryScreen
         from ui.admin.locker_assignment import LockerAssignmentScreen
         from ui.admin.register_user     import RegisterUserScreen
+        from ui.admin.resources_catalog import ResourcesCatalogScreen
+        from ui.admin.resource_authorization import ResourceAuthorizationScreen
         from auth.session import is_authenticated
 
         admin_classes = (
             LoginScreen, DashboardScreen, UsersCatalogScreen,
             LockersCatalogScreen, AreasCatalogScreen,
             AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
+            ResourcesCatalogScreen, ResourceAuthorizationScreen,
         )
         ctk.set_appearance_mode("dark" if self._mode == "dark" else "light")
         for cls in admin_classes:
@@ -368,10 +374,13 @@ class LockerApp(ctk.CTk):
                 from ui.admin.access_history    import AccessHistoryScreen
                 from ui.admin.locker_assignment import LockerAssignmentScreen
                 from ui.admin.register_user     import RegisterUserScreen
+                from ui.admin.resources_catalog import ResourcesCatalogScreen
+                from ui.admin.resource_authorization import ResourceAuthorizationScreen
                 admin_cls = (
                     LoginScreen, DashboardScreen, UsersCatalogScreen,
                     LockersCatalogScreen, AreasCatalogScreen,
                     AccessHistoryScreen, LockerAssignmentScreen, RegisterUserScreen,
+                    ResourcesCatalogScreen, ResourceAuthorizationScreen,
                 )
                 for cls in admin_cls:
                     if cls in self._frames:

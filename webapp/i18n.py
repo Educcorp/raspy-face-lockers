@@ -281,6 +281,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "res.desc_label":           {"es": "Descripción (opcional)", "en": "Description (optional)"},
     "res.delete_confirm":       {"es": "¿Eliminar este recurso permanentemente? También se quitarán sus autorizaciones.",
                                  "en": "Delete this resource permanently? Its authorizations will also be removed."},
+    "res.edit_title":           {"es": "Editar recurso", "en": "Edit resource"},
     "res.no_recursos":          {"es": "Aún no hay recursos creados.", "en": "No resources have been created yet."},
 
     # ── Recursos: autorizaciones (Admin y Superadmin) ────────────────────────

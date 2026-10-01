@@ -56,7 +56,8 @@
         <td>{{ r.nombrearea or '—' }}</td>
         <td><span class="badge {{ r.estado }}">{{ r.estado|tr_status }}</span></td>
         <td>
-          <form method="post" action="{{ url_for('resources.set_recurso_estado', recurso_id=r.idrecurso) }}" style="display:inline">
+          <div class="row-actions">
+          <form method="post" action="{{ url_for('resources.set_recurso_estado', recurso_id=r.idrecurso) }}">
             <input type="hidden" name="estado" value="{{ 'inactivo' if r.estado=='activo' else 'activo' }}">
             <button class="btn btn-sm btn-muted" type="submit">
               {{ tr('common.deactivate') if r.estado=='activo' else tr('common.activate') }}
@@ -64,8 +65,13 @@
           </form>
           <details class="row-edit">
             <summary class="btn btn-sm btn-muted">{{ tr('common.edit') }}</summary>
-            <div class="row-edit-panel">
-              <form method="post" action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}" data-unidad-area-group>
+            <div class="row-edit-panel row-edit-panel--wide">
+              <div class="row-edit-head">
+                <span class="row-edit-title">{{ tr('res.edit_title') }}</span>
+                <span class="row-edit-sub">{{ r.nombre }}</span>
+              </div>
+              <form id="edit-recurso-{{ r.idrecurso }}" method="post"
+                    action="{{ url_for('resources.edit_recurso', recurso_id=r.idrecurso) }}" data-unidad-area-group>
                 <div class="form-row">
                   <label>{{ tr('res.name_label') }}</label>
                   <input type="text" name="nombre" value="{{ r.nombre }}" required maxlength="60">
@@ -74,32 +80,37 @@
                   <label>{{ tr('res.desc_label') }}</label>
                   <input type="text" name="descripcion" value="{{ r.descripcion or '' }}" maxlength="300">
                 </div>
-                <div class="form-row">
-                  <label>{{ tr('common.academic_unit') }}</label>
-                  <select name="idUnidadAcademica" data-role="unidad" required>
-                    {% for u in unidades %}
-                    <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==r.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
-                    {% endfor %}
-                  </select>
+                <div class="row-edit-grid">
+                  <div class="form-row">
+                    <label>{{ tr('common.academic_unit') }}</label>
+                    <select name="idUnidadAcademica" data-role="unidad" required>
+                      {% for u in unidades %}
+                      <option value="{{ u.idunidadacademica }}" {% if u.idunidadacademica==r.idunidadacademica %}selected{% endif %}>{{ u.nombreunidadacademica }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="form-row">
+                    <label>{{ tr('common.area') }}</label>
+                    <select name="idArea" data-role="area" required>
+                      {% for a in areas %}
+                      <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==r.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
                 </div>
-                <div class="form-row">
-                  <label>{{ tr('common.area') }}</label>
-                  <select name="idArea" data-role="area" required>
-                    {% for a in areas %}
-                    <option value="{{ a.idarea }}" data-unidad="{{ a.idunidadacademica or '' }}" {% if a.idarea==r.idarea %}selected{% endif %}>{{ a.nombrearea }}</option>
-                    {% endfor %}
-                  </select>
-                </div>
-                <button class="btn btn-sm" type="submit">{{ tr('common.save_changes') }}</button>
               </form>
-              {% if g.user.role == 'superadmin' %}
-              <form method="post" action="{{ url_for('resources.delete_recurso', recurso_id=r.idrecurso) }}"
-                    data-confirm="{{ tr('res.delete_confirm') }}" style="margin-top:10px;">
-                <button class="btn btn-sm btn-danger" type="submit" style="width:100%;">{{ tr('common.delete') }}</button>
-              </form>
-              {% endif %}
+              <div class="row-edit-foot">
+                {% if g.user.role == 'superadmin' %}
+                <form method="post" action="{{ url_for('resources.delete_recurso', recurso_id=r.idrecurso) }}"
+                      data-confirm="{{ tr('res.delete_confirm') }}">
+                  <button class="btn btn-sm btn-danger-ghost" type="submit">{{ tr('common.delete') }}</button>
+                </form>
+                {% endif %}
+                <button class="btn btn-sm" type="submit" form="edit-recurso-{{ r.idrecurso }}">{{ tr('common.save_changes') }}</button>
+              </div>
             </div>
           </details>
+          </div>
         </td>
       </tr>
       {% else %}

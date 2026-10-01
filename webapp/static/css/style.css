@@ -989,6 +989,7 @@ tbody tr:hover { background: var(--surface-alt); }
 .dashboard-section {
   margin-bottom: 34px;
 }
+.dashboard-section.dashboard-alerts { margin-bottom: 22px; }
 
 .section-heading {
   display: flex;

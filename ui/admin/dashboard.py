@@ -1,11 +1,11 @@
 """
 DashboardScreen – pantalla de inicio del panel admin (480×800 px).
 
-Réplica de webapp/templates/dashboard.html: un encabezado "Resumen" seguido
-de 5 tarjetas de estadística (Usuarios activos, Pendientes de registro
-facial, Lockers activos, Asignaciones activas, Accesos hoy) apiladas en una
-columna (el web las muestra en grid porque tiene ancho de escritorio; aquí
-se apilan por el ancho de 480px), más la tarjeta de aviso condicional cuando
+Réplica de webapp/templates/dashboard.html: arriba de todo la tarjeta de
+aviso condicional (ver abajo), luego un encabezado "Resumen" seguido de 5
+tarjetas de estadística (Usuarios activos, Pendientes de registro facial,
+Lockers activos, Asignaciones activas, Accesos hoy) apiladas en una columna (el web las muestra en grid porque tiene ancho de escritorio; aquí
+se apilan por el ancho de 480px). La tarjeta de aviso aparece solo cuando
 hay usuarios con registro facial pendiente — mismos datos, mismo orden,
 mismo mensaje que el web (ver webapp/blueprints/dashboard_bp.py).
 
@@ -114,10 +114,15 @@ class DashboardScreen(ctk.CTkFrame):
         body = ctk.CTkScrollableFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=18, pady=(14, 10))
 
-        ctk.CTkLabel(
+        # Avisos primero (requieren atención del admin). El contenedor solo se
+        # empaqueta cuando hay algo que mostrar (_render_notice), antes del título.
+        self._notice_container = ctk.CTkFrame(body, fg_color="transparent")
+
+        self._summary_heading = ctk.CTkLabel(
             body, text=t("dash.summary_heading"), font=theme.font_display(20, "bold"),
             text_color=PALETTE["TEXT"], anchor="w",
-        ).pack(fill="x", pady=(0, 2))
+        )
+        self._summary_heading.pack(fill="x", pady=(0, 2))
         full_name = get_current_full_name()
         if full_name:
             ctk.CTkLabel(
@@ -127,9 +132,6 @@ class DashboardScreen(ctk.CTkFrame):
 
         self._cards_container = ctk.CTkFrame(body, fg_color="transparent")
         self._cards_container.pack(fill="x")
-
-        self._notice_container = ctk.CTkFrame(body, fg_color="transparent")
-        self._notice_container.pack(fill="x", pady=(8, 0))
 
         # Se dibuja con ceros: la consulta la hace on_show(). Antes esta línea
         # consultaba la BD durante la construcción y on_show la repetía, así que
@@ -160,7 +162,9 @@ class DashboardScreen(ctk.CTkFrame):
         for w in self._notice_container.winfo_children():
             w.destroy()
         if pendientes <= 0:
+            self._notice_container.pack_forget()
             return
+        self._notice_container.pack(fill="x", pady=(0, 14), before=self._summary_heading)
 
         card = Card(self._notice_container, fg_color=PALETTE["WARN_SOFT"], border_width=0)
         card.pack(fill="x")

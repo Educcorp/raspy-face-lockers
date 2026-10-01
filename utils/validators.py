@@ -129,6 +129,19 @@ def validate_recurso_descripcion(value: str) -> str | None:
     return None
 
 
+PIN_LENGTH = 4  # el teclado del kiosco (scanning_screen._pin_digit) acepta exactamente 4
+
+
+def validate_pin(value: str) -> str | None:
+    """PIN del kiosco: exactamente 4 dígitos y no todos iguales (1111, 2222…)."""
+    v = (value or "").strip()
+    if not re.fullmatch(rf"\d{{{PIN_LENGTH}}}", v):
+        return f"El PIN debe tener exactamente {PIN_LENGTH} dígitos numéricos."
+    if len(set(v)) == 1:
+        return "El PIN no puede tener todos los dígitos iguales (ej: 1111, 2222)."
+    return None
+
+
 # ── Utilidad para limitar longitud de StringVar ───────────────────────────────
 
 def limit_var(var, max_len: int) -> None:

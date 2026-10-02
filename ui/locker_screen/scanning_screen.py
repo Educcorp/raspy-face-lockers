@@ -112,7 +112,8 @@ class ScanningScreen(ctk.CTkFrame):
     LIVENESS_MIN_BOX_SHIFT = 0.015    # desplazamiento mínimo visible del rostro
     MIN_SCAN_SECONDS = 2.0            # tiempo mínimo de escaneo antes de intentar identificar
     AUTO_RETURN_SECONDS = 25.0        # segundos sin cara cercana → volver a standby
-    CHALLENGE_FACE_LOST_GRACE_S = 2.5   # segundos sin rostro antes de reiniciar el reto
+    CAMERA_STOP_MAX_WAIT_S = 3.0        # plazo máx. esperando al hilo de cámara al salir (admin/atrás)
+    CHALLENGE_FACE_LOST_GRACE_S = 2.5  # segundos sin rostro antes de reiniciar el reto
     LIVENESS_VALID_S = 20.0             # el reto superado sigue valiendo tras un reconocimiento fallido
     LIVENESS_CHALLENGE_TIMEOUT = 9.0  # No usado en modo pasivo
     CHALLENGE_SHIFT_THRESHOLD = 0.16  # No usado en modo pasivo
@@ -173,6 +174,7 @@ class ScanningScreen(ctk.CTkFrame):
         self._challenge_msg: tuple[str, str] | None = None   # (texto, pista) para la UI
         self._auto_return_started_ts: float | None = None
         self._manual_stop_started_ts: float | None = None
+        self._forced_release_started = False
         self._door_wait_job = None
         self._door_wait_active = False
         self._door_wait_started_at = 0.0
@@ -638,6 +640,8 @@ class ScanningScreen(ctk.CTkFrame):
             logger.warning("Intentando inicializar cámara...")
             init_ok = False
             for attempt in range(1, 4):
+                if not self._camera_running:
+                    return  # el usuario salió (p. ej. botón admin) mientras iniciaba
                 if self.face_manager.initialize():
                     init_ok = True
                     break
@@ -1651,15 +1655,34 @@ class ScanningScreen(ctk.CTkFrame):
             self._manual_stop_started_ts = time.time()
         if self._camera_thread and self._camera_thread.is_alive():
             elapsed = time.time() - self._manual_stop_started_ts
-            if elapsed >= 1.5 and self.face_manager and self.face_manager.initialized:
-                try:
-                    self.face_manager.release()
-                except Exception as e:
-                    logger.debug("Detención segura: fallo al liberar cámara: %s", e)
-            self.after(120, lambda: self._stop_camera_then(callback))
-            return
+            if elapsed < self.CAMERA_STOP_MAX_WAIT_S:
+                if (elapsed >= 1.5 and not self._forced_release_started
+                        and self.face_manager and self.face_manager.initialized):
+                    # release() toma el lock de la cámara y puede bloquear si el
+                    # hilo de captura lo tiene: NUNCA en el hilo de la UI (congelaba
+                    # toda la app y el botón admin no respondía).
+                    self._forced_release_started = True
+                    threading.Thread(
+                        target=self._release_camera_quietly, daemon=True
+                    ).start()
+                self.after(120, lambda: self._stop_camera_then(callback))
+                return
+            # Plazo agotado: el hilo está colgado (init/captura bloqueada). Navegar
+            # igual — es un hilo daemon y no puede dejar al kiosco sin salida.
+            logger.warning(
+                "Hilo de cámara no terminó en %.1fs; se navega de todos modos",
+                self.CAMERA_STOP_MAX_WAIT_S,
+            )
         self._manual_stop_started_ts = None
+        self._forced_release_started = False
         callback()
+
+    def _release_camera_quietly(self) -> None:
+        try:
+            if self.face_manager:
+                self.face_manager.release()
+        except Exception as e:
+            logger.debug("Detención segura: fallo al liberar cámara: %s", e)
 
     def _go_standby_safe(self) -> None:
         self._stop_camera_then(self._go_standby)

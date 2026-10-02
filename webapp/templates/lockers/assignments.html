@@ -57,7 +57,7 @@
         <td>{{ a.matricula }}</td>
         <td>{{ a.fechahorareg | local_dt }}</td>
         <td>
-          <form method="post" data-confirm="{{ tr('assign.release_confirm') }}">
+          <form method="post" data-confirm="{{ tr('assign.release_confirm') }}" data-confirm-ok="{{ tr('assign.release') }}">
             <input type="hidden" name="action" value="release">
             <input type="hidden" name="idLockerAsignado" value="{{ a.idlockerasignado }}">
             <button class="btn btn-sm btn-danger" type="submit">{{ tr('assign.release') }}</button>

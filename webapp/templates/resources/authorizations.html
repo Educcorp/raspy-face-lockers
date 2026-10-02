@@ -69,7 +69,7 @@
         <td>{{ u.fechahorareg | local_dt }}</td>
         <td>
           <form method="post" action="{{ url_for('resources.revoke_authorization', recurso_id=selected.idrecurso, auth_id=u.idrecursoautorizado) }}"
-                data-confirm="{{ tr('res.revoke_confirm') }}">
+                data-confirm="{{ tr('res.revoke_confirm') }}" data-confirm-ok="{{ tr('res.revoke_btn') }}">
             <button class="btn btn-sm btn-danger" type="submit">{{ tr('res.revoke_btn') }}</button>
           </form>
         </td>

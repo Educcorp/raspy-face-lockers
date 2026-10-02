@@ -162,10 +162,14 @@
       <span class="modal-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
       </span>
+      <h3 id="confirm-modal-title" class="modal-title" hidden>{{ tr('confirm.delete_title') }}</h3>
       <p id="confirm-modal-message"></p>
+      <p id="confirm-modal-warn" class="modal-warn" hidden>{{ tr('confirm.delete_warn') }}</p>
       <div class="modal-actions">
         <button type="button" id="confirm-modal-cancel" class="btn btn-muted">{{ tr('common.cancel') }}</button>
-        <button type="button" id="confirm-modal-ok" class="btn btn-danger">{{ tr('common.confirm') }}</button>
+        <button type="button" id="confirm-modal-ok" class="btn btn-danger"
+                data-default-label="{{ tr('common.confirm') }}"
+                data-delete-label="{{ tr('common.delete') }}">{{ tr('common.confirm') }}</button>
       </div>
     </div>
   </div>
@@ -182,6 +186,8 @@
       const msgEl = document.getElementById('confirm-modal-message');
       const btnOk = document.getElementById('confirm-modal-ok');
       const btnCancel = document.getElementById('confirm-modal-cancel');
+      const titleEl = document.getElementById('confirm-modal-title');
+      const warnEl = document.getElementById('confirm-modal-warn');
       let pendingForm = null;
 
       const closeModal = () => {
@@ -199,8 +205,18 @@
           if (dlg) dlg.close();
           pendingForm = form;
           msgEl.textContent = form.dataset.confirm;
+          // data-confirm-delete: aviso de borrado permanente (título, "no se
+          // puede deshacer" y botón "Eliminar"). data-confirm-ok cambia el
+          // texto del botón en confirmaciones que no son borrados.
+          const isDelete = 'confirmDelete' in form.dataset;
+          titleEl.hidden = !isDelete;
+          warnEl.hidden = !isDelete;
+          btnOk.textContent = isDelete
+            ? btnOk.dataset.deleteLabel
+            : (form.dataset.confirmOk || btnOk.dataset.defaultLabel);
           overlay.hidden = false;
-          btnOk.focus();
+          // Foco en "Cancelar": un Enter accidental no borra nada.
+          btnCancel.focus();
         });
       });
 

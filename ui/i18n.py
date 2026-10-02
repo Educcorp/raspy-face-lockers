@@ -584,6 +584,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "common.cancel":         {"es": "Cancelar",                  "en": "Cancel"},
     "common.accept":         {"es": "Aceptar",                   "en": "Accept"},
     "common.confirm":        {"es": "Confirmar",                 "en": "Confirm"},
+    "common.delete":         {"es": "Eliminar",                  "en": "Delete"},
     "common.edit":           {"es": "Editar",                    "en": "Edit"},
     "common.read_only":      {"es": "Solo lectura",              "en": "Read only"},
     "common.enable":         {"es": "Habilitar",                 "en": "Enable"},

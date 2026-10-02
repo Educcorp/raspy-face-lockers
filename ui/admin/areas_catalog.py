@@ -393,7 +393,8 @@ class _AlertDialog(ctk.CTkFrame):
 class _ConfirmDialog(ctk.CTkFrame):
     """Diálogo de confirmación como overlay en-ventana (compatible Linux/RPi)."""
 
-    def __init__(self, parent, message: str, on_confirm):
+    def __init__(self, parent, message: str, on_confirm, confirm_text: str | None = None):
+        # confirm_text: p.ej. t("common.delete") en eliminaciones (por defecto "Confirmar").
         root = parent.winfo_toplevel()
         super().__init__(root, fg_color=PALETTE["BG"], corner_radius=0)
         self.place(x=0, y=0, relwidth=1, relheight=1)
@@ -423,7 +424,7 @@ class _ConfirmDialog(ctk.CTkFrame):
         ).pack(side="left", expand=True, fill="x", padx=(0, 6))
 
         ctk.CTkButton(
-            btn_row, text=t("common.confirm"), height=52,
+            btn_row, text=confirm_text or t("common.confirm"), height=52,
             fg_color=PALETTE["DANGER"], hover_color="#922b21",
             text_color=PALETTE["WHITE"],
             command=lambda: (on_confirm(), self.destroy()),
@@ -552,6 +553,7 @@ class AreaFormOverlay(_BaseFormOverlay):
             self,
             f"¿Eliminar permanentemente el área '{nombre}'?\n\nEsta acción no se puede deshacer.",
             on_confirm=self._do_delete_area,
+            confirm_text=t("common.delete"),
         )
 
     def _do_delete_area(self) -> None:
@@ -654,6 +656,7 @@ class UnidadFormOverlay(_BaseFormOverlay):
             self,
             f"¿Eliminar permanentemente '{nombre}'?\n\nEsta acción no se puede deshacer.",
             on_confirm=self._do_delete_unidad,
+            confirm_text=t("common.delete"),
         )
 
     def _do_delete_unidad(self) -> None:

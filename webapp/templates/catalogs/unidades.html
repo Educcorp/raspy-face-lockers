@@ -120,7 +120,7 @@
   </form>
   <div class="crud-dialog-foot">
     <form method="post" action="{{ url_for('catalogs.delete_unidad', unidad_id=u.idunidadacademica) }}"
-          data-confirm="{{ tr('units.delete_confirm') }}">
+          data-confirm="{{ tr('units.delete_confirm', name=u.nombreunidadacademica) }}" data-confirm-delete>
       <button type="submit" class="btn btn-sm btn-danger-ghost">{{ tr('common.delete') }}</button>
     </form>
     <button type="button" class="btn btn-sm btn-muted" data-close-dialog>{{ tr('common.cancel') }}</button>

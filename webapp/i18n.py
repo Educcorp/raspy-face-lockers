@@ -49,6 +49,8 @@ STRINGS: dict[str, dict[str, str]] = {
     # ── Comunes ──────────────────────────────────────────────────────────────
     "common.cancel":        {"es": "Cancelar", "en": "Cancel"},
     "common.confirm":       {"es": "Confirmar", "en": "Confirm"},
+    "confirm.delete_title": {"es": "¿Eliminar permanentemente?", "en": "Delete permanently?"},
+    "confirm.delete_warn":  {"es": "Esta acción no se puede deshacer.", "en": "This action cannot be undone."},
     "common.save":          {"es": "Guardar", "en": "Save"},
     "common.save_changes":  {"es": "Guardar cambios", "en": "Save changes"},
     "common.create":        {"es": "Crear", "en": "Create"},
@@ -178,8 +180,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "form.new_pin_label":   {"es": "Nuevo PIN", "en": "New PIN"},
     "form.confirm_pin_label": {"es": "Confirmar PIN", "en": "Confirm PIN"},
     "form.save_pin":        {"es": "Guardar PIN", "en": "Save PIN"},
-    "form.delete_confirm":  {"es": "¿Eliminar este usuario permanentemente? Esta acción no se puede deshacer.",
-                             "en": "Delete this user permanently? This action cannot be undone."},
+    "form.delete_confirm":  {"es": "Se eliminará a {name} junto con su rostro registrado y sus asignaciones.",
+                             "en": "{name} will be deleted along with their registered face and assignments."},
     "form.delete":          {"es": "Eliminar permanentemente", "en": "Delete permanently"},
 
     # ── Captura facial ───────────────────────────────────────────────────────
@@ -271,7 +273,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "lockers.showing":      {"es": "Mostrando <strong>{a}–{b}</strong> de <strong>{total}</strong> lockers",
                              "en": "Showing <strong>{a}–{b}</strong> of <strong>{total}</strong> lockers"},
     "lockers.none":         {"es": "Aún no hay lockers registrados.", "en": "No lockers have been registered yet."},
-    "lockers.delete_confirm": {"es": "¿Eliminar este locker permanentemente?", "en": "Delete this locker permanently?"},
+    "lockers.delete_confirm": {"es": "Se eliminará el locker #{n} junto con su historial de asignaciones y accesos. Los lockers posteriores se renumerarán.",
+                               "en": "Locker #{n} will be deleted along with its assignment and access history. Later lockers will be renumbered."},
     "lockers.delete":       {"es": "Eliminar locker", "en": "Delete locker"},
     "lockers.protected":    {"es": "Los 4 lockers físicos originales no se pueden eliminar.", "en": "The 4 original physical lockers can't be deleted."},
 
@@ -295,8 +298,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "res.new_recurso":          {"es": "+ Nuevo recurso", "en": "+ New resource"},
     "res.name_label":           {"es": "Nombre del recurso", "en": "Resource name"},
     "res.desc_label":           {"es": "Descripción (opcional)", "en": "Description (optional)"},
-    "res.delete_confirm":       {"es": "¿Eliminar este recurso permanentemente? También se quitarán sus autorizaciones.",
-                                 "en": "Delete this resource permanently? Its authorizations will also be removed."},
+    "res.delete_confirm":       {"es": "Se eliminará el recurso «{name}» junto con sus autorizaciones.",
+                                 "en": "The resource “{name}” will be deleted along with its authorizations."},
     "res.edit_title":           {"es": "Editar recurso", "en": "Edit resource"},
     "res.new_title":            {"es": "Nuevo recurso", "en": "New resource"},
     "res.showing":              {"es": "Mostrando <strong>{a}–{b}</strong> de <strong>{total}</strong> recursos",
@@ -350,7 +353,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "areas.none":           {"es": "Aún no hay áreas registradas.", "en": "No areas have been registered yet."},
     "areas.inactive_unit":  {"es": "(inactiva)", "en": "(inactive)"},
     "areas.unit_optional":  {"es": "Unidad académica (opcional)", "en": "Academic unit (optional)"},
-    "areas.delete_confirm": {"es": "¿Eliminar esta área permanentemente?", "en": "Delete this area permanently?"},
+    "areas.delete_confirm": {"es": "Se eliminará el área «{name}».", "en": "The area “{name}” will be deleted."},
     "units.page_title":     {"es": "Gestión de Unidades Académicas", "en": "Academic Unit Management"},
     "units.heading":        {"es": "Unidades Académicas", "en": "Academic Units"},
     "units.eyebrow":        {"es": "CATÁLOGO", "en": "CATALOG"},
@@ -364,7 +367,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "units.none":           {"es": "Aún no hay unidades registradas.", "en": "No units have been registered yet."},
     "units.zone":           {"es": "Zona", "en": "Zone"},
     "units.zone_optional":  {"es": "Zona (opcional)", "en": "Zone (optional)"},
-    "units.delete_confirm": {"es": "¿Eliminar esta unidad permanentemente?", "en": "Delete this unit permanently?"},
+    "units.delete_confirm": {"es": "Se eliminará la unidad académica «{name}».", "en": "The academic unit “{name}” will be deleted."},
     "types.heading":        {"es": "Gestión de Roles", "en": "Role Management"},
     "types.new":            {"es": "Nuevo tipo", "en": "New type"},
 }

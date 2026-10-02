@@ -761,6 +761,20 @@ tbody tr:hover { background: var(--surface-alt); }
   line-height: 1.5;
 }
 
+.modal-title {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--danger);
+}
+.modal-title + p { font-weight: 500; margin-bottom: 10px; }
+.modal-card p.modal-warn {
+  margin: 0 0 22px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
 .modal-actions { display: flex; gap: 10px; }
 .modal-actions .btn { flex: 1; justify-content: center; }
 

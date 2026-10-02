@@ -130,7 +130,7 @@
   <div class="crud-dialog-foot">
     {% if g.user.role == 'superadmin' %}
     <form method="post" action="{{ url_for('lockers.delete_locker', locker_id=l.idlocker) }}"
-          data-confirm="{{ tr('lockers.delete_confirm') }}">
+          data-confirm="{{ tr('lockers.delete_confirm', n=l.idlocker) }}" data-confirm-delete>
       <button type="submit" class="btn btn-sm btn-danger-ghost"
               {% if l.idlocker in protected_ids %}disabled title="{{ tr('lockers.protected') }}"{% endif %}>
         {{ tr('common.delete') }}

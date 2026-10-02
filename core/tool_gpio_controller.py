@@ -191,6 +191,15 @@ class ToolGPIOController:
         logger.info("Herramienta '%s' desactivada (pin=%s)", tool_name, pin)
         return True
 
+    def is_ready(self) -> bool:
+        """True si hay un backend GPIO funcional (inicializa los pines si hace falta)."""
+        return self._ensure_setup()
+
+    def is_active(self, tool_name: str) -> bool:
+        """True si el relé de esa herramienta está activado en este momento."""
+        lock = self._tool_locks.get(tool_name)
+        return bool(lock and lock.locked())
+
     def stop_tool_by_id(self, tool_name: str) -> None:
         """Señala corte anticipado de una activación en curso (botón "Terminar de
         usar el recurso"). Si no hay ninguna activación corriendo, no hace nada."""

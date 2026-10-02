@@ -1895,6 +1895,16 @@ html.nav-compact .nav-toggle-input:checked ~ .topbar-wrap .mobile-panel { displa
 .res-toggle[aria-checked="true"] .res-switch { background: var(--success); }
 .res-toggle[aria-checked="true"] .res-knob { transform: translateX(20px); }
 
+.res-status {
+  margin: 0 0 14px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.res-card[data-state="on"] .res-status { color: var(--success); }
+.res-duration { margin-bottom: 12px; }
+.res-duration[hidden] { display: none; }
+
 .res-demo-note {
   margin: 18px 2px 0;
   color: var(--muted);

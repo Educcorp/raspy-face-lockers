@@ -150,7 +150,8 @@ CREATE TABLE IF NOT EXISTS historial_accesos (
             'no_reconocido', 'pin_incorrecto', 'limite_intentos_pin',
             'matricula_incorrecta', 'pin_cancelado',
             'puerta_cerrada', 'puerta_no_cerrada',
-            'recurso_en_uso', 'recurso_finalizado', 'recurso_expirado'
+            'recurso_en_uso', 'recurso_finalizado', 'recurso_expirado',
+            'remoto'
         ) OR motivo IS NULL
     ),
     fechaExpiracion TIMESTAMPTZ NOT NULL,
@@ -284,6 +285,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_recurso_uso_activo
     ON recurso_uso (idRecurso) WHERE estado = 'en_uso';
 CREATE INDEX IF NOT EXISTS idx_recurso_uso_usuario ON recurso_uso (idUsuario, estado);
 CREATE INDEX IF NOT EXISTS idx_recurso_uso_fin_previsto ON recurso_uso (fechaFinPrevista) WHERE estado = 'en_uso';
+
+-- ── Activación remota de recursos (web → Pi) ────────────────────────────────
+-- Ver webapp/migrations/add_comandos_recurso.sql para el porqué.
+
+CREATE TABLE IF NOT EXISTS comandos_recurso (
+    idComando SERIAL PRIMARY KEY,
+    idRecurso INTEGER NOT NULL,
+    accion TEXT NOT NULL CHECK (accion IN ('activar', 'desactivar')),
+    duracionSegundos INTEGER CHECK (duracionSegundos > 0 AND duracionSegundos <= 10800),
+    estado TEXT NOT NULL DEFAULT 'pendiente'
+        CHECK (estado IN ('pendiente', 'ejecutando', 'completado', 'error', 'expirado')),
+    solicitadoPor INTEGER,
+    fechaHoraSolicitud TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fechaHoraEjecucion TIMESTAMPTZ,
+    detalle TEXT,
+    CONSTRAINT chk_comando_recurso_duracion CHECK (
+        (accion = 'activar' AND duracionSegundos IS NOT NULL) OR accion = 'desactivar'
+    ),
+    CONSTRAINT fk_comando_recurso
+        FOREIGN KEY (idRecurso) REFERENCES recursos (idRecurso)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_comando_recurso_usuario
+        FOREIGN KEY (solicitadoPor) REFERENCES usuarios (idUsuario)
+        ON UPDATE CASCADE ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_comandos_recurso_estado ON comandos_recurso (estado, fechaHoraSolicitud);
+CREATE INDEX IF NOT EXISTS idx_comandos_recurso_recurso ON comandos_recurso (idRecurso, fechaHoraSolicitud);
 
 -- Diferida hasta aquí porque historial_accesos se define antes que recurso_uso.
 ALTER TABLE historial_accesos ADD CONSTRAINT fk_historial_recurso_uso

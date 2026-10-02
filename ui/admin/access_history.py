@@ -26,6 +26,7 @@ _MOTIVO_LABELS: dict[str, str] = {
     "recurso_en_uso":        "Recurso en uso",
     "recurso_finalizado":    "Uso finalizado",
     "recurso_expirado":      "Uso expirado (automático)",
+    "remoto":                "Activado desde la web",
 }
 
 def _split_datetime(value) -> tuple[str, str]:

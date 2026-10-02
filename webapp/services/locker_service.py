@@ -210,12 +210,18 @@ PI_ONLINE_SECONDS = 30      # sin latido en este tiempo → Pi desconectada
 COMMAND_RECENT_SECONDS = 60  # ventana en que un comando cuenta como "reciente"
 
 
-def get_remote_status() -> dict:
-    """Estado para los botones de apertura: latido de la Pi, puerta y último comando por locker."""
+def pi_is_online() -> bool:
+    """True si la Pi publicó su latido (estado_puerta) en los últimos PI_ONLINE_SECONDS.
+    Lo usan también los comandos remotos de recursos (resource_service)."""
     hb = fetch_one(
         "SELECT EXTRACT(EPOCH FROM (now() - MAX(fechaHoraAct))) AS age FROM estado_puerta"
     )
     age = hb["age"] if hb else None
+    return age is not None and float(age) <= PI_ONLINE_SECONDS
+
+
+def get_remote_status() -> dict:
+    """Estado para los botones de apertura: latido de la Pi, puerta y último comando por locker."""
     rows = fetch_all(
         """
         SELECT l.idLocker, ep.cerrada,
@@ -234,7 +240,7 @@ def get_remote_status() -> dict:
         (COMMAND_RECENT_SECONDS,),
     )
     return {
-        "online": age is not None and float(age) <= PI_ONLINE_SECONDS,
+        "online": pi_is_online(),
         "lockers": [
             {
                 "id": r["idlocker"],

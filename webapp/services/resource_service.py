@@ -163,6 +163,11 @@ def revoke_authorization(auth_id: int, modificado_por: int) -> None:
 # recurso (config.py → TOOL_GPIO_CONFIG["pins"]).
 
 RESOURCE_COMMAND_RECENT_SECONDS = 60
+# Igual que COMMAND_MAX_AGE_S en la Pi: una orden pendiente más vieja que esto
+# ya nunca se ejecutará (la Pi la marca 'expirado'). Si la Pi no la marca — p.
+# ej. porque corre una versión sin soporte de recursos —, la web la trata igual
+# en vez de mostrar "Activando…" hasta que desaparezca sin explicación.
+PENDING_MAX_AGE_SECONDS = 30
 MAX_SESSION_SECONDS = 10800  # mismo tope que recurso_uso.duracionSegundos (3 h)
 
 
@@ -183,13 +188,21 @@ def get_resource_remote_status(recurso_id: int) -> dict:
     )
     command = fetch_one(
         """
-        SELECT idComando, accion, estado, detalle FROM comandos_recurso
+        SELECT idComando, accion, estado, detalle,
+               EXTRACT(EPOCH FROM (now() - fechaHoraSolicitud)) AS edad
+        FROM comandos_recurso
         WHERE idRecurso = %s
           AND fechaHoraSolicitud > now() - make_interval(secs => %s)
         ORDER BY idComando DESC LIMIT 1
         """,
         (recurso_id, RESOURCE_COMMAND_RECENT_SECONDS),
     )
+    if command and command["estado"] == "pendiente" and float(command["edad"]) > PENDING_MAX_AGE_SECONDS:
+        command["estado"] = "error"
+        command["detalle"] = (
+            "La Raspberry no tomó la orden. Verifica que tenga la versión actual "
+            "del sistema y que se haya reiniciado."
+        )
     return {
         "online": pi_is_online(),
         "active": session is not None,
@@ -221,11 +234,14 @@ def request_resource_command(
     busy = fetch_one(
         """
         SELECT 1 AS x FROM comandos_recurso
-        WHERE idRecurso=%s AND estado IN ('pendiente', 'ejecutando')
-          AND fechaHoraSolicitud > now() - make_interval(secs => %s)
+        WHERE idRecurso=%s
+          AND ((estado = 'pendiente'
+                AND fechaHoraSolicitud > now() - make_interval(secs => %s))
+            OR (estado = 'ejecutando'
+                AND fechaHoraSolicitud > now() - make_interval(secs => %s)))
         LIMIT 1
         """,
-        (recurso_id, RESOURCE_COMMAND_RECENT_SECONDS),
+        (recurso_id, PENDING_MAX_AGE_SECONDS, RESOURCE_COMMAND_RECENT_SECONDS),
     )
     if busy:
         return False, "Ya hay una orden en curso para este recurso."

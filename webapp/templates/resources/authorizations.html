@@ -25,34 +25,41 @@
   </form>
 </div>
 
-<!-- Recurso seleccionado -->
+<!-- Recurso seleccionado: control remoto real (web → BD → Pi) -->
+{% set can_control = g.user.role in ['admin', 'superadmin'] %}
 <div class="res-grid">
-  <div class="card res-card" data-resource="{{ selected.idrecurso }}" data-state="off">
+  <div class="card res-card" data-state="off"
+       data-status-url="{{ url_for('resources.remote_status', recurso_id=selected.idrecurso) }}"
+       data-control-url="{{ url_for('resources.remote_control', recurso_id=selected.idrecurso) }}">
     <div class="res-card-top">
       <span class="res-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
       </span>
       <span class="badge res-badge inactivo" data-role="badge">{{ tr('res.inactive') }}</span>
     </div>
-
     <h3 class="res-name">{{ selected.nombre }}</h3>
     <p class="res-desc">{{ selected.descripcion or tr('res.desc') }}</p>
-
-    <button type="button"
-            class="res-toggle"
-            role="switch"
-            aria-checked="false"
-            aria-label="{{ selected.nombre }}"
-            data-name="{{ selected.nombre }}">
+    <p class="res-status" data-role="status">{{ tr('res.checking') }}</p>
+    {% if can_control %}
+    <div class="form-row res-duration" data-role="duration">
+      <label for="res-minutes">{{ tr('res.duration_label') }}</label>
+      <select id="res-minutes">
+        {% for m in [15, 30, 60, 90, 120, 180] %}
+        <option value="{{ m }}" {% if m == 30 %}selected{% endif %}>
+          {{ tr('res.minutes', n=m) if m < 60 else tr('res.hours', n=(m / 60) | round(1) | string | replace('.0', '')) }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="button" class="res-toggle" role="switch" aria-checked="false"
+            aria-label="{{ selected.nombre }}" disabled>
       <span class="res-switch" aria-hidden="true"><span class="res-knob"></span></span>
-      <span class="res-toggle-text" data-role="label">
-        {{ tr('res.activate') }}
-      </span>
+      <span class="res-toggle-text" data-role="label">{{ tr('res.activate') }}</span>
     </button>
+    {% endif %}
   </div>
 </div>
-
-<p class="res-demo-note">{{ tr('res.demo_note') }}</p>
+<p class="res-demo-note">{{ tr('res.remote_note') }}</p>
 <p class="visually-hidden" aria-live="polite" id="res-live"></p>
 
 <!-- Usuarios autorizados -->
@@ -112,52 +119,120 @@
 {% endif %}
 
 <script>
-/* Solo front: el estado se guarda en este navegador (localStorage).
-   Cuando exista el backend, cambiar setState() por un POST al servidor
-   (que también debe validar la sesión). */
+/* Control remoto real del recurso: la web encola la orden (POST control) y la
+   Raspberry la ejecuta (services/remote_command_service.py en la Pi). Esta
+   página consulta el estado cada pocos segundos: sesión activa, última orden
+   y si la Pi está conectada (latido de estado_puerta). */
 (() => {
+  const card = document.querySelector('.res-card[data-status-url]');
+  if (!card) return;
   const T = {
     active: {{ tr('res.active') | tojson }},
     inactive: {{ tr('res.inactive') | tojson }},
+    offline: {{ tr('res.pi_offline_badge') | tojson }},
     activate: {{ tr('res.activate') | tojson }},
     deactivate: {{ tr('res.deactivate') | tojson }},
-    on: {{ tr('res.toggled_on') | tojson }},
-    off: {{ tr('res.toggled_off') | tojson }},
+    activating: {{ tr('res.activating') | tojson }},
+    deactivating: {{ tr('res.deactivating') | tojson }},
+    available: {{ tr('res.available') | tojson }},
+    inUse: {{ tr('res.in_use_by') | tojson }},
+    offlineMsg: {{ tr('res.pi_offline') | tojson }},
+    failed: {{ tr('res.command_failed') | tojson }},
   };
-  const KEY = 'shared-resources-demo';
+  const badge = card.querySelector('[data-role="badge"]');
+  const status = card.querySelector('[data-role="status"]');
+  const btn = card.querySelector('.res-toggle');
+  const label = card.querySelector('[data-role="label"]');
+  const duration = card.querySelector('[data-role="duration"]');
+  const minutes = document.getElementById('res-minutes');
   const live = document.getElementById('res-live');
-  if (!live) return;
+  let state = null;
+  let lastShownError = null;
+  let tick = null;
 
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
-
-  const render = (card, on) => {
-    card.dataset.state = on ? 'on' : 'off';
-    const badge = card.querySelector('[data-role="badge"]');
-    badge.textContent = on ? T.active : T.inactive;
-    badge.classList.toggle('activo', on);
-    badge.classList.toggle('inactivo', !on);
-    const btn = card.querySelector('.res-toggle');
-    btn.setAttribute('aria-checked', on ? 'true' : 'false');
-    card.querySelector('[data-role="label"]').textContent = on ? T.deactivate : T.activate;
+  const fmt = (s) => {
+    s = Math.max(0, Math.round(s));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
+    return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
   };
 
-  const setState = (id, on) => {
-    saved[id] = on;
-    try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+  const render = () => {
+    if (!state) return;
+    const pending = state.command && ['pendiente', 'ejecutando'].includes(state.command.estado);
+    card.dataset.state = state.active ? 'on' : 'off';
+    badge.textContent = !state.online ? T.offline : (state.active ? T.active : T.inactive);
+    badge.className = 'badge res-badge ' + (!state.online ? 'suspendido' : (state.active ? 'activo' : 'inactivo'));
+
+    let text;
+    if (!state.online) text = T.offlineMsg;
+    else if (pending) text = state.command.accion === 'activar' ? T.activating : T.deactivating;
+    else if (state.active) text = T.inUse.replace('{user}', state.user).replace('{time}', fmt(state.remaining));
+    else text = T.available;
+    // Error de la última orden (p. ej. "El recurso ya está en uso"), una sola vez.
+    if (state.command && state.command.estado === 'error' && state.command.id !== lastShownError) {
+      text = T.failed.replace('{detail}', state.command.detalle || '');
+    }
+    status.textContent = text;
+
+    if (btn) {
+      btn.setAttribute('aria-checked', state.active ? 'true' : 'false');
+      label.textContent = pending
+        ? (state.command.accion === 'activar' ? T.activating : T.deactivating)
+        : (state.active ? T.deactivate : T.activate);
+      btn.disabled = !state.online || pending;
+      if (duration) duration.hidden = state.active || pending;
+    }
   };
 
-  document.querySelectorAll('.res-card').forEach((card) => {
-    const id = card.dataset.resource;
-    render(card, saved[id] === true);
-    const btn = card.querySelector('.res-toggle');
-    btn.addEventListener('click', () => {
-      const on = card.dataset.state !== 'on';
-      setState(id, on);
-      render(card, on);
-      live.textContent = (on ? T.on : T.off).replace('{name}', btn.dataset.name);
+  const poll = async () => {
+    try {
+      const res = await fetch(card.dataset.statusUrl, { headers: { Accept: 'application/json' } });
+      const data = await res.json();
+      if (!data.ok) return;
+      const prevCmd = state && state.command;
+      state = data;
+      // Anunciar el resultado cuando una orden termina.
+      if (prevCmd && data.command && prevCmd.id === data.command.id
+          && ['pendiente', 'ejecutando'].includes(prevCmd.estado)
+          && ['completado', 'error'].includes(data.command.estado)) {
+        live.textContent = data.command.detalle || '';
+      }
+      render();
+    } catch (e) { /* red caída: se reintenta en el siguiente ciclo */ }
+  };
+
+  // Cuenta regresiva local entre consultas.
+  const countdown = () => {
+    if (state && state.active && state.remaining > 0) { state.remaining -= 1; render(); }
+  };
+
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      if (!state) return;
+      const accion = state.active ? 'desactivar' : 'activar';
+      const body = new URLSearchParams({ accion });
+      if (accion === 'activar' && minutes) body.set('minutos', minutes.value);
+      btn.disabled = true;
+      try {
+        const res = await fetch(card.dataset.controlUrl, {
+          method: 'POST', body, headers: { Accept: 'application/json' },
+        });
+        const data = await res.json();
+        status.textContent = data.ok ? data.message : data.error;
+        live.textContent = status.textContent;
+      } catch (e) {
+        status.textContent = T.failed.replace('{detail}', '');
+      }
+      // Que el error de una orden anterior no tape el estado de la nueva.
+      if (state.command) lastShownError = state.command.id;
+      setTimeout(poll, 600);
     });
-  });
+  }
+
+  poll();
+  setInterval(poll, 2500);
+  tick = setInterval(countdown, 1000);
 })();
 </script>
 

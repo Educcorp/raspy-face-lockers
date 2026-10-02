@@ -206,6 +206,15 @@ cada 10s); la web usa ese latido para saber si la Pi está conectada
 - Eliminar locker (web y Pi) borra también su historial; lockers 1-4 nunca.
 - Probado con relé simulado (mock) + Flask test client contra la BD real;
   **no** con una puerta física ni desde Railway.
+- **Recursos (2026-10-01)**: mismo patrón con `comandos_recurso`
+  (`webapp/migrations/add_comandos_recurso.sql`, ya aplicada). Desde
+  Autorizaciones (`POST /recursos/<id>/control`, `accion=activar|desactivar`,
+  `minutos`) la web encola; el mismo hilo de la Pi abre la sesión en
+  `recurso_uso` **a nombre del admin que lo pidió** y enciende el relé en el pin
+  que la Pi tenga para ese recurso (`TOOL_GPIO_CONFIG["pins"]`, por nombre vía
+  `tool_name_for_resource`). Historial: motivo nuevo `remoto`. Un recurso sin
+  pin configurado solo registra el uso. Probado con GPIO simulado; **no** con el
+  relé físico.
 
 ### 10. Poses de cabeza: registro de 4 poses + reto de vivacidad
 `core/head_pose.py` estima giro (yaw) e inclinación (pitch) con los 68

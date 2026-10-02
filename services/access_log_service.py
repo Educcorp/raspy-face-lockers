@@ -84,7 +84,7 @@ def register_access(
     motivo: 'facial' | 'no_reconocido' | 'pin' | 'pin_incorrecto' |
             'limite_intentos_pin' | 'matricula_incorrecta' | 'sin_asignacion' |
             'puerta_cerrada' | 'puerta_no_cerrada' | 'recurso_en_uso' |
-            'recurso_finalizado' | 'recurso_expirado'
+            'recurso_finalizado' | 'recurso_expirado' | 'remoto'
     user_id: idUsuario directo (usado cuando no hay idLockerAsignado disponible).
     tipo_acceso: 'locker' (default, sin cambios de comportamiento) | 'recurso'.
     resource_use_id: FK a recurso_uso — obligatorio si tipo_acceso='recurso'.

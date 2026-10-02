@@ -25,7 +25,7 @@ activar el hardware real queda pendiente para cuando exista esa integración.
 
 from __future__ import annotations
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
 
 from utils.validators import validate_recurso_descripcion, validate_recurso_nombre
 from webapp.auth import can_edit_catalogs, is_superadmin, login_required
@@ -208,3 +208,28 @@ def revoke_authorization(recurso_id: int, auth_id: int):
     resource_service.revoke_authorization(auth_id, _actor_id())
     flash("Autorización retirada.", "success")
     return redirect(url_for("resources.authorizations", recurso=recurso_id))
+
+
+# ── Activación remota (web → Pi) ─────────────────────────────────────────────
+
+@bp.route("/<int:recurso_id>/control", methods=["POST"])
+@login_required
+def remote_control(recurso_id: int):
+    """Activa/desactiva el recurso en la Raspberry (la web solo encola la orden)."""
+    if not can_edit_catalogs():
+        return jsonify(ok=False, error="No tienes permiso para esta acción."), 403
+    accion = request.form.get("accion", "")
+    minutos = request.form.get("minutos", type=int)
+    ok, message = resource_service.request_resource_command(
+        recurso_id, accion, _actor_id(), (minutos * 60) if minutos else None,
+    )
+    return jsonify(ok=ok, message=message, error=None if ok else message), (200 if ok else 409)
+
+
+@bp.route("/<int:recurso_id>/estado-remoto")
+@login_required
+def remote_status(recurso_id: int):
+    """Estado en vivo (sesión, última orden, Pi conectada) que consulta la página."""
+    if not can_edit_catalogs():
+        return jsonify(ok=False, error="No tienes permiso para esta acción."), 403
+    return jsonify(ok=True, **resource_service.get_resource_remote_status(recurso_id))

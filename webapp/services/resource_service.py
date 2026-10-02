@@ -153,3 +153,97 @@ def revoke_authorization(auth_id: int, modificado_por: int) -> None:
         "WHERE idRecursoAutorizado=%s",
         (modificado_por, auth_id),
     )
+
+
+# ── Activación remota (web → Pi) ─────────────────────────────────────────────
+# Mismo patrón que la apertura remota de lockers (locker_service): la web solo
+# encola en `comandos_recurso`; la Pi (services/remote_command_service.py)
+# reclama el comando, abre la sesión en `recurso_uso` a nombre de quien lo
+# pidió y enciende el relé en el puerto BCM que ella tiene configurado para el
+# recurso (config.py → TOOL_GPIO_CONFIG["pins"]).
+
+RESOURCE_COMMAND_RECENT_SECONDS = 60
+MAX_SESSION_SECONDS = 10800  # mismo tope que recurso_uso.duracionSegundos (3 h)
+
+
+def get_resource_remote_status(recurso_id: int) -> dict:
+    """Estado en vivo del recurso para el panel de autorizaciones."""
+    from webapp.services.locker_service import pi_is_online
+
+    session = fetch_one(
+        """
+        SELECT ru.idRecursoUso, ru.idUsuario, ru.fechaFinPrevista,
+               GREATEST(0, EXTRACT(EPOCH FROM (ru.fechaFinPrevista - now())))::int AS restante,
+               u.nombre, u.apPaterno
+        FROM recurso_uso ru
+        JOIN usuarios u ON u.idUsuario = ru.idUsuario
+        WHERE ru.idRecurso = %s AND ru.estado = 'en_uso'
+        """,
+        (recurso_id,),
+    )
+    command = fetch_one(
+        """
+        SELECT idComando, accion, estado, detalle FROM comandos_recurso
+        WHERE idRecurso = %s
+          AND fechaHoraSolicitud > now() - make_interval(secs => %s)
+        ORDER BY idComando DESC LIMIT 1
+        """,
+        (recurso_id, RESOURCE_COMMAND_RECENT_SECONDS),
+    )
+    return {
+        "online": pi_is_online(),
+        "active": session is not None,
+        "user": f"{session['nombre']} {session['appaterno']}" if session else None,
+        "remaining": session["restante"] if session else 0,
+        "command": {
+            "id": command["idcomando"],
+            "accion": command["accion"],
+            "estado": command["estado"],
+            "detalle": command["detalle"],
+        } if command else None,
+    }
+
+
+def request_resource_command(
+    recurso_id: int, accion: str, solicitado_por: int, duracion_segundos: int | None = None
+) -> tuple[bool, str]:
+    """Encola 'activar' / 'desactivar' para la Pi. Devuelve (ok, mensaje)."""
+    from webapp.services.locker_service import pi_is_online
+
+    if accion not in ("activar", "desactivar"):
+        return False, "Acción no válida."
+    recurso = fetch_one("SELECT estado FROM recursos WHERE idRecurso=%s", (recurso_id,))
+    if not recurso or (recurso["estado"] or "").lower() != "activo":
+        return False, "El recurso no existe o está deshabilitado."
+    if not pi_is_online():
+        return False, "La Raspberry Pi está desconectada; no se puede controlar el recurso ahora."
+
+    busy = fetch_one(
+        """
+        SELECT 1 AS x FROM comandos_recurso
+        WHERE idRecurso=%s AND estado IN ('pendiente', 'ejecutando')
+          AND fechaHoraSolicitud > now() - make_interval(secs => %s)
+        LIMIT 1
+        """,
+        (recurso_id, RESOURCE_COMMAND_RECENT_SECONDS),
+    )
+    if busy:
+        return False, "Ya hay una orden en curso para este recurso."
+
+    in_use = fetch_one(
+        "SELECT 1 AS x FROM recurso_uso WHERE idRecurso=%s AND estado='en_uso'", (recurso_id,)
+    )
+    if accion == "activar":
+        if in_use:
+            return False, "El recurso ya está en uso."
+        if not duracion_segundos or not 0 < duracion_segundos <= MAX_SESSION_SECONDS:
+            return False, "Elige una duración válida (máximo 3 horas)."
+    elif not in_use:
+        return False, "El recurso no está activo."
+
+    execute(
+        "INSERT INTO comandos_recurso (idRecurso, accion, duracionSegundos, solicitadoPor) "
+        "VALUES (%s, %s, %s, %s)",
+        (recurso_id, accion, duracion_segundos if accion == "activar" else None, solicitado_por),
+    )
+    return True, "Enviando orden a la Raspberry…"
